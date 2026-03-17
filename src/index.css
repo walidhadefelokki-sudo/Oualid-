@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300..700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Retolia", "Comfortaa", sans-serif;
+  --font-sans: "Comfortaa", sans-serif;
+  
+  --color-primary: #173E7D;
+  --color-secondary: #F68D58;
+  --color-accent: #DEE6E2;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased bg-accent text-primary;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

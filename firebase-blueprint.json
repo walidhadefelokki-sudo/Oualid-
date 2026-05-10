@@ -9,16 +9,65 @@
         "email": { "type": "string", "description": "User email" },
         "displayName": { "type": "string", "description": "User display name" },
         "photoURL": { "type": "string", "description": "User photo URL" },
-        "role": { "type": "string", "enum": ["user", "admin"], "description": "User role" },
+        "role": { "type": "string", "enum": ["user", "admin", "recruiter"], "description": "User role" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
       },
       "required": ["uid", "email"]
+    },
+    "invitations": {
+      "title": "Invitation",
+      "description": "Team invitation data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Invitee email" },
+        "inviterId": { "type": "string", "description": "UID of the inviter" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "approved"], "description": "Invitation status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["email", "inviterId", "status"]
+    },
+    "notifications": {
+      "title": "Notification",
+      "description": "User notification data",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the recipient" },
+        "message": { "type": "string", "description": "Notification message" },
+        "type": { "type": "string", "description": "Notification type" },
+        "data": { "type": "object", "description": "Additional data" },
+        "read": { "type": "boolean", "description": "Read status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["userId", "message", "read"]
+    },
+    "saved_jobs": {
+      "title": "Saved Job",
+      "description": "User's saved job data",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user" },
+        "jobId": { "type": "integer", "description": "ID of the job" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Saved timestamp" }
+      },
+      "required": ["userId", "jobId"]
     }
   },
   "firestore": {
     "users/{userId}": {
       "schema": "users",
       "description": "User profiles"
+    },
+    "invitations/{invitationId}": {
+      "schema": "invitations",
+      "description": "Team invitations"
+    },
+    "notifications/{notificationId}": {
+      "schema": "notifications",
+      "description": "User notifications"
+    },
+    "saved_jobs/{savedJobId}": {
+      "schema": "saved_jobs",
+      "description": "User's saved jobs"
     }
   }
 }

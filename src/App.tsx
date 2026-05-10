@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import Logo from './components/Logo';
 import { 
   Search, 
   Briefcase, 
@@ -36,11 +37,14 @@ import {
   Mail,
   Phone
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, db } from './firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { User } from 'firebase/auth';
+import { supabase } from './supabase';
+import { db, auth } from './firebase';
+import { signInAnonymously, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
+import { doc, getDocFromServer } from 'firebase/firestore';
 import Dashboard from './components/Dashboard';
-import { translations } from './translations';
+import AuthModal from './components/AuthModal';
+import { translations, Language } from './translations';
+import { WILAYAS, JOB_KEYWORDS } from './constants';
 
 const COLORS = [
   'bg-[#173E7D]', // Primary Blue
@@ -59,16 +63,29 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'landing' | 'dashboard'>('landing');
   const [loginRole, setLoginRole] = useState<'user' | 'employer'>('user');
-  const [language, setLanguage] = useState<any>('fr');
+  const [language, setLanguage] = useState<Language>('fr');
   const [isDemo, setIsDemo] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleDemoEmployer = () => {
+  const handleDemoEmployer = async () => {
+    // Sign into Firebase Auth anonymously for demo
+    if (!auth.currentUser) {
+      try {
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.error("Error signing into Firebase anonymously for demo:", err);
+      }
+    }
+
     setUser({
       uid: 'demo-employer',
       displayName: 'Oualid Elhadef Elokki',
@@ -81,7 +98,16 @@ export default function App() {
     setIsLoginOpen(false);
   };
 
-  const handleDemoCandidate = () => {
+  const handleDemoCandidate = async () => {
+    // Sign into Firebase Auth anonymously for demo
+    if (!auth.currentUser) {
+      try {
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.error("Error signing into Firebase anonymously for demo:", err);
+      }
+    }
+
     setUser({
       uid: 'demo-candidate',
       displayName: 'Amine Benali',
@@ -96,10 +122,17 @@ export default function App() {
 
   const fetchUserProfile = async (uid: string) => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        return userDoc.data();
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('uid', uid)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        console.error("Error fetching user profile:", error);
+        return null;
       }
+      return data;
     } catch (error) {
       console.error("Error fetching user profile:", error);
     }
@@ -144,38 +177,44 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
       
-      // Check if user exists in Firestore, if not create
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      if (error) throw error;
       
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          role: loginRole,
-          createdAt: serverTimestamp()
-        });
-      } else if (loginRole === 'employer' && userDoc.data()?.role !== 'employer') {
-        // Update role to employer if they chose the employer path
-        await setDoc(userDocRef, { role: 'employer' }, { merge: true });
-      }
-      
-      setIsLoginOpen(false);
-      setView('dashboard');
+      // Note: Profile creation is usually handled via Supabase Triggers/Functions 
+      // or on the first session load in the useEffect below.
     } catch (error) {
       console.error("Error during Google Login:", error);
       alert("Erreur lors de la connexion avec Google.");
     }
   };
 
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      if (error) throw error;
+      setIsLoginOpen(false);
+      setLoginEmail('');
+      setLoginPassword('');
+    } catch (error: any) {
+      console.error("Error during Email Login:", error);
+      setLoginError(language === 'fr' ? 'Email ou mot de passe incorrect.' : 'البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+    }
+  };
+
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       setView('landing');
     } catch (error) {
       console.error("Error during logout:", error);
@@ -183,16 +222,84 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    // Test Firestore connection
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. ");
+        }
+      }
+    };
+    testConnection();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user;
+      
       if (currentUser) {
-        const profile = await fetchUserProfile(currentUser.uid);
-        setUser({ ...currentUser, ...profile });
+        // Sign into Firebase Auth anonymously if not already signed in
+        // This is a bridge to allow Firestore access while using Supabase Auth
+        if (!auth.currentUser) {
+          try {
+            await signInAnonymously(auth);
+          } catch (err) {
+            console.error("Error signing into Firebase anonymously:", err);
+          }
+        }
+
+        let profile = await fetchUserProfile(currentUser.id);
+        
+        const metadata = currentUser.user_metadata;
+        const savedRole = localStorage.getItem('intended_role');
+        const roleFromMetadata = metadata.role || savedRole || loginRole;
+        
+        // Clean up localStorage
+        if (savedRole) localStorage.removeItem('intended_role');
+        
+        if (!profile) {
+          // Create profile if it doesn't exist
+          const { data: newProfile, error: createError } = await supabase
+            .from('users')
+            .upsert({
+              uid: currentUser.id,
+              email: currentUser.email,
+              display_name: metadata.full_name || currentUser.email,
+              photo_url: metadata.avatar_url,
+              company_name: metadata.company_name,
+              role: roleFromMetadata,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (!createError) profile = newProfile;
+        } else if (roleFromMetadata === 'employer' && profile.role !== 'employer') {
+          // Update role if needed
+          await supabase
+            .from('users')
+            .update({ role: 'employer' })
+            .eq('uid', currentUser.id);
+          profile.role = 'employer';
+        }
+        
+        setUser({ 
+          uid: currentUser.id,
+          email: currentUser.email,
+          displayName: profile?.display_name || currentUser.user_metadata.full_name,
+          photoURL: profile?.photo_url || currentUser.user_metadata.avatar_url,
+          role: profile?.role || loginRole
+        });
       } else {
         setUser(null);
       }
       setLoading(false);
     });
 
+    return () => subscription.unsubscribe();
+  }, [loginRole]);
+
+  useEffect(() => {
     // Cycle through colors for the intro effect
     const interval = setInterval(() => {
       setColorIndex((prev) => {
@@ -205,7 +312,6 @@ export default function App() {
     }, 2000);
 
     return () => {
-      unsubscribe();
       clearInterval(interval);
     };
   }, []);
@@ -216,9 +322,21 @@ export default function App() {
         <motion.div 
           animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
           transition={{ repeat: Infinity, duration: 2 }}
-          className="w-20 h-20 bg-[#F68D58] rounded-2xl flex items-center justify-center shadow-2xl"
+          className="flex flex-col items-center gap-8"
         >
-          <Briefcase size={40} className="text-white" />
+          <div className="bg-white p-8 rounded-[3rem] shadow-2xl">
+            <Logo size="lg" />
+          </div>
+          <div className="flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                animate={{ y: [0, -10, 0] }}
+                transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.2 }}
+                className="w-3 h-3 bg-[#F68D58] rounded-full"
+              />
+            ))}
+          </div>
         </motion.div>
       </div>
     );
@@ -233,14 +351,7 @@ export default function App() {
       {/* Navigation */}
       <nav className={`fixed top-0 w-full z-50 px-8 py-4 flex justify-between items-center transition-all duration-500 bg-white border-b border-gray-100`}>
         <div className="flex items-center">
-          <button onClick={() => setView('landing')} className="flex items-center gap-3 group text-left">
-            <div className="relative w-10 h-10 bg-[#F68D58] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform duration-500">
-              <Briefcase size={24} className="text-white" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xl font-display font-black tracking-tighter leading-none text-[#173E7D]">DAR L'EMPLOI</span>
-            </div>
-          </button>
+          <Logo size="md" onClick={() => setView('landing')} />
         </div>
 
         <div className={`hidden md:flex items-center gap-10 font-bold text-[13px] text-gray-600 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
@@ -252,7 +363,13 @@ export default function App() {
 
         <div className={`hidden md:flex items-center gap-6 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
           {/* Language Toggle */}
-          <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-full border border-gray-100">
+          <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-full border border-gray-100">
+            <button 
+              onClick={() => setLanguage('en')}
+              className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${language === 'en' ? 'bg-[#173E7D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+              EN
+            </button>
             <button 
               onClick={() => setLanguage('fr')}
               className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${language === 'fr' ? 'bg-[#173E7D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
@@ -300,10 +417,7 @@ export default function App() {
                 {translations[language].nav.login}
               </button>
               <button 
-                onClick={() => {
-                  setLoginRole('user');
-                  setIsLoginOpen(true);
-                }}
+                onClick={() => setIsAuthModalOpen(true)}
                 className="px-8 py-3 rounded-full bg-[#0A1118] text-white font-bold text-[13px] hover:bg-[#173E7D] transition-all shadow-lg shadow-black/10"
               >
                 {translations[language].nav.signup}
@@ -346,26 +460,26 @@ export default function App() {
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-32 pb-20 overflow-hidden bg-white">
-        <div className="max-w-[1440px] w-full mx-auto bg-[#173E7D] rounded-[4rem] overflow-hidden min-h-[850px] shadow-[0_50px_100px_-20px_rgba(23,62,125,0.3)] relative flex flex-col items-center justify-center text-center p-12 md:p-24">
+        <div className="max-w-[1440px] w-full mx-auto bg-[#173E7D] rounded-[4rem] overflow-hidden min-h-[600px] shadow-[0_50px_100px_-20px_rgba(23,62,125,0.3)] relative flex flex-col lg:flex-row items-center justify-between p-12 md:p-16 gap-12">
           {/* Background Image with Overlay */}
           <div className="absolute inset-0 z-0">
             <img 
-              src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=100&w=1920" 
+              src="https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&q=100&w=1920" 
               alt="Background" 
-              className="w-full h-full object-cover opacity-20"
+              className="w-full h-full object-cover opacity-10"
               referrerPolicy="no-referrer"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#173E7D]/60 via-[#173E7D]/90 to-[#173E7D]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#173E7D] via-[#173E7D]/95 to-transparent" />
           </div>
 
-          {/* Content */}
+          {/* Left Content */}
           <motion.div 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8 }}
-            className="relative z-10 max-w-7xl mx-auto flex flex-col items-center"
+            className="relative z-10 flex-1 text-left"
           >
-            <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-sm font-black uppercase tracking-[0.3em] mb-12 w-fit backdrop-blur-xl border border-white/20">
+            <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-xs font-black uppercase tracking-[0.3em] mb-8 w-fit backdrop-blur-xl border border-white/20">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F68D58] opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F68D58]"></span>
@@ -373,84 +487,135 @@ export default function App() {
               <span>{translations[language].hero.badge}</span>
             </div>
             
-            <h1 className="text-6xl md:text-8xl font-display font-black text-white leading-[1] tracking-tighter mb-10 uppercase">
+            <h1 className="text-5xl md:text-7xl font-display font-black text-white leading-[1.1] tracking-tighter mb-8 uppercase">
               {language === 'fr' ? (
                 <>
-                  Recrutez, postulez et <br />
-                  <span className="text-[#F68D58]">réussissez en Algérie</span>.
+                  Recrutez, postulez <br />
+                  et <span className="text-[#F68D58]">réussissez en <br /> Algérie.</span>
                 </>
               ) : (
-                <>
-                  وظف، قدم و <br />
-                  <span className="text-[#F68D58]">نجح في الجزائر</span>.
-                </>
+                translations[language].hero.title
               )}
             </h1>
             
-            <p className="text-2xl md:text-3xl text-blue-100/70 mb-16 max-w-3xl font-light leading-relaxed">
+            <p className="text-xl text-blue-100/70 mb-12 max-w-2xl font-light leading-relaxed">
               {translations[language].hero.subtitle}
             </p>
-            
-            <div className="flex flex-wrap justify-center gap-6 mb-20">
-              <button 
-                onClick={handleDemoCandidate}
-                className="bg-white text-[#173E7D] px-12 py-6 rounded-full font-black hover:bg-[#F68D58] hover:text-white transition-all duration-500 shadow-2xl text-xl flex items-center gap-4 group"
-              >
-                {translations[language].hero.findJob}
-                <ChevronRight className={`group-hover:translate-x-2 transition-transform ${language === 'ar' ? 'rotate-180 group-hover:-translate-x-2' : ''}`} />
-              </button>
-              <button 
-                onClick={handleDemoEmployer}
-                className="bg-transparent text-white border-2 border-white/20 px-12 py-6 rounded-full font-black hover:border-white hover:bg-white/5 transition-all duration-500 text-xl"
-              >
-                {translations[language].hero.recruit}
-              </button>
-            </div>
 
             {/* Search Bar Integrated in Hero */}
-            <motion.div 
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.8 }}
-              className="w-full max-w-6xl"
-            >
-              <div className={`bg-white/10 backdrop-blur-3xl p-4 md:p-6 rounded-[4rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3),inset_0_1px_1px_rgba(255,255,255,0.1)] flex flex-col md:flex-row gap-4 border border-white/20 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <div className={`flex-[1.5] flex items-center px-8 md:px-12 gap-6 text-white border-b md:border-b-0 md:border-r border-white/10 py-6 ${language === 'ar' ? 'flex-row-reverse border-r-0 border-l' : ''}`}>
-                  <Search size={32} className="text-[#F68D58]" />
+            <div className={`bg-white/10 backdrop-blur-3xl p-3 rounded-[4rem] shadow-2xl border border-white/20 flex flex-col md:flex-row gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex-[1.5] flex items-center px-6 gap-4 text-white border-b md:border-b-0 md:border-r border-white/10 py-4 ${language === 'ar' ? 'flex-row-reverse border-r-0 border-l' : ''}`}>
+                <Search size={24} className="text-[#F68D58]" />
+                <div className="w-full relative">
                   <input 
                     type="text" 
+                    list="job-keywords"
                     placeholder={translations[language].search.jobPlaceholder} 
-                    className={`w-full outline-none text-white bg-transparent font-bold text-2xl placeholder:text-white/40 ${language === 'ar' ? 'text-right' : ''}`} 
+                    className={`w-full outline-none text-white bg-transparent font-bold text-lg placeholder:text-white/40 ${language === 'ar' ? 'text-right' : ''}`} 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
+                  <datalist id="job-keywords">
+                    {JOB_KEYWORDS.map((keyword) => (
+                      <option key={keyword} value={keyword} />
+                    ))}
+                  </datalist>
                 </div>
-                <div className={`flex-1 flex items-center px-8 md:px-12 gap-6 text-white py-6 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                  <MapPin size={32} className="text-[#F68D58]" />
-                  <input 
-                    type="text" 
-                    placeholder={translations[language].search.locationPlaceholder} 
-                    className={`w-full outline-none text-white bg-transparent font-bold text-2xl placeholder:text-white/40 ${language === 'ar' ? 'text-right' : ''}`} 
-                    value={searchLocation}
-                    onChange={(e) => setSearchLocation(e.target.value)}
-                  />
-                </div>
-                <button 
-                  onClick={handleSearch}
-                  disabled={isSearching}
-                  className="bg-[#F68D58] text-white px-16 py-8 rounded-[3rem] font-black hover:bg-white hover:text-[#173E7D] transition-all duration-500 flex items-center justify-center gap-4 shadow-2xl hover:shadow-[0_0_40px_rgba(246,141,88,0.4)] text-2xl hover:scale-105 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {isSearching ? (
-                    <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      {translations[language].search.button}
-                      <Search size={24} />
-                    </>
-                  )}
-                </button>
               </div>
-            </motion.div>
+              <div className={`flex-1 flex items-center px-6 gap-4 text-white py-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                <MapPin size={24} className="text-[#F68D58]" />
+                <select 
+                  className={`w-full outline-none text-white bg-transparent font-bold text-lg appearance-none cursor-pointer ${language === 'ar' ? 'text-right' : ''}`}
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                >
+                  <option value="" className="bg-[#173E7D] text-white/40">{translations[language].search.locationPlaceholder}</option>
+                  {WILAYAS.map((wilaya) => (
+                    <option key={wilaya} value={wilaya} className="bg-[#173E7D] text-white">
+                      {wilaya}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button 
+                onClick={handleSearch}
+                disabled={isSearching}
+                className="bg-[#F68D58] text-white px-10 py-5 rounded-[3rem] font-black hover:bg-white hover:text-[#173E7D] transition-all duration-500 flex items-center justify-center gap-3 shadow-2xl text-lg disabled:opacity-70"
+              >
+                {isSearching ? (
+                  <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    {translations[language].search.button}
+                    <Search size={20} />
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+
+          {/* Right Cards */}
+          <motion.div 
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="relative z-10 w-full lg:w-[450px] flex flex-col gap-6"
+          >
+            {/* Candidate Card */}
+            <div 
+              onClick={handleDemoCandidate}
+              className="relative group cursor-pointer h-[240px] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10"
+            >
+              <img 
+                src="https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=800" 
+                alt="Job Search" 
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-[#173E7D]/80 group-hover:bg-[#173E7D]/70 transition-colors duration-500" />
+              <div className="relative z-10 h-full p-10 flex flex-col justify-center">
+                <div className="w-12 h-12 bg-white/10 backdrop-blur-xl text-white rounded-2xl flex items-center justify-center mb-4 border border-white/20">
+                  <UserIcon size={24} />
+                </div>
+                <h3 className="text-2xl font-display font-black text-white mb-2 uppercase tracking-tight">
+                  {language === 'fr' ? "Trouvez un emploi" : "ابحث عن وظيفة"}
+                </h3>
+                <p className="text-white/60 text-sm font-medium leading-relaxed max-w-[280px]">
+                  {language === 'fr' ? "Trouvez les meilleures opportunités en Algérie." : "ابحث عن أفضل الفرص في الجزائر."}
+                </p>
+                <div className="absolute bottom-10 right-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white group-hover:bg-[#F68D58] group-hover:scale-110 transition-all border border-white/20">
+                  <ChevronRight size={20} />
+                </div>
+              </div>
+            </div>
+
+            {/* Recruiter Card */}
+            <div 
+              onClick={handleDemoEmployer}
+              className="relative group cursor-pointer h-[240px] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10"
+            >
+              <img 
+                src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=800" 
+                alt="Recruiter" 
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-[#173E7D]/80 group-hover:bg-[#173E7D]/70 transition-colors duration-500" />
+              <div className="relative z-10 h-full p-10 flex flex-col justify-center">
+                <div className="w-12 h-12 bg-white/10 backdrop-blur-xl text-white rounded-2xl flex items-center justify-center mb-4 border border-white/20">
+                  <Building2 size={24} />
+                </div>
+                <h3 className="text-2xl font-display font-black text-white mb-2 uppercase tracking-tight">
+                  {language === 'fr' ? "Trouvez des talents" : "ابحث عن مواهب"}
+                </h3>
+                <p className="text-white/60 text-sm font-medium leading-relaxed max-w-[280px]">
+                  {language === 'fr' ? "Publiez vos offres et trouvez les meilleurs talents." : "انشر عروضك وابحث عن أفضل المواهب."}
+                </p>
+                <div className="absolute bottom-10 right-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white group-hover:bg-[#F68D58] group-hover:scale-110 transition-all border border-white/20">
+                  <ChevronRight size={20} />
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -794,12 +959,84 @@ export default function App() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
               {[
-                { title: "Senior UI/UX Designer", company: "TechNova Algeria", location: "Alger", type: "CDI", salary: "150k - 220k DZD", logo: "TN", color: "bg-blue-50 text-blue-600", featured: true },
-                { title: "Full Stack Developer", company: "Atlas Solutions", location: "Oran", type: "Télétravail", salary: "180k - 250k DZD", logo: "AS", color: "bg-emerald-50 text-emerald-600", featured: false },
-                { title: "Marketing Manager", company: "Sahara Creative", location: "Constantine", type: "Hybride", salary: "120k - 180k DZD", logo: "SC", color: "bg-orange-50 text-orange-600", featured: true },
-                { title: "Data Scientist", company: "FinTech Hub", location: "Alger", type: "CDI", salary: "200k - 300k DZD", logo: "FH", color: "bg-indigo-50 text-indigo-600", featured: false },
-                { title: "Product Owner", company: "Digital Nomad Co", location: "Annaba", type: "Télétravail", salary: "160k - 240k DZD", logo: "DN", color: "bg-purple-50 text-purple-600", featured: false },
-                { title: "HR Specialist", company: "Global Reach", location: "Sétif", type: "CDI", salary: "100k - 140k DZD", logo: "GR", color: "bg-pink-50 text-pink-600", featured: false },
+                { 
+                  title: "Senior UI/UX Designer", 
+                  company: "TechNova Algeria", 
+                  location: "Alger", 
+                  type: "CDI", 
+                  remote: "Hybride",
+                  salary: "150k - 220k DZD", 
+                  logo: "https://images.unsplash.com/photo-1572044162444-ad60f128bde3?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-blue-50 text-blue-600", 
+                  featured: true,
+                  description: language === 'fr' ? "Concevez des interfaces utilisateur exceptionnelles pour nos clients internationaux." : "صمم واجهات مستخدم استثنائية لعملائنا الدوليين.",
+                  requirements: ["Figma", "Design System", "Prototyping"]
+                },
+                { 
+                  title: "Full Stack Developer", 
+                  company: "Atlas Solutions", 
+                  location: "Oran", 
+                  type: "CDI", 
+                  remote: "Télétravail",
+                  salary: "180k - 250k DZD", 
+                  logo: "https://images.unsplash.com/photo-1549923746-c502d488b3ea?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-emerald-50 text-emerald-600", 
+                  featured: false,
+                  description: language === 'fr' ? "Développez des applications web robustes avec React et Node.js." : "طور تطبيقات ويب قوية باستخدام React و Node.js.",
+                  requirements: ["React", "Node.js", "PostgreSQL"]
+                },
+                { 
+                  title: "Marketing Manager", 
+                  company: "Sahara Creative", 
+                  location: "Constantine", 
+                  type: "CDI", 
+                  remote: "Hybride",
+                  salary: "120k - 180k DZD", 
+                  logo: "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-orange-50 text-orange-600", 
+                  featured: true,
+                  description: language === 'fr' ? "Pilotez la stratégie marketing digitale de nos clients." : "قد استراتيجية التسويق الرقمي لعملائنا.",
+                  requirements: ["SEO", "Ads", "Strategy"]
+                },
+                { 
+                  title: "Data Scientist", 
+                  company: "FinTech Hub", 
+                  location: "Alger", 
+                  type: "CDI", 
+                  remote: "Sur site",
+                  salary: "200k - 300k DZD", 
+                  logo: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-indigo-50 text-indigo-600", 
+                  featured: false,
+                  description: language === 'fr' ? "Analysez des données complexes pour extraire des insights métiers." : "حلل البيانات المعقدة لاستخراج رؤى تجارية.",
+                  requirements: ["Python", "ML", "SQL"]
+                },
+                { 
+                  title: "Product Owner", 
+                  company: "Digital Nomad Co", 
+                  location: "Annaba", 
+                  type: "CDI", 
+                  remote: "Télétravail",
+                  salary: "160k - 240k DZD", 
+                  logo: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-purple-50 text-purple-600", 
+                  featured: false,
+                  description: language === 'fr' ? "Gérez le backlog produit et collaborez avec les équipes techniques." : "أدر قائمة مهام المنتج وتعاون مع الفرق التقنية.",
+                  requirements: ["Agile", "Scrum", "Product"]
+                },
+                { 
+                  title: "HR Specialist", 
+                  company: "Global Reach", 
+                  location: "Sétif", 
+                  type: "CDI", 
+                  remote: "Sur site",
+                  salary: "100k - 140k DZD", 
+                  logo: "https://images.unsplash.com/photo-1454165833767-027ffea9e77b?auto=format&fit=crop&q=80&w=200", 
+                  color: "bg-pink-50 text-pink-600", 
+                  featured: false,
+                  description: language === 'fr' ? "Gérez le recrutement et le développement des talents." : "أدر التوظيف وتطوير المواهب.",
+                  requirements: ["Recruitment", "HRM", "Admin"]
+                },
               ].map((job, i) => (
                 <motion.div 
                   key={i}
@@ -808,7 +1045,8 @@ export default function App() {
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1 }}
                   whileHover={{ y: -15, scale: 1.02 }}
-                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 transition-all duration-500 group cursor-pointer relative overflow-hidden"
+                  onClick={() => setSelectedJob(job as any)}
+                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
                 >
                   {job.featured && (
                     <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">
@@ -816,25 +1054,54 @@ export default function App() {
                     </div>
                   )}
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
-                  <div className="relative z-10">
+                  
+                  <div className="relative z-10 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-10">
-                      <div className={`w-16 h-16 ${job.color} rounded-2xl flex items-center justify-center text-2xl font-black group-hover:bg-[#173E7D] group-hover:text-white transition-all duration-500 shadow-inner`}>
-                        {job.logo}
+                      <div className={`w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-50 overflow-hidden group-hover:scale-110 transition-transform duration-500`}>
+                        <img 
+                          src={job.logo} 
+                          alt={job.company} 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
                       </div>
-                      <span className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-full text-xs font-black uppercase tracking-widest">{job.type}</span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest">{job.type}</span>
+                        <span className="px-5 py-2 bg-blue-50 text-[#173E7D] rounded-full text-[10px] font-black uppercase tracking-widest">{job.remote}</span>
+                      </div>
                     </div>
+
                     <h3 className="text-2xl font-black text-[#173E7D] mb-3 group-hover:text-[#F68D58] transition-colors leading-tight">{job.title}</h3>
-                    <p className="text-gray-400 font-bold uppercase tracking-wider text-xs mb-8">{job.company} • {job.location}</p>
+                    <div className="flex items-center gap-2 text-gray-400 font-bold uppercase tracking-wider text-[10px] mb-6">
+                      <Building2 size={14} className="text-[#F68D58]" />
+                      {job.company}
+                    </div>
+
+                    <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
+                      {job.description}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2 mb-8">
+                      {job.requirements.map((req, idx) => (
+                        <span key={idx} className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+                          {req}
+                        </span>
+                      ))}
+                    </div>
                     
-                    <div className="flex items-center gap-6 text-xs text-gray-400 mb-10 font-bold uppercase tracking-widest">
+                    <div className="flex items-center gap-6 text-[10px] text-gray-400 mb-10 font-bold uppercase tracking-widest mt-auto">
                       <div className="flex items-center gap-2"><MapPin size={16} className="text-[#F68D58]" /> {job.location}</div>
                       <div className="flex items-center gap-2"><Clock size={16} className="text-[#F68D58]" /> 2j</div>
                     </div>
 
                     <div className="flex items-center justify-between pt-8 border-t border-gray-50">
-                      <p className="text-2xl font-black text-[#173E7D]">{job.salary}</p>
+                      <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                          {language === 'ar' ? 'الراتب المتوقع' : 'Salaire Estimé'}
+                        </p>
+                        <p className="text-2xl font-black text-[#173E7D]">{job.salary}</p>
+                      </div>
                       <button 
-                        onClick={() => setSelectedJob(job)}
                         className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-[#173E7D] group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-500 shadow-sm"
                       >
                         <ChevronRight size={28} className={language === 'ar' ? 'rotate-180' : ''} />
@@ -979,12 +1246,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
             <div className={language === 'ar' ? 'text-right' : ''}>
-              <button onClick={() => setView('landing')} className="flex items-center gap-4 mb-10 group text-left">
-                <div className="w-14 h-14 bg-[#F68D58] rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:rotate-12 transition-transform duration-500">
-                  <Briefcase className="text-white" size={32} />
-                </div>
-                <span className="text-3xl font-display font-black tracking-tighter uppercase">Dar L'emploi</span>
-              </button>
+              <Logo size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
               <p className="text-gray-400 text-lg leading-relaxed mb-10 font-medium">
                 {language === 'fr' ? "La plateforme de recrutement nouvelle génération en Algérie. Connectez-vous aux meilleures opportunités." : "منصة التوظيف من الجيل الجديد في الجزائر. تواصل مع أفضل الفرص."}
               </p>
@@ -1157,37 +1419,104 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-lg rounded-[4rem] shadow-2xl relative z-10 overflow-hidden border border-white/20"
+              className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20"
             >
-              <div className="p-16 text-center">
+              <div className="p-8 text-center">
                 <button 
                   onClick={() => setIsLoginOpen(false)}
-                  className="absolute top-10 right-10 text-gray-300 hover:text-gray-500 transition-all hover:rotate-90 duration-500"
+                  className="absolute top-6 right-6 text-gray-300 hover:text-gray-500 transition-all hover:rotate-90 duration-500"
                 >
-                  <X size={32} />
+                  <X size={20} />
                 </button>
-                <div className="w-28 h-28 bg-orange-50 text-[#F68D58] rounded-[3rem] flex items-center justify-center mx-auto mb-12 shadow-inner">
-                  <Users size={56} strokeWidth={1.5} />
+                <div className="mb-6 flex justify-center">
+                  <Logo size="md" onClick={() => setView('landing')} />
                 </div>
-                <h3 className="text-5xl font-display font-black text-[#173E7D] mb-4 tracking-tighter">{language === 'fr' ? 'Bon retour' : 'مرحباً بعودتك'}</h3>
-                <p className="text-xl text-gray-400 mb-14 font-light leading-relaxed">{language === 'fr' ? 'Connectez-vous pour gérer vos candidatures et votre profil.' : 'سجل دخولك لإدارة طلباتك وملفك الشخصي.'}</p>
+                <h3 className="text-2xl font-display font-black text-[#173E7D] mb-2 tracking-tighter">
+                  {language === 'en' ? 'Welcome back' : language === 'fr' ? 'Bon retour' : 'مرحباً بعودتك'}
+                </h3>
+                <p className="text-sm text-gray-400 mb-6 font-light leading-relaxed">
+                  {language === 'en' ? 'Log in to manage your applications.' : language === 'fr' ? 'Connectez-vous pour gérer vos candidatures.' : 'سجل دخولك لإدارة طلباتك.'}
+                </p>
                 
+                <form onSubmit={handleEmailLogin} className="space-y-4 mb-5">
+                  {loginError && (
+                    <div className="p-2.5 bg-red-50 text-red-600 rounded-xl text-[10px] font-bold animate-shake">
+                      {loginError}
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
+                      {language === 'en' ? 'Email Address' : language === 'fr' ? 'Adresse Email' : 'البريد الإلكتروني'}
+                    </label>
+                    <input 
+                      type="email" 
+                      required
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
+                      placeholder={language === 'en' ? 'your@email.com' : 'votre@email.com'}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
+                      {language === 'en' ? 'Password' : language === 'fr' ? 'Mot de passe' : 'كلمة المرور'}
+                    </label>
+                    <input 
+                      type="password" 
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full bg-[#173E7D] text-white py-3 rounded-xl font-black text-base hover:bg-[#F68D58] transition-all duration-500 shadow-lg shadow-blue-900/10 uppercase tracking-[0.2em]"
+                  >
+                    {language === 'en' ? 'Log in' : language === 'fr' ? 'Se connecter' : 'تسجيل الدخول'}
+                  </button>
+                </form>
+
+                <div className="relative py-2 mb-5">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-100"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[9px] uppercase tracking-widest font-black text-gray-300">
+                    <span className="bg-white px-2">{language === 'en' ? 'Or' : language === 'fr' ? 'Ou' : 'أو'}</span>
+                  </div>
+                </div>
+
                 <button 
                   onClick={handleGoogleLogin}
-                  className="w-full flex items-center justify-center gap-5 bg-white border border-gray-100 text-[#173E7D] py-6 rounded-3xl font-black hover:bg-gray-50 transition-all shadow-sm mb-8 text-xl group"
+                  className="w-full flex items-center justify-center gap-3 bg-white border border-gray-100 text-[#173E7D] py-3 rounded-xl font-black hover:bg-gray-50 transition-all shadow-sm mb-6 text-sm group"
                 >
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                  {language === 'fr' ? 'Continuer avec Google' : 'المتابعة باستخدام جوجل'}
+                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  {language === 'en' ? 'Google' : language === 'fr' ? 'Google' : 'جوجل'}
                 </button>
-                
-                <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">
-                  {language === 'fr' ? "En vous connectant, vous acceptez nos" : "بتسجيل الدخول، أنت توافق على"} <a href="#" className="underline hover:text-[#173E7D] transition-colors">{language === 'fr' ? "conditions d'utilisation" : "شروط الاستخدام"}</a>.
-                </p>
+
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => {
+                      setIsLoginOpen(false);
+                      setIsAuthModalOpen(true);
+                    }}
+                    className="text-gray-400 hover:text-[#173E7D] font-black text-[10px] uppercase tracking-widest transition-colors"
+                  >
+                    {language === 'en' ? 'Sign up' : language === 'fr' ? "S'inscrire" : "سجل الآن"}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      <AuthModal 
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        language={language}
+      />
     </div>
   );
 }

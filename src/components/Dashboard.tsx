@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   Briefcase, 
@@ -15,6 +15,7 @@ import {
   MapPin,
   TrendingUp,
   ChevronRight,
+  ChevronLeft,
   Filter,
   PlusCircle,
   Users as UsersIcon,
@@ -35,13 +36,49 @@ import {
   Ban,
   MoreHorizontal,
   Save,
-  Download
+  Download,
+  Lock,
+  Shield,
+  Smartphone,
+  Globe,
+  Trash2,
+  Eye,
+  Key,
+  CreditCard,
+  History,
+  HelpCircle,
+  Plus,
+  Info,
+  Copy,
+  BookOpen,
+  MessageSquare,
+  Code2,
+  Activity,
+  Sparkles,
+  Send,
+  UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, signOut, db } from '../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import Logo from './Logo';
+import { supabase } from '../supabase';
 import { WILAYAS } from '../constants';
 import { translations, Language } from '../translations';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  query, 
+  where, 
+  onSnapshot, 
+  serverTimestamp,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc
+} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -92,6 +129,15 @@ interface JobCardProps {
   onToggleSave: (id: number) => void;
 }
 
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export default function Dashboard({ 
   user, 
   language, 
@@ -103,13 +149,273 @@ export default function Dashboard({
   setLanguage: (lang: Language) => void; 
   onGoHome: () => void;
 }) {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Fetch initial notifications
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.uid)
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) setNotifications(data);
+    };
+
+    fetchNotifications();
+
+    // Subscribe to real-time notifications
+    const channel = supabase
+      .channel(`public:notifications:user_id=eq.${user.uid}`)
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications',
+        filter: `user_id=eq.${user.uid}`
+      }, payload => {
+        setNotifications(prev => [payload.new as Notification, ...prev]);
+        // Optional: Show a toast or browser notification
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.uid}-${Math.random()}.${fileExt}`;
+      const filePath = `cvs/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('candidate-cvs')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('candidate-cvs')
+        .getPublicUrl(filePath);
+
+      // Update user profile or CV record with the new URL
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ resume_url: publicUrl })
+        .eq('uid', user.uid);
+
+      if (updateError) throw updateError;
+
+      alert(language === 'ar' ? 'تم رفع السيرة الذاتية بنجاح!' : 'CV téléchargé avec succès !');
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert(language === 'ar' ? 'خطأ أثناء رفع الملف.' : 'Erreur lors du téléchargement du fichier.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState(user?.role === 'employer' ? 'employer-dashboard' : 'dashboard');
+  const [settingsTab, setSettingsTab] = useState('general');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [helpAction, setHelpAction] = useState<string | null>(null);
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactSubject, setContactSubject] = useState('');
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(true);
+  const [hideCurrentEmployer, setHideCurrentEmployer] = useState(false);
+  const [notificationChannels, setNotificationChannels] = useState({
+    email: true,
+    push: true,
+    sms: false
+  });
+  const [notificationTypes, setNotificationTypes] = useState({
+    jobAlerts: true,
+    applications: true,
+    newsletter: false
+  });
+  const [preferredRoles, setPreferredRoles] = useState(['UX Designer', 'Product Manager', 'Frontend Developer']);
+  const [preferredLocations, setPreferredLocations] = useState(['Alger', 'Oran', 'Télétravail']);
+  const [salaryRange, setSalaryRange] = useState(120000);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isInvitingMember, setIsInvitingMember] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [showInviteSimulation, setShowInviteSimulation] = useState<any>(null);
+  const [teamMembers, setTeamMembers] = useState([
+    { name: "Walid Hadef", email: "walid@company.dz", role: "Admin", status: language === 'ar' ? 'نشط' : 'Actif' },
+    { name: "Amine Ben", email: "amine@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'نشط' : 'Actif' },
+    { name: "Sara Dz", email: "sara@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'قيد الانتظار' : 'En attente' }
+  ]);
   const [aiFilterStep, setAiFilterStep] = useState<'select' | 'results'>('select');
   const [selectedJobForAI, setSelectedJobForAI] = useState('Développeur Full Stack — 23 candidatures');
+  const [showApplyConfirmation, setShowApplyConfirmation] = useState(false);
+  const [aiPriorities, setAiPriorities] = useState<string[]>(['Expérience', 'Compétences techniques']);
+  const availablePriorities = [
+    'Expérience',
+    'Compétences techniques',
+    'Formation',
+    'Soft Skills',
+    'Localisation',
+    'Disponibilité',
+    'Langues'
+  ];
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [expandedCandidateId, setExpandedCandidateId] = useState<number | null>(null);
   const [showContactOptions, setShowContactOptions] = useState(false);
+  const [billingView, setBillingView] = useState<'current' | 'plans' | 'payment'>('current');
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'CCP' | 'Baridimob' | 'EDAHABIA' | null>(null);
+  const [cardInfo, setCardInfo] = useState({
+    number: '',
+    expiry: '',
+    cvc: '',
+    name: ''
+  });
+  const [showBillingSuccess, setShowBillingSuccess] = useState(false);
+  const [billingSuccessMessage, setBillingSuccessMessage] = useState('');
+
+  // Firebase Invitation & Notification Logic
+  useEffect(() => {
+    if (!user) return;
+
+    // Listen for notifications (especially for invitation acceptance)
+    const q = query(
+      collection(db, 'notifications'), 
+      where('userId', '==', user.uid),
+      where('read', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notification = change.doc.data();
+          // If it's an invitation acceptance, we can handle it
+          if (notification.type === 'invitation_accepted') {
+            // Optional: Show a specific UI alert
+          }
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Firebase Saved Jobs Logic
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'saved_jobs'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const jobIds = snapshot.docs.map(doc => doc.data().jobId);
+      setSavedJobs(jobIds);
+    }, (error) => {
+      console.error("Error fetching saved jobs:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleSendInvite = async () => {
+    if (!inviteEmail || !user) return;
+    setIsSendingInvite(true);
+    try {
+      const invitationData = {
+        email: inviteEmail,
+        inviterId: user.uid,
+        inviterName: user.displayName || 'Recruteur',
+        status: 'pending',
+        createdAt: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, 'invitations'), invitationData);
+      
+      // Simulate sending email
+      setTimeout(() => {
+        setShowInviteSimulation({
+          id: docRef.id,
+          ...invitationData
+        });
+        setIsSendingInvite(false);
+        setIsInvitingMember(false);
+        setInviteEmail('');
+      }, 1500);
+
+    } catch (error) {
+      console.error("Error sending invite:", error);
+      setIsSendingInvite(false);
+    }
+  };
+
+  const handleAcceptInvite = async (invitation: any) => {
+    try {
+      // 1. Update invitation status to 'accepted'
+      await updateDoc(doc(db, 'invitations', invitation.id), {
+        status: 'accepted',
+        acceptedAt: serverTimestamp()
+      });
+
+      // 2. Notify the inviter
+      await addDoc(collection(db, 'notifications'), {
+        userId: invitation.inviterId,
+        title: language === 'ar' ? 'تم قبول الدعوة' : 'Invitation acceptée',
+        message: language === 'ar' 
+          ? `${invitation.email} قبل دعوتك للانضمام إلى الفريق.`
+          : `${invitation.email} a accepté votre invitation à rejoindre l'équipe.`,
+        type: 'invitation_accepted',
+        invitationId: invitation.id,
+        inviteeEmail: invitation.email,
+        read: false,
+        createdAt: serverTimestamp()
+      });
+
+      setShowInviteSimulation(null);
+      alert(language === 'ar' ? 'تم قبول الدعوة بنجاح!' : 'Invitation acceptée avec succès !');
+    } catch (error) {
+      console.error("Error accepting invite:", error);
+    }
+  };
+
+  const handleGrantAccess = async (notification: any) => {
+    try {
+      // 1. Update invitation status to 'approved'
+      await updateDoc(doc(db, 'invitations', notification.invitationId), {
+        status: 'approved',
+        approvedAt: serverTimestamp()
+      });
+
+      // 2. Mark notification as read
+      await updateDoc(doc(db, 'notifications', notification.id), {
+        read: true
+      });
+
+      // 3. Add to local team members list (simulated)
+      setTeamMembers(prev => [...prev, {
+        name: notification.inviteeEmail.split('@')[0],
+        email: notification.inviteeEmail,
+        role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur',
+        status: language === 'ar' ? 'نشط' : 'Actif'
+      }]);
+
+      alert(language === 'ar' ? 'تم منح الوصول بنجاح!' : 'Accès accordé avec succès !');
+    } catch (error) {
+      console.error("Error granting access:", error);
+    }
+  };
 
   const aiCandidates = [
     {
@@ -120,7 +426,9 @@ export default function Dashboard({
       location: 'Alger',
       match: 92,
       category: 'Excellent match',
-      summary: 'Excellent candidat avec une solide expérience Full Stack. Profil très adapté aux exigences du poste.',
+      summary: language === 'ar'
+        ? 'ممتاز مع خبرة قوية في Full Stack. الملف الشخصي مناسب جداً لمتطلبات الوظيفة.'
+        : 'Excellent candidat avec une solide expérience Full Stack. Profil très adapté aux exigences du poste.',
       email: 'ahmed.benali@email.dz',
       phone: '+213 550 12 34 56',
       scores: { exp: 95, skills: 90, edu: 88 },
@@ -211,13 +519,8 @@ export default function Dashboard({
       return (
         <div className="flex flex-col h-full">
           <div className="p-8">
-            <button onClick={onGoHome} className="flex items-center gap-3 mb-2 group hover:opacity-80 transition-all">
-              <div className="w-10 h-10 bg-[#F68D58] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
-                <Briefcase size={24} className="text-white" />
-              </div>
-              <span className="text-xl font-bold text-[#173E7D] tracking-tight uppercase">DAR L'EMPLOI</span>
-            </button>
-            <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-[#173E7D] rounded-lg text-[10px] font-black tracking-wider uppercase">
+            <Logo size="md" onClick={onGoHome} />
+            <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-[#173E7D] rounded-lg text-[10px] font-black tracking-wider uppercase mt-2">
               Recruteur
             </div>
           </div>
@@ -234,8 +537,13 @@ export default function Dashboard({
             <SidebarItem icon={Building2} label="Mon entreprise" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
 
             <SectionLabel>Compte</SectionLabel>
-            <SidebarItem icon={Gem} label="Abonnement" active={activeTab === 'subscription'} onClick={() => setActiveTab('subscription')} />
-            <SidebarItem icon={Bell} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} />
+            <SidebarItem icon={Gem} label={t('subscription')} active={activeTab === 'subscription'} onClick={() => setActiveTab('subscription')} />
+            <div className="relative">
+              <SidebarItem icon={Bell} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} />
+              {notifications.filter(n => !n.is_read).length > 0 && (
+                <span className="absolute top-3 right-4 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              )}
+            </div>
             <SidebarItem icon={Settings} label="Paramètres" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
           </div>
 
@@ -258,12 +566,7 @@ export default function Dashboard({
     return (
       <div className="flex flex-col h-full">
         <div className="p-8">
-          <button onClick={onGoHome} className="flex items-center gap-3 group hover:opacity-80 transition-all">
-            <div className="w-10 h-10 bg-[#F68D58] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
-              <Briefcase size={24} className="text-white" />
-            </div>
-            <span className="text-xl font-bold text-[#173E7D] tracking-tight uppercase">DAR L'EMPLOI</span>
-          </button>
+          <Logo size="md" onClick={onGoHome} />
         </div>
 
         <div className="flex-1 px-4 space-y-2 overflow-y-auto no-scrollbar">
@@ -278,7 +581,12 @@ export default function Dashboard({
           <SidebarItem icon={User} label={t('myProfile')} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
           
           <SectionLabel>{t('account')}</SectionLabel>
-          <SidebarItem icon={Bell} label={t('notifications')} active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} />
+          <div className="relative">
+            <SidebarItem icon={Bell} label={t('notifications')} active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} />
+            {notifications.filter(n => !n.is_read).length > 0 && (
+              <span className="absolute top-3 right-4 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            )}
+          </div>
           <SidebarItem icon={Settings} label={t('settings')} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </div>
 
@@ -298,68 +606,106 @@ export default function Dashboard({
   const JobCard: React.FC<JobCardProps> = ({ job, isSaved, onToggleSave }) => (
     <div 
       onClick={() => setSelectedJob(job)}
-      className="bg-white rounded-[2.5rem] border border-gray-100 p-8 hover:shadow-2xl hover:shadow-blue-900/5 transition-all group cursor-pointer relative"
+      className="bg-white rounded-[2.5rem] border border-gray-100 p-8 hover:shadow-2xl hover:shadow-blue-900/5 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
-      {/* Type Badge */}
-      <div className={`absolute top-8 ${isRTL ? 'left-8' : 'right-8'}`}>
-        <span className="px-4 py-1.5 bg-gray-50 text-gray-400 text-[10px] font-black rounded-full uppercase tracking-widest border border-gray-100">
-          {job.type}
-        </span>
+      {/* Decorative background element */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
+
+      {/* Header: Logo & Badges */}
+      <div className="relative z-10 flex justify-between items-start mb-8">
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-50 overflow-hidden group-hover:scale-110 transition-transform duration-500">
+          <img 
+            src={job.logo} 
+            alt={job.company} 
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${job.company}&background=173E7D&color=fff`;
+            }}
+          />
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <span className="px-4 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-full uppercase tracking-widest border border-emerald-100/50">
+            {job.type}
+          </span>
+          <span className="px-4 py-1.5 bg-blue-50 text-[#173E7D] text-[10px] font-black rounded-full uppercase tracking-widest border border-blue-100/50">
+            {job.remote}
+          </span>
+        </div>
       </div>
 
-      <div className="space-y-6">
-        {/* Icon */}
-        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-[#173E7D]">
-          <Building2 size={32} />
-        </div>
-
-        {/* Title & Company */}
-        <div className="space-y-1">
-          <h4 className="text-xl font-bold text-[#173E7D] group-hover:text-[#F68D58] transition-colors leading-tight">
+      {/* Content */}
+      <div className="relative z-10 flex-1 space-y-4">
+        <div>
+          <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors leading-tight mb-2">
             {job.title}
           </h4>
-          <p className="text-gray-400 font-bold text-sm uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-gray-400 font-bold text-xs uppercase tracking-wider">
+            <Building2 size={14} className="text-[#F68D58]" />
             {job.company}
-          </p>
+          </div>
+        </div>
+
+        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium">
+          {job.description}
+        </p>
+
+        {/* Requirements Tags */}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {job.requirements.slice(0, 2).map((req, idx) => (
+            <span key={idx} className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+              {req}
+            </span>
+          ))}
+          {job.requirements.length > 2 && (
+            <span className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+              +{job.requirements.length - 2}
+            </span>
+          )}
         </div>
 
         {/* Meta Info */}
-        <div className="flex items-center gap-6 pt-2">
-          <div className="flex items-center gap-2 text-gray-400 text-xs font-bold uppercase tracking-widest">
+        <div className="flex items-center gap-6 pt-4">
+          <div className="flex items-center gap-2 text-gray-400 text-[10px] font-black uppercase tracking-widest">
             <MapPin size={14} className="text-[#F68D58]" />
             {job.location}
           </div>
-          <div className="flex items-center gap-2 text-gray-400 text-xs font-bold uppercase tracking-widest">
+          <div className="flex items-center gap-2 text-gray-400 text-[10px] font-black uppercase tracking-widest">
             <Clock size={14} className="text-[#F68D58]" />
-            2J
+            {language === 'ar' ? 'منذ يومين' : 'Il y a 2j'}
           </div>
         </div>
+      </div>
 
-        {/* Footer: Salary & Action */}
-        <div className="flex items-center justify-between pt-6 border-t border-gray-50">
-          <div className="text-lg font-black text-[#173E7D]">
+      {/* Footer: Salary & Action */}
+      <div className="relative z-10 flex items-center justify-between pt-8 mt-8 border-t border-gray-50">
+        <div className="space-y-1">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+            {language === 'ar' ? 'الراتب المتوقع' : 'Salaire Estimé'}
+          </p>
+          <div className="text-xl font-black text-[#173E7D]">
             {job.salary}
           </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSave(job.id);
-              }}
-              className={`p-3 rounded-xl transition-all ${
-                isSaved 
-                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                  : 'bg-gray-50 text-gray-300 hover:text-[#F68D58] hover:bg-orange-50'
-              }`}
-            >
-              <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
-            </button>
-            <button 
-              className="w-12 h-12 bg-gray-50 text-[#173E7D] rounded-full flex items-center justify-center hover:bg-[#173E7D] hover:text-white transition-all shadow-sm group-hover:shadow-md"
-            >
-              <ChevronRight size={24} className={isRTL ? 'rotate-180' : ''} />
-            </button>
-          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSave(job.id);
+            }}
+            className={`p-4 rounded-2xl transition-all ${
+              isSaved 
+                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
+                : 'bg-gray-50 text-gray-300 hover:text-[#F68D58] hover:bg-orange-50'
+            }`}
+          >
+            <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
+          </button>
+          <button 
+            className="w-14 h-14 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center hover:bg-[#F68D58] transition-all shadow-lg shadow-blue-900/10 group-hover:shadow-orange-500/20"
+          >
+            <ChevronRight size={28} className={isRTL ? 'rotate-180' : ''} />
+          </button>
         </div>
       </div>
     </div>
@@ -404,10 +750,48 @@ export default function Dashboard({
     skills: ['React', 'TypeScript', 'Tailwind CSS', 'Node.js'],
     languages: [
       { name: language === 'ar' ? 'العربية' : 'Arabe', level: language === 'ar' ? 'أصلي' : 'Natif' },
-      { name: language === 'ar' ? 'الفرنسية' : 'Français', level: language === 'ar' ? 'بطلاقة' : 'Courant' },
-      { name: language === 'ar' ? 'الإنجليزية' : 'Anglais', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }
+      { name: 'Français', level: language === 'ar' ? 'بطلاقة' : 'Courant' },
+      { name: 'Anglais', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }
     ]
   });
+
+  const [candidatesByJob, setCandidatesByJob] = useState([
+    {
+      jobTitle: 'Senior React Developer',
+      publishedAt: '17/08/2026',
+      candidates: [
+        { name: 'Ahmed Benali', role: 'Fullstack Developer', exp: '5 ans', match: 95, avatar: 'https://i.pravatar.cc/150?u=ahmed', email: 'ahmed.benali@email.dz', phone: '+213 550 12 34 56', status: 'Nouveau' },
+        { name: 'Karim Zidi', role: 'DevOps Engineer', exp: '7 ans', match: 92, avatar: 'https://i.pravatar.cc/150?u=karim', email: 'k.zidi@email.dz', phone: '+213 772 55 66 77', status: 'En cours' },
+        { name: 'Sami Mansour', role: 'Frontend Engineer', exp: '4 ans', match: 89, avatar: 'https://i.pravatar.cc/150?u=sami', email: 's.mansour@email.dz', phone: '+213 554 11 22 33', status: 'Nouveau' },
+      ]
+    },
+    {
+      jobTitle: 'UX Designer',
+      publishedAt: '15/08/2026',
+      candidates: [
+        { name: 'Sarah Mansouri', role: 'UI/UX Designer', exp: '3 ans', match: 88, avatar: 'https://i.pravatar.cc/150?u=sarah', email: 's.mansouri@email.dz', phone: '+213 661 22 33 44', status: 'Nouveau' },
+        { name: 'Lina Kaci', role: 'Product Manager', exp: '4 ans', match: 85, avatar: 'https://i.pravatar.cc/150?u=lina', email: 'l.kaci@email.dz', phone: '+213 553 88 99 00', status: 'En cours' },
+        { name: 'Omar Sy', role: 'Visual Designer', exp: '5 ans', match: 82, avatar: 'https://i.pravatar.cc/150?u=omar', email: 'o.sy@email.dz', phone: '+213 552 33 44 55', status: 'Nouveau' },
+      ]
+    },
+    {
+      jobTitle: 'Marketing Manager',
+      publishedAt: '10/08/2026',
+      candidates: [
+        { name: 'Yacine Brahimi', role: 'Growth Hacker', exp: '6 ans', match: 91, avatar: 'https://i.pravatar.cc/150?u=yacine', email: 'y.brahimi@email.dz', phone: '+213 662 44 55 66', status: 'Nouveau' },
+        { name: 'Amel Bent', role: 'Content Strategist', exp: '2 ans', match: 76, avatar: 'https://i.pravatar.cc/150?u=amel', email: 'a.bent@email.dz', phone: '+213 551 77 88 99', status: 'Refusé' },
+        { name: 'Sofiane H.', role: 'SEO Specialist', exp: '3 ans', match: 84, avatar: 'https://i.pravatar.cc/150?u=sofiane', email: 's.h@email.dz', phone: '+213 771 22 33 44', status: 'En cours' },
+      ]
+    },
+    {
+      jobTitle: 'Data Scientist',
+      publishedAt: '05/08/2026',
+      candidates: [
+        { name: 'Zinedine Z.', role: 'ML Engineer', exp: '4 ans', match: 94, avatar: 'https://i.pravatar.cc/150?u=zizou', email: 'z.z@email.dz', phone: '+213 550 10 10 10', status: 'Nouveau' },
+        { name: 'Kylian M.', role: 'Data Analyst', exp: '2 ans', match: 81, avatar: 'https://i.pravatar.cc/150?u=kylian', email: 'k.m@email.dz', phone: '+213 660 07 07 07', status: 'Nouveau' },
+      ]
+    }
+  ]);
 
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -421,9 +805,15 @@ export default function Dashboard({
   const [newJobData, setNewJobData] = useState({
     title: '',
     sector: 'Technologie',
+    wilaya: 'Alger',
     type: 'CDI',
-    salary: '',
-    description: ''
+    experience: 'Confirmé (3-5 ans)',
+    salaryMin: '',
+    salaryMax: '',
+    description: '',
+    requirements: '',
+    benefits: '',
+    deadline: ''
   });
 
   const handlePostJob = (e: React.FormEvent) => {
@@ -445,9 +835,15 @@ export default function Dashboard({
       title: '',
       sector: 'Technologie',
       type: 'CDI',
-      salary: '',
-      description: ''
-    });
+      salaryMin: '',
+      salaryMax: '',
+      description: '',
+      requirements: '',
+      benefits: '',
+      deadline: '',
+      wilaya: 'Alger',
+      experience: 'Confirmé (3-5 ans)'
+    } as any);
     
     alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
     setActiveTab('manage-jobs');
@@ -464,10 +860,29 @@ export default function Dashboard({
   const [selectedSalary, setSelectedSalary] = useState('');
   const [selectedSector, setSelectedSector] = useState('');
 
-  const toggleSaveJob = (id: number) => {
-    setSavedJobs(prev => 
-      prev.includes(id) ? prev.filter(jobId => jobId !== id) : [...prev, id]
-    );
+  const toggleSaveJob = async (id: number) => {
+    if (!user) return;
+
+    const savedJobId = `${user.uid}_${id}`;
+    const docRef = doc(db, 'saved_jobs', savedJobId);
+
+    if (savedJobs.includes(id)) {
+      try {
+        await deleteDoc(docRef);
+      } catch (error) {
+        console.error("Error removing saved job:", error);
+      }
+    } else {
+      try {
+        await setDoc(docRef, {
+          userId: user.uid,
+          jobId: id,
+          createdAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error saving job:", error);
+      }
+    }
   };
 
   const MOCK_JOBS: Job[] = [
@@ -480,10 +895,14 @@ export default function Dashboard({
       remote: language === 'ar' ? 'عن بعد' : 'Télétravail',
       salary: '150k - 200k DZD',
       salaryMin: 150000,
-      description: language === 'ar' ? 'نحن نبحث عن مطور شغوف للانضمام إلى فريقنا الديناميكي والعمل على مشاريع دولية.' : 'Nous recherchons un développeur passionné pour rejoindre notre équipe dynamique et travailler sur des projets d\'envergure internationale.',
-      requirements: language === 'ar' ? ['+5 سنوات خبرة React/Node.js', 'إتقان TypeScript', 'خبرة مع AWS'] : ['5+ ans d\'expérience React/Node.js', 'Maîtrise de TypeScript', 'Expérience avec AWS'],
-      benefits: language === 'ar' ? ['تأمين صحي ممتاز', 'مكافأة سنوية', 'ساعات عمل مرنة'] : ['Assurance santé premium', 'Bonus annuel', 'Horaires flexibles'],
-      logo: 'https://picsum.photos/seed/tech1/100/100',
+      description: language === 'ar'
+        ? 'نحن نبحث عن مطور شغوف للانضمام إلى فريقنا الديناميكي والعمل على مشاريع دولية مبتكرة باستخدام أحدث التقنيات.'
+        : 'Nous recherchons un développeur passionné pour rejoindre notre équipe dynamique et travailler sur des projets d\'envergure internationale avec les dernières technologies.',
+      requirements: ['React/Node.js', 'TypeScript', 'AWS', 'Docker'],
+      benefits: language === 'ar'
+        ? ['تأمين صحي ممتاز', 'مكافأة سنوية', 'ساعات عمل مرنة']
+        : ['Assurance santé premium', 'Bonus annuel', 'Horaires flexibles'],
+      logo: 'https://images.unsplash.com/photo-1549923746-c502d488b3ea?auto=format&fit=crop&q=80&w=200',
       sector: language === 'ar' ? 'المعلوماتية / التكنولوجيا' : 'Informatique / Technologie'
     },
     {
@@ -495,10 +914,14 @@ export default function Dashboard({
       remote: language === 'ar' ? 'هجين' : 'Hybride',
       salary: '120k - 160k DZD',
       salaryMin: 120000,
-      description: language === 'ar' ? 'انضم إلى استوديو الإبداع لدينا لتصميم واجهات مستخدم استثنائية لعملائنا في قطاع التكنولوجيا المالية.' : 'Rejoignez notre studio créatif pour concevoir des interfaces utilisateur exceptionnelles pour nos clients dans le secteur de la fintech.',
-      requirements: language === 'ar' ? ['إتقان Figma', 'معرض أعمال قوي', 'فهم Design System'] : ['Maîtrise de Figma', 'Portfolio solide', 'Compréhension du Design System'],
-      benefits: language === 'ar' ? ['تكوين مستمر', 'معدات Apple', 'خرجات الفريق'] : ['Formation continue', 'Équipement Apple fourni', 'Sorties d\'équipe'],
-      logo: 'https://picsum.photos/seed/design1/100/100',
+      description: language === 'ar'
+        ? 'انضم إلى استوديو الإبداع لدينا لتصميم واجهات مستخدم استثنائية وتجارب مستخدم فريدة لعملائنا في قطاع التكنولوجيا المالية.'
+        : 'Rejoignez notre studio créatif pour concevoir des interfaces utilisateur exceptionnelles et des expériences uniques pour nos clients fintech.',
+      requirements: ['Figma', 'Design System', 'Prototyping', 'User Research'],
+      benefits: language === 'ar'
+        ? ['تكوين مستمر', 'معدات Apple', 'خرجات الفريق']
+        : ['Formation continue', 'Équipement Apple fourni', 'Sorties d\'équipe'],
+      logo: 'https://images.unsplash.com/photo-1572044162444-ad60f128bde3?auto=format&fit=crop&q=80&w=200',
       sector: language === 'ar' ? 'التصميم / الإبداع' : 'Design / Création'
     },
     {
@@ -510,10 +933,14 @@ export default function Dashboard({
       remote: language === 'ar' ? 'في الموقع' : 'Sur site',
       salary: '180k - 250k DZD',
       salaryMin: 180000,
-      description: language === 'ar' ? 'إدارة مشاريع التحول الرقمي المعقدة للمؤسسات المالية الكبرى في الجزائر.' : 'Gérez des projets complexes de transformation digitale pour des institutions financières majeures en Algérie.',
-      requirements: language === 'ar' ? ['شهادة PMP/Agile', 'تواصل ممتاز', '+3 سنوات في إدارة المشاريع'] : ['Certification PMP/Agile', 'Excellente communication', '3+ ans en gestion de projet'],
-      benefits: language === 'ar' ? ['سيارة عمل', 'خطة تقاعد', 'قسائم طعام'] : ['Voiture de fonction', 'Plan de retraite', 'Tickets restaurant'],
-      logo: 'https://picsum.photos/seed/it1/100/100',
+      description: language === 'ar'
+        ? 'إدارة مشاريع التحول الرقمي المعقدة للمؤسسات المالية الكبرى في الجزائر وقيادة فرق تقنية متعددة التخصصات.'
+        : 'Gérez des projets complexes de transformation digitale pour des institutions financières majeures en Algérie et dirigez des équipes pluridisciplinaires.',
+      requirements: ['PMP/Agile', 'Project Management', 'Leadership', 'Jira'],
+      benefits: language === 'ar'
+        ? ['سيارة عمل', 'خطة تقاعد', 'قسائم طعام']
+        : ['Voiture de fonction', 'Plan de retraite', 'Tickets restaurant'],
+      logo: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=200',
       sector: language === 'ar' ? 'الإدارة / التسيير' : 'Management / Gestion'
     },
     {
@@ -525,10 +952,14 @@ export default function Dashboard({
       remote: language === 'ar' ? 'هجين' : 'Hybride',
       salary: '30k - 50k DZD',
       salaryMin: 30000,
-      description: language === 'ar' ? 'تعلم أساسيات التسويق الرقمي داخل وكالة سريعة النمو.' : 'Apprenez les ficelles du marketing digital au sein d\'une agence en pleine croissance.',
-      requirements: language === 'ar' ? ['طالب في التسويق', 'كتابة جيدة', 'فضول'] : ['Étudiant en marketing', 'Bonne rédaction', 'Curiosité'],
-      benefits: language === 'ar' ? ['إمكانية التوظيف', 'توجيه', 'أجواء شركة ناشئة'] : ['Possibilité de recrutement', 'Mentorat', 'Ambiance startup'],
-      logo: 'https://picsum.photos/seed/marketing1/100/100',
+      description: language === 'ar'
+        ? 'تعلم أساسيات التسويق الرقمي وإدارة الشبكات الاجتماعية داخل وكالة سريعة النمو ومبدعة.'
+        : 'Apprenez les ficelles du marketing digital et du community management au sein d\'une agence créative en pleine croissance.',
+      requirements: ['Marketing', 'Copywriting', 'Social Media', 'Canva'],
+      benefits: language === 'ar'
+        ? ['إمكانية التوظيف', 'توجيه', 'أجواء شركة ناشئة']
+        : ['Possibilité de recrutement', 'Mentorat', 'Ambiance startup'],
+      logo: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=200',
       sector: language === 'ar' ? 'التسويق / الاتصال' : 'Marketing / Communication'
     },
     {
@@ -540,17 +971,21 @@ export default function Dashboard({
       remote: language === 'ar' ? 'في الموقع' : 'Sur site',
       salary: '90k - 130k DZD',
       salaryMin: 90000,
-      description: language === 'ar' ? 'إدارة محفظة عملاء مكتب محاسبة مشهور.' : 'Gérez le portefeuille clients d\'un cabinet comptable de renom.',
-      requirements: language === 'ar' ? ['دبلوم في المحاسبة', 'إتقان برامج المحاسبة', 'دقة'] : ['Diplôme en comptabilité', 'Maîtrise des logiciels comptables', 'Rigueur'],
-      benefits: language === 'ar' ? ['استقرار', 'علاوات الأداء', 'تأمين'] : ['Stabilité', 'Primes de performance', 'Assurance'],
-      logo: 'https://picsum.photos/seed/finance1/100/100',
+      description: language === 'ar'
+        ? 'إدارة محفظة عملاء متنوعة لمكتب محاسبة مشهور وضمان الامتثال للمعايير المحاسبية والضريبية.'
+        : 'Gérez un portefeuille clients diversifié pour un cabinet comptable de renom et assurez la conformité fiscale.',
+      requirements: ['Accounting', 'Taxation', 'ERP Software', 'Audit'],
+      benefits: language === 'ar'
+        ? ['استقرار', 'علاوات الأداء', 'تأمين']
+        : ['Stabilité', 'Primes de performance', 'Assurance'],
+      logo: 'https://images.unsplash.com/photo-1454165833767-027ffea9e77b?auto=format&fit=crop&q=80&w=200',
       sector: language === 'ar' ? 'المالية / المحاسبة' : 'Finance / Comptabilité'
     }
   ];
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       onGoHome();
     } catch (error) {
       console.error("Error signing out:", error);
@@ -560,11 +995,15 @@ export default function Dashboard({
   const handleSaveProfile = async () => {
     if (!user) return;
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
-        ...profileData,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      const { error } = await supabase
+        .from('users')
+        .upsert({
+          uid: user.uid,
+          ...profileData,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
       alert(language === 'ar' ? 'تم تحديث الملف الشخصي بنجاح!' : 'Profil mis à jour avec succès !');
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -575,12 +1014,15 @@ export default function Dashboard({
   const handleSaveCV = async () => {
     if (!user) return;
     try {
-      const cvRef = doc(db, 'cvs', user.uid);
-      await setDoc(cvRef, {
-        ...cvData,
-        updatedAt: serverTimestamp(),
-        userId: user.uid
-      });
+      const { error } = await supabase
+        .from('cvs')
+        .upsert({
+          user_id: user.uid,
+          ...cvData,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
       alert(language === 'ar' ? 'تم حفظ السيرة الذاتية بنجاح!' : 'CV sauvegardé avec succès !');
     } catch (error) {
       console.error("Error saving CV:", error);
@@ -813,40 +1255,120 @@ export default function Dashboard({
           );
         case 'candidates':
           return (
-            <div className="space-y-8">
-              <div className={isRTL ? 'text-right' : ''}>
-                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">{t('candidates')}</h2>
-                <p className="text-gray-500 mt-1 font-medium">Découvrez les meilleurs profils pour vos postes.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {[
-                  { name: 'Ahmed Benali', role: 'Fullstack Developer', exp: '5 ans', match: 95, avatar: 'https://i.pravatar.cc/150?u=ahmed', email: 'ahmed.benali@email.dz', phone: '+213 550 12 34 56' },
-                  { name: 'Sarah Mansouri', role: 'UI/UX Designer', exp: '3 ans', match: 88, avatar: 'https://i.pravatar.cc/150?u=sarah', email: 's.mansouri@email.dz', phone: '+213 661 22 33 44' },
-                  { name: 'Karim Zidi', role: 'DevOps Engineer', exp: '7 ans', match: 92, avatar: 'https://i.pravatar.cc/150?u=karim', email: 'k.zidi@email.dz', phone: '+213 772 55 66 77' },
-                  { name: 'Lina Kaci', role: 'Product Manager', exp: '4 ans', match: 85, avatar: 'https://i.pravatar.cc/150?u=lina', email: 'l.kaci@email.dz', phone: '+213 553 88 99 00' },
-                ].map((candidate, i) => (
-                  <div key={i} className={`bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group flex items-center gap-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <div className="relative">
-                      <img src={candidate.avatar} alt={candidate.name} className="w-24 h-24 rounded-3xl object-cover border-4 border-white shadow-md" referrerPolicy="no-referrer" />
-                      <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-[#F68D58] text-white rounded-full flex items-center justify-center font-black text-xs border-2 border-white">
-                        {candidate.match}%
-                      </div>
-                    </div>
-                    <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
-                      <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{candidate.name}</h4>
-                      <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mt-1">{candidate.role}</p>
-                      <div className={`flex items-center gap-3 mt-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <span className="text-[10px] bg-blue-50 text-[#173E7D] px-4 py-1.5 rounded-full font-black uppercase tracking-widest">{candidate.exp} exp.</span>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full font-black uppercase tracking-widest">Vérifié</span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setSelectedCandidateCV(candidate)}
-                      className="w-12 h-12 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center hover:bg-[#F68D58] transition-all shadow-lg shadow-blue-900/20"
-                    >
-                      <ChevronRight size={24} className={isRTL ? 'rotate-180' : ''} />
-                    </button>
+            <div className="space-y-16">
+              <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 ${isRTL ? 'text-right' : ''}`}>
+                <div>
+                  <h2 className="text-5xl font-display font-black text-[#173E7D] tracking-tighter">{t('candidates')}</h2>
+                  <p className="text-gray-500 mt-2 text-lg font-medium">Gérez vos talents par offre d'emploi avec une analyse prédictive par IA.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="bg-white px-6 py-3 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-black text-[#173E7D] uppercase tracking-widest">12 Nouveaux aujourd'hui</span>
                   </div>
+                </div>
+              </div>
+              
+              <div className="space-y-24">
+                {candidatesByJob.map((group, groupIdx) => (
+                  <motion.div 
+                    key={groupIdx} 
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: groupIdx * 0.15, duration: 0.8, ease: "easeOut" }}
+                    className="relative"
+                  >
+                    {/* Job Header Section */}
+                    <div className="flex flex-col items-center mb-12">
+                      <div className="relative z-10 bg-white px-10 py-6 rounded-[3rem] border border-gray-100 shadow-xl shadow-blue-900/5 flex flex-col items-center gap-2 group hover:scale-105 transition-transform duration-500">
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#173E7D] text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.3em]">
+                          Offre Active
+                        </div>
+                        <h3 className="text-2xl font-black text-[#173E7D] uppercase tracking-[0.15em] flex items-center gap-4">
+                          <div className="w-10 h-10 bg-orange-50 text-[#F68D58] rounded-xl flex items-center justify-center shadow-inner">
+                            <Briefcase size={20} />
+                          </div>
+                          {group.jobTitle}
+                          <div className="bg-blue-50 text-[#173E7D] w-10 h-10 rounded-full flex items-center justify-center text-sm border border-blue-100 font-black">
+                            {group.candidates.length}
+                          </div>
+                        </h3>
+                        <div className="flex items-center gap-3 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">
+                          <Clock size={14} className="text-[#F68D58]" />
+                          Publiée le <span className="text-[#173E7D]">{group.publishedAt}</span>
+                        </div>
+                      </div>
+                      <div className="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-100 to-transparent -z-0"></div>
+                    </div>
+
+                    {/* Candidates Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10">
+                      {group.candidates.map((candidate: any, i) => (
+                        <motion.div 
+                          key={i} 
+                          whileHover={{ y: -10, scale: 1.02 }}
+                          className={`bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden ${isRTL ? 'text-right' : ''}`}
+                        >
+                          {/* Decorative Background Element */}
+                          <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-3xl"></div>
+                          
+                          {/* Status & Match Header */}
+                          <div className="flex justify-between items-start mb-8 relative z-10">
+                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
+                              candidate.status === 'Nouveau' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                              candidate.status === 'En cours' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                              candidate.status === 'Refusé' ? 'bg-red-50 text-red-600 border-red-100' :
+                              'bg-gray-50 text-gray-600 border-gray-100'
+                            }`}>
+                              {candidate.status}
+                            </span>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest mb-1">Score IA</span>
+                              <span className="text-2xl font-black text-[#173E7D] tracking-tighter">{candidate.match}%</span>
+                            </div>
+                          </div>
+
+                          {/* Profile Info */}
+                          <div className="flex flex-col items-center text-center space-y-6 relative z-10">
+                            <div className="relative">
+                              <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-8 border-gray-50 shadow-2xl group-hover:rotate-3 transition-all duration-500">
+                                <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              </div>
+                              <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg border-4 border-white">
+                                <CheckCircle2 size={18} />
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight">{candidate.name}</h4>
+                              <p className="text-gray-400 font-bold uppercase tracking-[0.2em] text-[10px]">{candidate.role}</p>
+                            </div>
+
+                            {/* Stats Bento */}
+                            <div className="grid grid-cols-2 gap-3 w-full">
+                              <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
+                                <p className="text-sm font-black text-[#173E7D]">{candidate.exp}</p>
+                              </div>
+                              <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Localisation</p>
+                                <p className="text-sm font-black text-[#173E7D]">Alger</p>
+                              </div>
+                            </div>
+
+                            {/* Action Button */}
+                            <button 
+                              onClick={() => setSelectedCandidateCV(candidate)}
+                              className="w-full bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-[#F68D58] hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10 flex items-center justify-center gap-3 group/btn"
+                            >
+                              <span>Analyser le profil</span>
+                              <ChevronRight size={18} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -866,53 +1388,111 @@ export default function Dashboard({
               </div>
 
               {aiFilterStep === 'select' ? (
-                <div className="space-y-8">
-                  {/* Selection Card */}
-                  <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm flex flex-col md:flex-row items-end gap-8">
-                    <div className="flex-1 space-y-3 w-full">
-                      <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">Sélectionner l'offre à analyser</label>
-                      <div className="relative">
-                        <select 
-                          value={selectedJobForAI}
-                          onChange={(e) => setSelectedJobForAI(e.target.value)}
-                          className="w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold appearance-none"
+                <div className="space-y-12 pt-8">
+                  {/* Selection Card - Step by Step Flow */}
+                  <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-900/5 space-y-16 relative overflow-hidden">
+                    {/* Decorative Background */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 opacity-50 blur-3xl"></div>
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-50 rounded-full -ml-32 -mb-32 opacity-50 blur-3xl"></div>
+
+                    <div className="relative z-10 space-y-16">
+                      {/* Step 1: Select Job */}
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-[#173E7D] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-blue-900/20">1</div>
+                          <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Sélectionner l'offre à analyser</h3>
+                        </div>
+                        <div className="relative group max-w-2xl">
+                          <select 
+                            value={selectedJobForAI}
+                            onChange={(e) => setSelectedJobForAI(e.target.value)}
+                            className="w-full px-8 py-6 rounded-[2rem] border-2 border-gray-50 outline-none focus:border-[#173E7D] focus:ring-8 focus:ring-blue-50 transition-all bg-gray-50/50 text-gray-700 font-bold appearance-none cursor-pointer text-lg"
+                          >
+                            <option>Développeur Full Stack — 23 candidatures</option>
+                            <option>Designer UI/UX — 12 candidatures</option>
+                            <option>Chef de Projet — 45 candidatures</option>
+                          </select>
+                          <ChevronDown className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-[#173E7D] transition-colors" size={24} />
+                        </div>
+                      </div>
+
+                      {/* Step 2: AI Priorities */}
+                      <div className="space-y-8 pt-10 border-t border-gray-50">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-[#F68D58] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-orange-900/20">2</div>
+                          <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Définir les priorités de l'IA</h3>
+                        </div>
+                        <div className="space-y-6">
+                          <p className="text-sm text-gray-400 font-medium max-w-xl">Sélectionnez les éléments que Gemini doit valoriser lors de l'analyse comparative des CV pour cette offre spécifique.</p>
+                          
+                          <div className="flex flex-wrap gap-4">
+                            {availablePriorities.map((priority) => {
+                              const isSelected = aiPriorities.includes(priority);
+                              return (
+                                <button
+                                  key={priority}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setAiPriorities(aiPriorities.filter(p => p !== priority));
+                                    } else {
+                                      setAiPriorities([...aiPriorities, priority]);
+                                    }
+                                  }}
+                                  className={`px-8 py-4 rounded-2xl text-sm font-black transition-all border-2 ${
+                                    isSelected 
+                                      ? 'bg-[#173E7D] text-white border-[#173E7D] shadow-xl shadow-blue-900/20 scale-105' 
+                                      : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'
+                                  }`}
+                                >
+                                  {priority}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 3: Action Button */}
+                      <div className="pt-10 border-t border-gray-50 flex justify-center">
+                        <button 
+                          onClick={() => {
+                            setIsAnalyzing(true);
+                            setTimeout(() => {
+                              setIsAnalyzing(false);
+                              setAiFilterStep('results');
+                            }, 2000);
+                          }}
+                          disabled={isAnalyzing}
+                          className="group relative bg-[#0F172A] text-white px-16 py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-gray-900/30 flex items-center justify-center gap-6 disabled:opacity-50 min-w-[400px] overflow-hidden"
                         >
-                          <option>Développeur Full Stack — 23 candidatures</option>
-                          <option>Designer UI/UX — 12 candidatures</option>
-                          <option>Chef de Projet — 45 candidatures</option>
-                        </select>
-                        <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                          {isAnalyzing ? (
+                            <>
+                              <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                              <span className="relative z-10">Analyse Intelligente...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-2xl relative z-10">🚀</span>
+                              <span className="relative z-10">Lancer l'analyse prédictive</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        setIsAnalyzing(true);
-                        setTimeout(() => {
-                          setIsAnalyzing(false);
-                          setAiFilterStep('results');
-                        }, 2000);
-                      }}
-                      disabled={isAnalyzing}
-                      className="bg-[#0F172A] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-gray-900/10 flex items-center gap-3 disabled:opacity-50"
-                    >
-                      {isAnalyzing ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Analyse en cours...
-                        </>
-                      ) : (
-                        <>
-                          <span>🤖</span>
-                          Lancer le filtrage IA
-                        </>
-                      )}
-                    </button>
+                  </div>
+
+                  {/* Initial List Header */}
+                  <div className="flex items-center gap-4 px-4 pt-16">
+                    <div className="h-px flex-1 bg-gray-100"></div>
+                    <span className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Candidatures en attente</span>
+                    <div className="h-px flex-1 bg-gray-100"></div>
                   </div>
 
                   {/* Initial List */}
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {aiCandidates.map((candidate) => (
-                      <div key={candidate.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
+                      <div key={candidate.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
                         <div className="flex items-center gap-6">
                           <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
                             <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
@@ -945,9 +1525,9 @@ export default function Dashboard({
                   </div>
 
                   {/* Results List */}
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {aiCandidates.map((candidate) => (
-                      <div key={candidate.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
+                      <div key={candidate.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
                         <div 
                           className="p-8 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 transition-colors"
                           onClick={() => setExpandedCandidateId(expandedCandidateId === candidate.id ? null : candidate.id)}
@@ -1116,7 +1696,14 @@ export default function Dashboard({
                         </li>
                       ))}
                     </ul>
-                    <button className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
+                    <button 
+                      onClick={() => {
+                        setSelectedPlan(plan);
+                        setSettingsTab('billing');
+                        setBillingView('payment');
+                        setActiveTab('settings');
+                      }}
+                      className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
                       plan.popular ? 'bg-[#F68D58] text-white shadow-lg shadow-orange-500/20 hover:bg-[#e57d47]' : 'bg-gray-50 text-[#173E7D] hover:bg-gray-100'
                     }`}>
                       Choisir ce plan
@@ -1129,25 +1716,32 @@ export default function Dashboard({
         case 'post-job':
           return (
             <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-12 space-y-12">
-              <div className={isRTL ? 'text-right' : ''}>
-                <h2 className="text-3xl font-display font-bold text-[#173E7D]">{t('postJob')}</h2>
-                <p className="text-gray-500 mt-2">Remplissez les détails pour attirer les meilleurs talents.</p>
+              <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
+                  <PlusCircle size={32} />
+                </div>
+                <div className={isRTL ? 'text-right' : ''}>
+                  <h2 className="text-3xl font-display font-bold text-[#173E7D]">{t('postJob')}</h2>
+                  <p className="text-gray-500 mt-1">Remplissez les détails pour attirer les meilleurs candidats</p>
+                </div>
               </div>
-              <form onSubmit={handlePostJob} className="space-y-8">
+
+              <form onSubmit={handlePostJob} className="space-y-10">
+                <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                  <label className="text-sm font-bold text-gray-900">{t('position')} *</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="ex: Développeur Full Stack Senior" 
+                    value={newJobData.title}
+                    onChange={(e) => setNewJobData({...newJobData, title: e.target.value})}
+                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">{t('position')}</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="ex: Senior React Developer" 
-                      value={newJobData.title}
-                      onChange={(e) => setNewJobData({...newJobData, title: e.target.value})}
-                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
-                    />
-                  </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">{t('sector')}</label>
+                    <label className="text-sm font-bold text-gray-900">{t('sector')} *</label>
                     <select 
                       value={newJobData.sector}
                       onChange={(e) => setNewJobData({...newJobData, sector: e.target.value})}
@@ -1157,46 +1751,120 @@ export default function Dashboard({
                       <option>Santé</option>
                       <option>Finance</option>
                       <option>Éducation</option>
+                      <option>Construction</option>
+                      <option>Commerce</option>
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">{t('contractType')}</label>
+                    <label className="text-sm font-bold text-gray-900">Wilaya *</label>
+                    <select 
+                      value={newJobData.wilaya}
+                      onChange={(e) => setNewJobData({...newJobData, wilaya: e.target.value})}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                    >
+                      {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-bold text-gray-900">{t('contractType')} *</label>
                     <select 
                       value={newJobData.type}
                       onChange={(e) => setNewJobData({...newJobData, type: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      <option>CDI</option>
-                      <option>CDD</option>
+                      <option>Temps plein</option>
+                      <option>Temps partiel</option>
                       <option>Freelance</option>
                       <option>Stage</option>
+                      <option>CDI</option>
+                      <option>CDD</option>
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">Salaire (DA/mois)</label>
+                    <label className="text-sm font-bold text-gray-900">Niveau d'expérience *</label>
+                    <select 
+                      value={newJobData.experience}
+                      onChange={(e) => setNewJobData({...newJobData, experience: e.target.value})}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                    >
+                      <option>Débutant (0-2 ans)</option>
+                      <option>Confirmé (3-5 ans)</option>
+                      <option>Senior (5-10 ans)</option>
+                      <option>Expert (10+ ans)</option>
+                    </select>
+                  </div>
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-bold text-gray-900">Salaire minimum (DZD/mois)</label>
                     <input 
-                      type="text" 
-                      placeholder="ex: 120,000 - 180,000" 
-                      value={newJobData.salary}
-                      onChange={(e) => setNewJobData({...newJobData, salary: e.target.value})}
+                      type="number" 
+                      placeholder="ex: 80000" 
+                      value={newJobData.salaryMin}
+                      onChange={(e) => setNewJobData({...newJobData, salaryMin: e.target.value})}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
+                    />
+                  </div>
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-bold text-gray-900">Salaire maximum (DZD/mois)</label>
+                    <input 
+                      type="number" 
+                      placeholder="ex: 150000" 
+                      value={newJobData.salaryMax}
+                      onChange={(e) => setNewJobData({...newJobData, salaryMax: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
                     />
                   </div>
                 </div>
+
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                  <label className="text-sm font-bold text-gray-900">{t('description')}</label>
+                  <label className="text-sm font-bold text-gray-900">Description du poste *</label>
                   <textarea 
                     rows={6} 
                     required
-                    placeholder="Décrivez le poste, les responsabilités..." 
+                    placeholder="Décrivez les responsabilités, l'environnement de travail..." 
                     value={newJobData.description}
                     onChange={(e) => setNewJobData({...newJobData, description: e.target.value})}
                     className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 resize-none ${isRTL ? 'text-right' : ''}`} 
                   />
                 </div>
-                <div className="flex justify-end">
-                  <button type="submit" className="bg-[#F68D58] text-white px-12 py-4 rounded-2xl font-bold hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-500/20">
-                    Publier l'offre
+
+                <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                  <label className="text-sm font-bold text-gray-900">Exigences (une par ligne)</label>
+                  <textarea 
+                    rows={4} 
+                    placeholder="Maîtrise de React.js&#10;3+ ans d'expérience&#10;Français courant" 
+                    value={newJobData.requirements}
+                    onChange={(e) => setNewJobData({...newJobData, requirements: e.target.value})}
+                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 resize-none ${isRTL ? 'text-right' : ''}`} 
+                  />
+                </div>
+
+                <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                  <label className="text-sm font-bold text-gray-900">Avantages (une par ligne)</label>
+                  <textarea 
+                    rows={4} 
+                    placeholder="Assurance maladie&#10;Transport assuré&#10;Prime de performance" 
+                    value={newJobData.benefits}
+                    onChange={(e) => setNewJobData({...newJobData, benefits: e.target.value})}
+                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 resize-none ${isRTL ? 'text-right' : ''}`} 
+                  />
+                </div>
+
+                <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                  <label className="text-sm font-bold text-gray-900">Date limite de candidature</label>
+                  <input 
+                    type="date" 
+                    value={newJobData.deadline}
+                    onChange={(e) => setNewJobData({...newJobData, deadline: e.target.value})}
+                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
+                  />
+                </div>
+
+                <div className="pt-8 border-t border-gray-100 flex flex-col md:flex-row gap-4">
+                  <button type="submit" className="flex-1 bg-[#0F172A] text-white px-12 py-5 rounded-full font-bold hover:bg-[#1e293b] transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-3">
+                    🚀 Publier l'offre
+                  </button>
+                  <button type="button" className="flex-1 bg-white text-gray-900 border border-gray-200 px-12 py-5 rounded-full font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-3">
+                    Sauvegarder brouillon
                   </button>
                 </div>
               </form>
@@ -1213,7 +1881,7 @@ export default function Dashboard({
               <div className="flex flex-col md:flex-row gap-12">
                 <div className="flex flex-col items-center gap-4">
                   <div className="w-40 h-40 rounded-[2.5rem] overflow-hidden border-4 border-gray-50 shadow-lg group relative">
-                    <img src={user?.photoURL || 'https://picsum.photos/seed/company/200/200'} alt="Logo" className="w-full h-full object-cover" />
+                    <img src={user?.photoURL || 'https://picsum.photos/seed/company/200/200'} alt="Logo de l'entreprise" className="w-full h-full object-cover" />
                     <button className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                       <Camera size={24} />
                     </button>
@@ -1263,48 +1931,925 @@ export default function Dashboard({
           );
         case 'settings':
           return (
-            <div className="space-y-8">
-              <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{t('settings')}</h2>
-              <div className="bg-white rounded-[2rem] border border-gray-100 p-8 space-y-8">
-                <div className="space-y-6">
-                  <h3 className={`text-lg font-bold text-[#173E7D] border-b border-gray-100 pb-4 ${isRTL ? 'text-right' : ''}`}>{t('language')}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button 
-                      onClick={() => setLanguage('fr')}
-                      className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                        language === 'fr' 
-                          ? 'border-[#F68D58] bg-orange-50/50' 
-                          : 'border-gray-100 hover:border-gray-200'
-                      } ${isRTL ? 'flex-row-reverse' : ''}`}
-                    >
-                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-lg">🇫🇷</div>
-                        <div className={isRTL ? 'text-right' : 'text-left'}>
-                          <div className="font-bold text-[#173E7D]">{t('french')}</div>
-                          <div className="text-xs text-gray-400">Français</div>
-                        </div>
-                      </div>
-                      {language === 'fr' && <div className="w-3 h-3 bg-[#F68D58] rounded-full" />}
-                    </button>
+            <div className="space-y-8 pb-12">
+              <div className={isRTL ? 'text-right' : ''}>
+                <h2 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">{t('settings')}</h2>
+                <p className="text-gray-500 mt-2">
+                  {language === 'ar' 
+                    ? 'إدارة تفضيلاتك وأمان حساب التوظيف الخاص بك.' 
+                    : 'Gérez vos préférences et la sécurité de votre compte recruteur.'}
+                </p>
+              </div>
 
-                    <button 
-                      onClick={() => setLanguage('ar')}
-                      className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                        language === 'ar' 
-                          ? 'border-[#F68D58] bg-orange-50/50' 
-                          : 'border-gray-100 hover:border-gray-200'
-                      } ${isRTL ? 'flex-row-reverse' : ''}`}
-                    >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column - Navigation/Categories */}
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="bg-white rounded-3xl border border-gray-100 p-4 shadow-sm sticky top-8">
+                    <nav className="space-y-1">
+                      {[
+                        { id: 'general', icon: Globe, label: t('language') },
+                        { id: 'security', icon: Lock, label: t('settings_new.accountSecurity') },
+                        { id: 'notifications', icon: Bell, label: t('settings_new.notificationsPrefs') },
+                        { id: 'privacy', icon: Shield, label: t('settings_new.privacy') },
+                        { id: 'team', icon: UsersIcon, label: t('settings_new.team') },
+                        { id: 'billing', icon: CreditCard, label: t('subscription') },
+                        { id: 'history', icon: History, label: language === 'ar' ? 'سجل النشاط' : 'Historique' },
+                        { id: 'help', icon: HelpCircle, label: t('settings_new.helpSupport') }
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => setSettingsTab(item.id)}
+                          className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all font-bold text-sm ${
+                            isRTL ? 'flex-row-reverse text-right' : 'text-left'
+                          } ${
+                            settingsTab === item.id 
+                              ? 'bg-[#173E7D] text-white shadow-lg shadow-blue-200/50' 
+                              : 'hover:bg-gray-50 text-gray-500 hover:text-[#173E7D]'
+                          }`}
+                        >
+                          <item.icon size={20} />
+                          {item.label}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+                </div>
+
+                {/* Right Column - Content */}
+                <div className="lg:col-span-2 space-y-8">
+                  {settingsTab === 'general' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-lg">🇩🇿</div>
-                        <div className={isRTL ? 'text-right' : 'text-left'}>
-                          <div className="font-bold text-[#173E7D]">{t('arabic')}</div>
-                          <div className="text-xs text-gray-400">العربية</div>
+                        <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                          <Globe size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button 
+                          onClick={() => setLanguage('en')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'en' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
+                              <div className="text-xs text-gray-400">English</div>
+                            </div>
+                          </div>
+                          {language === 'en' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={() => setLanguage('fr')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'fr' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇫🇷</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('french')}</div>
+                              <div className="text-xs text-gray-400">Français</div>
+                            </div>
+                          </div>
+                          {language === 'fr' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={() => setLanguage('ar')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'ar' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇩🇿</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('arabic')}</div>
+                              <div className="text-xs text-gray-400">العربية</div>
+                            </div>
+                          </div>
+                          {language === 'ar' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'team' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                            <UsersIcon size={24} />
+                          </div>
+                          <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.team')}</h3>
+                        </div>
+                        {!isInvitingMember && (
+                          <button 
+                            onClick={() => setIsInvitingMember(true)}
+                            className="px-6 py-3 bg-[#173E7D] text-white rounded-xl font-bold text-sm hover:bg-blue-800 transition-all flex items-center gap-2"
+                          >
+                            <Plus size={18} />
+                            {t('settings_new.inviteMember')}
+                          </button>
+                        )}
+                      </div>
+
+                      {isInvitingMember && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 space-y-4"
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-[#173E7D] shadow-sm">
+                              <Mail size={20} />
+                            </div>
+                            <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
+                              <h4 className="font-bold text-[#173E7D]">{language === 'ar' ? 'دعوة عضو جديد' : 'Inviter un nouveau membre'}</h4>
+                              <p className="text-xs text-gray-500">{language === 'ar' ? 'أدخل البريد الإلكتروني للشخص الذي تريد دعوته.' : 'Entrez l\'adresse e-mail de la personne que vous souhaitez inviter.'}</p>
+                            </div>
+                          </div>
+                          <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <input 
+                              type="email" 
+                              value={inviteEmail}
+                              onChange={(e) => setInviteEmail(e.target.value)}
+                              placeholder="email@exemple.com"
+                              className={`flex-1 px-6 py-3 rounded-xl border border-blue-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}
+                            />
+                            <button 
+                              onClick={handleSendInvite}
+                              disabled={isSendingInvite || !inviteEmail}
+                              className="px-8 py-3 bg-[#173E7D] text-white rounded-xl font-bold text-sm hover:bg-blue-800 transition-all disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isSendingInvite ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <Send size={18} />
+                              )}
+                              {language === 'ar' ? 'إرسال' : 'Envoyer'}
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setIsInvitingMember(false);
+                                setInviteEmail('');
+                              }}
+                              className="px-6 py-3 bg-white text-gray-500 border border-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all"
+                            >
+                              {language === 'ar' ? 'إلغاء' : 'Annuler'}
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Pending Access Requests (Notifications) */}
+                      {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).length > 0 && (
+                        <div className="space-y-4">
+                          <h4 className={`text-sm font-black text-[#F68D58] uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>
+                            {language === 'ar' ? 'طلبات الوصول المعلقة' : 'Demandes d\'accès en attente'}
+                          </h4>
+                          {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).map((notif, i) => (
+                            <div key={i} className={`flex items-center justify-between p-6 bg-orange-50 border border-orange-100 rounded-3xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#F68D58] shadow-sm">
+                                  <UserPlus size={24} />
+                                </div>
+                                <div className={isRTL ? 'text-right' : ''}>
+                                  <div className="font-bold text-[#173E7D]">{notif.title}</div>
+                                  <div className="text-sm text-gray-600">{notif.message}</div>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => handleGrantAccess(notif)}
+                                className="px-6 py-3 bg-[#F68D58] text-white rounded-xl font-bold text-sm hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-200/50"
+                              >
+                                {language === 'ar' ? 'منح الوصول' : 'Donner accès'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        <h4 className={`text-sm font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>
+                          {language === 'ar' ? 'أعضاء الفريق' : 'Membres de l\'équipe'}
+                        </h4>
+                        {teamMembers.map((member, i) => (
+                          <div key={i} className={`flex items-center justify-between p-4 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-[#173E7D] shadow-sm">
+                                {member.name.charAt(0)}
+                              </div>
+                              <div className={isRTL ? 'text-right' : ''}>
+                                <div className="font-bold text-[#173E7D]">{member.name}</div>
+                                <div className="text-xs text-gray-400">{member.email}</div>
+                              </div>
+                            </div>
+                            <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <span className="text-xs font-bold text-gray-500 bg-gray-200 px-3 py-1 rounded-full">{member.role}</span>
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${member.status === (language === 'ar' ? 'نشط' : 'Actif') ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+                                {member.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'help' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      {!helpAction ? (
+                        <>
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                              <HelpCircle size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.helpSupport')}</h3>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {[
+                              { id: 'help-center', title: t('settings_new.helpCenter'), desc: language === 'ar' ? 'أدلة ودروس كاملة' : 'Guides et tutoriels complets', icon: BookOpen },
+                              { id: 'direct-support', title: t('settings_new.directSupport'), desc: language === 'ar' ? 'اتصل بفريقنا 24/7' : 'Contactez notre équipe 24/7', icon: MessageSquare },
+                            ].map((item, i) => (
+                              <button 
+                                key={i} 
+                                onClick={() => setHelpAction(item.id)}
+                                className={`p-6 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-all flex items-start gap-4 ${isRTL ? 'flex-row-reverse text-right' : 'text-left'}`}
+                              >
+                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-[#173E7D] shadow-sm shrink-0">
+                                  <item.icon size={20} />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-[#173E7D]">{item.title}</div>
+                                  <div className="text-xs text-gray-400 mt-1">{item.desc}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : helpAction === 'help-center' ? (
+                        <div className="space-y-8">
+                          <button onClick={() => setHelpAction(null)} className={`flex items-center gap-2 text-[#173E7D] font-bold hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <ChevronLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                            {language === 'ar' ? 'العودة' : 'Retour'}
+                          </button>
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                              <BookOpen size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.helpCenter')}</h3>
+                          </div>
+                          <article className={`prose prose-blue max-w-none ${isRTL ? 'text-right' : ''}`}>
+                            <h4 className="text-2xl font-bold text-[#173E7D]">Comment utiliser la plateforme Dar L'emploi</h4>
+                            <div className="mt-6 space-y-6 text-gray-600">
+                              <p>
+                                Bienvenue sur Dar L'emploi, la plateforme leader pour le recrutement en Algérie. 
+                                Voici un guide rapide pour commencer :
+                              </p>
+                              <ul className="space-y-4 list-disc list-inside">
+                                <li><strong>Publiez vos offres :</strong> Utilisez notre éditeur intuitif pour créer des offres d'emploi attrayantes.</li>
+                                <li><strong>Gérez les candidatures :</strong> Suivez l'état de chaque candidat en temps réel dans votre tableau de bord.</li>
+                                <li><strong>Utilisez l'IA :</strong> Notre algorithme de filtrage intelligent vous aide à identifier les meilleurs profils en quelques secondes.</li>
+                                <li><strong>Collaborez en équipe :</strong> Invitez vos collègues et gérez les accès pour un processus de recrutement fluide.</li>
+                              </ul>
+                            </div>
+                          </article>
+                        </div>
+                      ) : (
+                        <div className="space-y-8">
+                          <button onClick={() => setHelpAction(null)} className={`flex items-center gap-2 text-[#173E7D] font-bold hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <ChevronLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                            {language === 'ar' ? 'العودة' : 'Retour'}
+                          </button>
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                              <MessageSquare size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.directSupport')}</h3>
+                          </div>
+                          
+                          <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Adresse Email</label>
+                                <input 
+                                  type="email" 
+                                  value={contactEmail}
+                                  onChange={(e) => setContactEmail(e.target.value)}
+                                  placeholder="votre@email.com"
+                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                />
+                              </div>
+                              <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Sujet</label>
+                                <input 
+                                  type="text" 
+                                  value={contactSubject}
+                                  onChange={(e) => setContactSubject(e.target.value)}
+                                  placeholder="Comment pouvons-nous vous aider ?"
+                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                />
+                              </div>
+                            </div>
+                            <button className="w-full py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20">
+                              Envoyer le message
+                            </button>
+
+                            <div className={`p-8 bg-blue-50 rounded-[2rem] text-[#173E7D] font-bold text-center ${isRTL ? 'text-right' : ''}`}>
+                              <p className="text-2xl">Contactez nous sur le : <span className="text-[#F68D58]">+213 542 98 23 46</span></p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {settingsTab === 'billing' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      {showBillingSuccess && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-6 bg-emerald-50 border border-emerald-100 rounded-3xl flex items-center gap-4 text-emerald-700 font-bold"
+                        >
+                          <CheckCircle2 className="shrink-0" />
+                          <p>{billingSuccessMessage}</p>
+                          <button onClick={() => setShowBillingSuccess(false)} className="ml-auto text-emerald-400 hover:text-emerald-600">
+                            <X size={20} />
+                          </button>
+                        </motion.div>
+                      )}
+                      {billingView === 'current' ? (
+                        <>
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
+                              <CreditCard size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-[#173E7D]">{t('subscription')}</h3>
+                          </div>
+
+                          <div className="p-8 bg-gray-50 rounded-3xl border border-gray-100">
+                            <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div>
+                                <div className="text-sm text-gray-400 mb-1">{language === 'ar' ? 'الخطة الحالية' : 'Plan actuel'}</div>
+                                <div className="text-2xl font-black text-[#173E7D]">Plan Pro</div>
+                              </div>
+                              <div className="px-4 py-2 bg-emerald-100 text-emerald-600 rounded-xl text-xs font-black uppercase tracking-widest">
+                                {language === 'ar' ? 'نشط' : 'Actif'}
+                              </div>
+                            </div>
+                            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-[#F68D58] w-2/3"></div>
+                            </div>
+                            <div className={`flex justify-between mt-4 text-xs font-bold text-gray-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <span>{language === 'ar' ? '20 يوم متبقية' : '20 jours restants'}</span>
+                              <span>{language === 'ar' ? 'تجديد في 15 أفريل' : 'Renouvellement le 15 Avril'}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'طرق الدفع' : 'Modes de paiement'}</h4>
+                            <div className={`p-6 border border-gray-100 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <div className="w-12 h-8 bg-gray-100 rounded flex items-center justify-center font-bold text-gray-400 text-[10px]">VISA</div>
+                                <div className={isRTL ? 'text-right' : ''}>
+                                  <div className="font-bold text-[#173E7D]">•••• •••• •••• 4242</div>
+                                  <div className="text-xs text-gray-400">Expire 12/25</div>
+                                </div>
+                              </div>
+                              <button className="text-[#F68D58] font-bold text-sm hover:underline">
+                                {language === 'ar' ? 'تعديل' : 'Modifier'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="pt-6 border-t border-gray-50">
+                            <button 
+                              onClick={() => setBillingView('plans')}
+                              className="w-full py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-800 transition-all shadow-lg shadow-blue-900/10"
+                            >
+                              {language === 'ar' ? 'ترقية الخطة' : 'Mettre à niveau le plan'}
+                            </button>
+                          </div>
+                        </>
+                      ) : billingView === 'plans' ? (
+                        <div className="space-y-8">
+                          <button onClick={() => setBillingView('current')} className={`flex items-center gap-2 text-[#173E7D] font-bold hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <ChevronLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                            {language === 'ar' ? 'العودة' : 'Retour'}
+                          </button>
+                          
+                          <div className={isRTL ? 'text-right' : ''}>
+                            <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'اختر خطتك' : 'Choisissez votre plan'}</h3>
+                            <p className="text-gray-400">{language === 'ar' ? 'اختر الباقة التي تناسب احتياجات توظيفك.' : 'Sélectionnez le forfait qui correspond à vos besoins de recrutement.'}</p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {[
+                              { id: 'Gratuit', name: 'Gratuit', price: '0', features: ['3 annonces / mois', 'Filtrage basique', 'Support email'] },
+                              { id: 'Pro', name: 'Pro', price: '4900', features: ['15 annonces / mois', 'IA Matching Avancé', 'Support prioritaire'], popular: true },
+                              { id: 'Entreprise', name: 'Entreprise', price: '12900', features: ['Annonces illimitées', 'Accès API complet', 'Gestionnaire dédié'] }
+                            ].map((plan) => (
+                              <div key={plan.id} className={`relative p-8 rounded-[2rem] border-2 transition-all flex flex-col ${plan.popular ? 'border-[#F68D58] bg-orange-50/20 shadow-xl shadow-orange-200/20' : 'border-gray-100 hover:border-gray-200 bg-white'}`}>
+                                {plan.popular && (
+                                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-[#F68D58] text-white text-[10px] font-black uppercase tracking-widest rounded-full">
+                                    Populaire
+                                  </div>
+                                )}
+                                <div className="mb-6">
+                                  <h4 className="text-xl font-bold text-[#173E7D] mb-2">{plan.name}</h4>
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-black text-[#173E7D]">{plan.price}</span>
+                                    <span className="text-sm text-gray-400 font-bold">DA/mois</span>
+                                  </div>
+                                </div>
+                                <ul className="space-y-3 mb-8 flex-1">
+                                  {plan.features.map((f, i) => (
+                                    <li key={i} className={`flex items-center gap-2 text-sm text-gray-600 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                      <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                                      <span>{f}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <button 
+                                  onClick={() => {
+                                    if (plan.id === 'Gratuit') {
+                                      setBillingSuccessMessage(language === 'ar' ? 'تم تفعيل الخطة المجانية بنجاح!' : 'Plan Gratuit activé avec succès !');
+                                      setShowBillingSuccess(true);
+                                      setBillingView('current');
+                                    } else {
+                                      setSelectedPlan(plan);
+                                      setBillingView('payment');
+                                    }
+                                  }}
+                                  className={`w-full py-4 rounded-xl font-bold text-sm transition-all ${plan.popular ? 'bg-[#F68D58] text-white hover:bg-[#e57d47]' : 'bg-[#173E7D] text-white hover:bg-blue-800'}`}
+                                >
+                                  {plan.id === 'Gratuit' ? (language === 'ar' ? 'تفعيل' : 'Activer') : (language === 'ar' ? 'اختيار' : 'Choisir')}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-8">
+                          <button onClick={() => setBillingView('plans')} className={`flex items-center gap-2 text-[#173E7D] font-bold hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <ChevronLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                            {language === 'ar' ? 'العودة' : 'Retour'}
+                          </button>
+
+                          <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'الدفع الآمن' : 'Paiement Sécurisé'}</h3>
+                              <p className="text-gray-400">{language === 'ar' ? 'أكمل اشتراكك في باقة' : 'Complétez votre abonnement au plan'} <span className="text-[#173E7D] font-bold">{selectedPlan?.name}</span></p>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-gray-400 uppercase font-black tracking-widest">{language === 'ar' ? 'إجمالي الدفع' : 'Total à payer'}</div>
+                              <div className="text-3xl font-black text-[#F68D58]">{selectedPlan?.price} DA</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                            {/* Payment Methods */}
+                            <div className="space-y-6">
+                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'اختر وسيلة الدفع' : 'Choisir une méthode de paiement'}</h4>
+                              <div className="grid grid-cols-1 gap-4">
+                                {[
+                                  { id: 'EDAHABIA', name: 'EDAHABIA', icon: '💳' },
+                                  { id: 'Baridimob', name: 'Baridimob', icon: '📱' },
+                                  { id: 'CCP', name: 'CCP', icon: '🏦' }
+                                ].map((method) => (
+                                  <button 
+                                    key={method.id}
+                                    onClick={() => setPaymentMethod(method.id as any)}
+                                    className={`p-6 rounded-2xl border-2 transition-all flex items-center justify-between ${paymentMethod === method.id ? 'border-[#F68D58] bg-orange-50/50' : 'border-gray-100 hover:border-gray-200 bg-white'} ${isRTL ? 'flex-row-reverse' : ''}`}
+                                  >
+                                    <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                      <div className="text-2xl">{method.icon}</div>
+                                      <span className="font-bold text-[#173E7D]">{method.name}</span>
+                                    </div>
+                                    {paymentMethod === method.id && (
+                                      <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                                        <CheckCircle2 size={14} />
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex items-center justify-center gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Propulsé par</span>
+                                <span className="font-black text-[#173E7D] italic">Chargily Pay</span>
+                              </div>
+                            </div>
+
+                            {/* Card Details */}
+                            <div className="bg-gray-50 rounded-[2rem] p-8 border border-gray-100 space-y-6">
+                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'معلومات البطاقة' : 'Informations de la carte'}</h4>
+                              
+                              <div className="space-y-4">
+                                <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'رقم البطاقة' : 'Numéro de carte'}</label>
+                                  <div className="relative">
+                                    <input 
+                                      type="text" 
+                                      placeholder="0000 0000 0000 0000"
+                                      value={cardInfo.number}
+                                      onChange={(e) => setCardInfo({...cardInfo, number: e.target.value})}
+                                      className={`w-full px-6 py-4 rounded-xl border border-gray-200 outline-none focus:border-[#F68D58] transition-all bg-white text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}
+                                    />
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300">
+                                      <CreditCard size={20} />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'تاريخ الانتهاء' : "Date d'expiration"}</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="MM/YY"
+                                      value={cardInfo.expiry}
+                                      onChange={(e) => setCardInfo({...cardInfo, expiry: e.target.value})}
+                                      className={`w-full px-6 py-4 rounded-xl border border-gray-200 outline-none focus:border-[#F68D58] transition-all bg-white text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}
+                                    />
+                                  </div>
+                                  <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">CVC</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="123"
+                                      value={cardInfo.cvc}
+                                      onChange={(e) => setCardInfo({...cardInfo, cvc: e.target.value})}
+                                      className={`w-full px-6 py-4 rounded-xl border border-gray-200 outline-none focus:border-[#F68D58] transition-all bg-white text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'الاسم على البطاقة' : 'Nom sur la carte'}</label>
+                                  <input 
+                                    type="text" 
+                                    placeholder="NOM PRENOM"
+                                    value={cardInfo.name}
+                                    onChange={(e) => setCardInfo({...cardInfo, name: e.target.value})}
+                                    className={`w-full px-6 py-4 rounded-xl border border-gray-200 outline-none focus:border-[#F68D58] transition-all bg-white text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}
+                                  />
+                                </div>
+                              </div>
+
+                              <button 
+                                onClick={() => {
+                                  setBillingSuccessMessage(language === 'ar' ? 'تم الدفع بنجاح عبر Chargily Pay!' : 'Paiement effectué avec succès via Chargily Pay !');
+                                  setShowBillingSuccess(true);
+                                  setBillingView('current');
+                                }}
+                                disabled={!paymentMethod || !cardInfo.number}
+                                className="w-full py-5 bg-[#F68D58] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#e57d47] transition-all shadow-xl shadow-orange-900/20 disabled:opacity-50"
+                              >
+                                {language === 'ar' ? 'تأكيد الدفع' : 'Confirmer le paiement'}
+                              </button>
+                              
+                              <div className="flex items-center justify-center gap-2 text-gray-400">
+                                <Lock size={12} />
+                                <span className="text-[10px] font-bold uppercase tracking-widest">{language === 'ar' ? 'دفع مشفر SSL 256 بت' : 'Paiement crypté SSL 256-bit'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {settingsTab === 'security' && (
+                    <div className="space-y-8">
+                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                        <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                            <Lock size={24} />
+                          </div>
+                          <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.accountSecurity')}</h3>
+                        </div>
+                        
+                        <div className="space-y-6">
+                          {/* Changer le mot de passe */}
+                          <div className="p-6 bg-gray-50 rounded-2xl space-y-4">
+                            <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={isRTL ? 'text-right' : ''}>
+                                <div className="font-bold text-[#173E7D]">{t('settings_new.changePassword')}</div>
+                                <div className="text-xs text-gray-400">
+                                  {language === 'ar' ? 'آخر تغيير قبل 3 أشهر' : 'Dernière modification il y a 3 mois'}
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => setIsChangingPassword(!isChangingPassword)}
+                                className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-bold text-[#173E7D] hover:bg-gray-100 transition-all"
+                              >
+                                {isChangingPassword ? (language === 'ar' ? 'إلغاء' : 'Annuler') : (language === 'ar' ? 'تغيير' : 'Modifier')}
+                              </button>
+                            </div>
+
+                            {isChangingPassword && (
+                              <div className="pt-4 border-t border-gray-200 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <label className={`block text-xs font-bold text-gray-500 ${isRTL ? 'text-right' : ''}`}>
+                                      {language === 'ar' ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+                                    </label>
+                                    <input 
+                                      type="password"
+                                      value={newPassword}
+                                      onChange={(e) => setNewPassword(e.target.value)}
+                                      className={`w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none text-sm ${isRTL ? 'text-right' : ''}`}
+                                      placeholder="••••••••"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className={`block text-xs font-bold text-gray-500 ${isRTL ? 'text-right' : ''}`}>
+                                      {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirmation du mot de passe'}
+                                    </label>
+                                    <input 
+                                      type="password"
+                                      value={confirmPassword}
+                                      onChange={(e) => setConfirmPassword(e.target.value)}
+                                      className={`w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none text-sm ${isRTL ? 'text-right' : ''}`}
+                                      placeholder="••••••••"
+                                    />
+                                  </div>
+                                </div>
+                                <div className={`flex ${isRTL ? 'justify-start' : 'justify-end'}`}>
+                                  <button 
+                                    onClick={() => {
+                                      if (!newPassword || !confirmPassword) {
+                                        alert(language === 'ar' ? 'يرجى ملء جميع الحقول.' : 'Veuillez remplir tous les champs.');
+                                        return;
+                                      }
+                                      if (newPassword !== confirmPassword) {
+                                        alert(language === 'ar' ? 'كلمات المرور غير متطابقة.' : 'Les mots de passe ne correspondent pas.');
+                                        return;
+                                      }
+                                      alert(language === 'ar' ? 'تم تحديث كلمة المرور بنجاح!' : 'Mot de passe mis à jour avec succès !');
+                                      setIsChangingPassword(false);
+                                      setNewPassword('');
+                                      setConfirmPassword('');
+                                    }}
+                                    className="px-6 py-2 bg-[#173E7D] text-white rounded-xl text-sm font-bold hover:bg-blue-800 transition-all"
+                                  >
+                                    {language === 'ar' ? 'حفظ' : 'Enregistrer'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Authentification à deux facteurs */}
+                          <div className={`p-6 bg-gray-50 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <div className="font-bold text-[#173E7D]">{t('settings_new.twoFactor')}</div>
+                              <div className="text-xs text-gray-400">
+                                {language === 'ar' ? 'أضف طبقة أمان إضافية' : 'Ajoutez une couche de sécurité supplémentaire'}
+                              </div>
+                            </div>
+                            <div className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer">
+                              <div className={`absolute ${isRTL ? 'right-1' : 'left-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                            </div>
+                          </div>
+
+                          {/* Email de récupération */}
+                          <div className={`p-6 bg-gray-50 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-gray-400 shadow-sm">
+                                <Shield size={20} />
+                              </div>
+                              <div className={isRTL ? 'text-right' : 'text-left'}>
+                                <div className="font-bold text-[#173E7D]">Email de récupération</div>
+                                <div className="text-xs text-gray-400">walid***@gmail.com</div>
+                              </div>
+                            </div>
+                            <button className="text-sm font-bold text-[#173E7D] hover:underline">Modifier</button>
+                          </div>
                         </div>
                       </div>
-                      {language === 'ar' && <div className="w-3 h-3 bg-[#F68D58] rounded-full" />}
-                    </button>
-                  </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'notifications' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
+                          <Bell size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.notificationsPrefs')}</h3>
+                      </div>
+
+                      <div className="space-y-8">
+                        <div className="space-y-4">
+                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Canaux de réception</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {[
+                              { label: "Email", icon: Mail, active: true },
+                              { label: "Push", icon: Bell, active: true }
+                            ].map((channel, i) => (
+                              <button key={i} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${channel.active ? 'border-[#173E7D] bg-blue-50/30' : 'border-gray-100 hover:border-gray-200'} ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <channel.icon size={18} className={channel.active ? 'text-[#173E7D]' : 'text-gray-400'} />
+                                <span className={`font-bold text-sm ${channel.active ? 'text-[#173E7D]' : 'text-gray-400'}`}>{channel.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-6">
+                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Types d'alertes</h4>
+                          {[
+                            { label: "Nouvelles candidatures", desc: "Recevoir une alerte dès qu'un candidat postule", active: true }
+                          ].map((pref, idx) => (
+                            <div key={idx} className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={isRTL ? 'text-right' : ''}>
+                                <div className="font-bold text-[#173E7D]">{pref.label}</div>
+                                <div className="text-xs text-gray-400">{pref.desc}</div>
+                              </div>
+                              <div className={`w-12 h-6 ${pref.active ? 'bg-emerald-500' : 'bg-gray-200'} rounded-full relative cursor-pointer transition-colors`}>
+                                <div className={`absolute ${pref.active ? (isRTL ? 'left-1' : 'right-1') : (isRTL ? 'right-1' : 'left-1')} top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all`} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'privacy' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                          <Shield size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.privacy')}</h3>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={isRTL ? 'text-right' : ''}>
+                            <div className="font-bold text-[#173E7D]">Visibilité de l'entreprise</div>
+                            <div className="text-xs text-gray-400">Permettre aux candidats de voir votre profil entreprise</div>
+                          </div>
+                          <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
+                            <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                          </div>
+                        </div>
+
+                        <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={isRTL ? 'text-right' : ''}>
+                            <div className="font-bold text-[#173E7D]">Partage de données anonymes</div>
+                            <div className="text-xs text-gray-400">Aidez-nous à améliorer nos services avec des stats anonymes</div>
+                          </div>
+                          <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
+                            <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'history' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-gray-50 text-gray-500 rounded-2xl flex items-center justify-center">
+                          <History size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">Historique d'activité</h3>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {[
+                          { action: "Nouvelle offre publiée", date: "Aujourd'hui, 14:30", device: "Chrome on macOS" },
+                          { action: "Candidat filtré par IA", date: "Hier, 10:15", device: "Desktop App" },
+                          { action: "Mise à jour du profil entreprise", date: "15 Mars, 16:45", device: "Safari on iPhone" }
+                        ].map((item, idx) => (
+                          <div key={idx} className={`p-4 border-b border-gray-50 flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <div className="font-bold text-[#173E7D]">{item.action}</div>
+                              <div className="text-xs text-gray-400">{item.device}</div>
+                            </div>
+                            <div className="text-xs font-medium text-gray-400">{item.date}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+
+                  {settingsTab === 'notifications' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
+                          <Bell size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.notificationsPrefs')}</h3>
+                      </div>
+
+                      <div className="space-y-6">
+                        {[
+                          { label: "Nouvelles candidatures", desc: "Recevoir un email pour chaque nouveau candidat", active: true },
+                          { label: "Alertes de sécurité", desc: "Notifications sur les connexions suspectes", active: true }
+                        ].map((pref, idx) => (
+                          <div key={idx} className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <div className="font-bold text-[#173E7D]">{pref.label}</div>
+                              <div className="text-xs text-gray-400">{pref.desc}</div>
+                            </div>
+                            <div className={`w-12 h-6 ${pref.active ? 'bg-emerald-500' : 'bg-gray-200'} rounded-full relative cursor-pointer transition-colors`}>
+                              <div className={`absolute ${pref.active ? (isRTL ? 'left-1' : 'right-1') : (isRTL ? 'right-1' : 'left-1')} top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all`} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'privacy' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                          <Shield size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.privacy')}</h3>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={isRTL ? 'text-right' : ''}>
+                            <div className="font-bold text-[#173E7D]">Visibilité de l'entreprise</div>
+                            <div className="text-xs text-gray-400">Permettre aux candidats de voir votre profil entreprise</div>
+                          </div>
+                          <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
+                            <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                          </div>
+                        </div>
+
+                        <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={isRTL ? 'text-right' : ''}>
+                            <div className="font-bold text-[#173E7D]">Partage de données analytiques</div>
+                            <div className="text-xs text-gray-400">Aidez-nous à améliorer Dar L'emploi avec des données anonymes</div>
+                          </div>
+                          <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
+                            <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'history' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-gray-50 text-gray-500 rounded-2xl flex items-center justify-center">
+                          <History size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{language === 'ar' ? 'سجل النشاط' : 'Historique d\'activité'}</h3>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {[
+                          { action: "Connexion réussie", date: "Aujourd'hui, 14:30", device: "Chrome on Windows" },
+                          { action: "Offre publiée", date: "Hier, 10:15", device: "Web Dashboard" },
+                          { action: "Mise à jour du profil", date: "15 Mars, 16:45", device: "Safari on Mac" },
+                          { action: "Changement de mot de passe", date: "10 Mars, 09:00", device: "Web Dashboard" }
+                        ].map((item, idx) => (
+                          <div key={idx} className={`p-4 border-b border-gray-50 flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <div className="font-bold text-[#173E7D]">{item.action}</div>
+                              <div className="text-xs text-gray-400">{item.device}</div>
+                            </div>
+                            <div className="text-xs font-medium text-gray-400">{item.date}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1659,7 +3204,24 @@ export default function Dashboard({
               </div>
             </div>
 
-            <div className={`flex ${isRTL ? 'justify-start' : 'justify-end'}`}>
+            <div className={`flex ${isRTL ? 'justify-start' : 'justify-end'} gap-4`}>
+              <div className="relative">
+                <input 
+                  type="file" 
+                  id="cv-upload" 
+                  className="hidden" 
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                />
+                <label 
+                  htmlFor="cv-upload"
+                  className={`px-8 py-4 bg-gray-100 text-[#173E7D] rounded-full font-bold hover:bg-gray-200 transition-all cursor-pointer flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Download size={20} />
+                  {isUploading ? (language === 'ar' ? 'جاري الرفع...' : 'Téléchargement...') : (language === 'ar' ? 'رفع CV' : 'Uploader CV')}
+                </label>
+              </div>
               <button 
                 onClick={handleSaveProfile}
                 className="px-12 py-4 bg-[#0A1118] text-white rounded-full font-bold hover:bg-[#173E7D] transition-all shadow-xl"
@@ -2221,114 +3783,672 @@ export default function Dashboard({
       case 'notifications':
         return (
           <div className="space-y-8">
-            <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
-              {language === 'ar' ? 'الإشعارات' : 'Notifications'}
-            </h2>
+            <div className={`flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                {language === 'ar' ? 'الإشعارات' : 'Notifications'}
+              </h2>
+              {notifications.length > 0 && (
+                <button 
+                  onClick={async () => {
+                    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.uid);
+                    setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+                  }}
+                  className="text-sm font-bold text-[#F68D58] hover:underline"
+                >
+                  {language === 'ar' ? 'تحديد الكل كمقروء' : 'Tout marquer comme lu'}
+                </button>
+              )}
+            </div>
             <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden divide-y divide-gray-50">
-              {[
-                { 
-                  title: language === 'ar' ? 'عرض عمل جديد مطابق' : 'Nouvelle offre correspondante', 
-                  desc: language === 'ar' ? 'تم نشر عرض عمل جديد لـ "Développeur React" في الجزائر.' : 'Une nouvelle offre pour "Développeur React" à Alger vient d\'être publiée.', 
-                  time: language === 'ar' ? 'منذ ساعتين' : 'Il y a 2 heures' 
-                },
-                { 
-                  title: language === 'ar' ? 'تم الاطلاع على طلبك' : 'Candidature consultée', 
-                  desc: language === 'ar' ? 'تم الاطلاع على طلبك لوظيفة UX Designer في Ooredoo.' : 'Votre candidature pour le poste de UX Designer chez Ooredoo a été consultée.', 
-                  time: language === 'ar' ? 'أمس' : 'Hier' 
-                },
-              ].map((n, i) => (
-                <div key={i} className={`p-6 hover:bg-gray-50 transition-colors cursor-pointer flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-xl flex items-center justify-center shrink-0">
-                    < Bell size={24} />
-                  </div>
-                  <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
-                    <div className={`flex justify-between items-start ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <h4 className="font-bold text-[#173E7D]">{n.title}</h4>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{n.time}</span>
+              {notifications.length > 0 ? (
+                notifications.map((n) => (
+                  <div 
+                    key={n.id} 
+                    onClick={async () => {
+                      if (!n.is_read) {
+                        await supabase.from('notifications').update({ is_read: true }).eq('id', n.id);
+                        setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, is_read: true } : notif));
+                      }
+                    }}
+                    className={`p-6 hover:bg-gray-50 transition-colors cursor-pointer flex gap-4 ${isRTL ? 'flex-row-reverse' : ''} ${!n.is_read ? 'bg-blue-50/30' : ''}`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${!n.is_read ? 'bg-blue-100 text-[#173E7D]' : 'bg-gray-50 text-gray-400'}`}>
+                      <Bell size={24} />
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">{n.desc}</p>
+                    <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
+                      <div className={`flex justify-between items-start ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <h4 className={`font-bold ${!n.is_read ? 'text-[#173E7D]' : 'text-gray-600'}`}>{n.title}</h4>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                          {new Date(n.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{n.message}</p>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="p-12 text-center text-gray-400 font-medium">
+                  {language === 'ar' ? 'لا توجد إشعارات حالياً' : 'Aucune notification pour le moment'}
                 </div>
-              ))}
+              )}
             </div>
           </div>
         );
       case 'settings':
         return (
-          <div className="space-y-8">
-            <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{t('settings')}</h2>
-            <div className="bg-white rounded-[2rem] border border-gray-100 p-8 space-y-8">
-              <div className="space-y-6">
-                <h3 className={`text-lg font-bold text-[#173E7D] border-b border-gray-100 pb-4 ${isRTL ? 'text-right' : ''}`}>{t('language')}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => setLanguage('fr')}
-                    className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                      language === 'fr' 
-                        ? 'border-[#F68D58] bg-orange-50/50' 
-                        : 'border-gray-100 hover:border-gray-200'
-                    } ${isRTL ? 'flex-row-reverse' : ''}`}
-                  >
-                    <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-lg">🇫🇷</div>
-                      <div className={isRTL ? 'text-right' : 'text-left'}>
-                        <div className="font-bold text-[#173E7D]">{t('french')}</div>
-                        <div className="text-xs text-gray-400">Français</div>
-                      </div>
-                    </div>
-                    {language === 'fr' && <div className="w-3 h-3 bg-[#F68D58] rounded-full" />}
-                  </button>
+          <div className="space-y-8 pb-12">
+            <div className={isRTL ? 'text-right' : ''}>
+              <h2 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">{t('settings')}</h2>
+              <p className="text-gray-500 mt-2">Gérez vos préférences de recherche et la visibilité de votre profil.</p>
+            </div>
 
-                  <button 
-                    onClick={() => setLanguage('ar')}
-                    className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                      language === 'ar' 
-                        ? 'border-[#F68D58] bg-orange-50/50' 
-                        : 'border-gray-100 hover:border-gray-200'
-                    } ${isRTL ? 'flex-row-reverse' : ''}`}
-                  >
-                    <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-lg">🇩🇿</div>
-                      <div className={isRTL ? 'text-right' : 'text-left'}>
-                        <div className="font-bold text-[#173E7D]">{t('arabic')}</div>
-                        <div className="text-xs text-gray-400">العربية</div>
-                      </div>
-                    </div>
-                    {language === 'ar' && <div className="w-3 h-3 bg-[#F68D58] rounded-full" />}
-                  </button>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column - Navigation/Categories */}
+              <div className="lg:col-span-1 space-y-4">
+                <div className="bg-white rounded-3xl border border-gray-100 p-4 shadow-sm sticky top-8">
+                  <nav className="space-y-1">
+                    {[
+                      { id: 'general', icon: Globe, label: t('language') },
+                      { id: 'security', icon: Lock, label: t('settings_new.accountSecurity') },
+                      { id: 'notifications', icon: Bell, label: t('settings_new.notificationsPrefs') },
+                      { id: 'privacy', icon: Shield, label: t('settings_new.privacy') },
+                      { id: 'preferences', icon: Search, label: t('settings_new.jobPreferences') },
+                      { id: 'history', icon: History, label: "Historique" },
+                      { id: 'help', icon: HelpCircle, label: t('settings_new.helpSupport') }
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setSettingsTab(item.id)}
+                        className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all font-bold text-sm ${
+                          isRTL ? 'flex-row-reverse text-right' : 'text-left'
+                        } ${
+                          settingsTab === item.id 
+                            ? 'bg-[#173E7D] text-white shadow-lg shadow-blue-200/50' 
+                            : 'hover:bg-gray-50 text-gray-500 hover:text-[#173E7D]'
+                        }`}
+                      >
+                        <item.icon size={20} />
+                        {item.label}
+                      </button>
+                    ))}
+                  </nav>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <h3 className={`text-lg font-bold text-[#173E7D] border-b border-gray-100 pb-4 ${isRTL ? 'text-right' : ''}`}>
-                  {language === 'ar' ? 'تفضيلات الحساب' : 'Préférences du compte'}
-                </h3>
-                <div className={`flex items-center justify-between p-4 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className={isRTL ? 'text-right' : ''}>
-                    <div className="font-bold text-[#173E7D]">
-                      {language === 'ar' ? 'إشعارات البريد الإلكتروني' : 'Notifications par email'}
+                {/* Right Column - Content */}
+                <div className="lg:col-span-2 space-y-8">
+                  {settingsTab === 'preferences' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                          <Search size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.jobPreferences')}</h3>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                          <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                            {language === 'ar' ? 'المناصب المفضلة' : 'Postes préférés'}
+                          </label>
+                          <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            {preferredRoles.map((role, i) => (
+                              <span key={i} className="px-4 py-2 bg-blue-50 text-[#173E7D] rounded-full text-sm font-bold flex items-center gap-2">
+                                {role} <X size={14} className="cursor-pointer" onClick={() => setPreferredRoles(prev => prev.filter(r => r !== role))} />
+                              </span>
+                            ))}
+                            <button 
+                              onClick={() => {
+                                const newRole = prompt(language === 'ar' ? 'أدخل المنصب الجديد:' : 'Entrez le nouveau poste :');
+                                if (newRole) setPreferredRoles(prev => [...prev, newRole]);
+                              }}
+                              className="px-4 py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-full text-sm font-bold hover:border-[#173E7D] hover:text-[#173E7D] transition-all"
+                            >
+                              + {language === 'ar' ? 'إضافة' : 'Ajouter'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                            {language === 'ar' ? 'المواقع المفضلة' : 'Localisations préférées'}
+                          </label>
+                          <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            {preferredLocations.map((loc, i) => (
+                              <span key={i} className="px-4 py-2 bg-orange-50 text-[#F68D58] rounded-full text-sm font-bold flex items-center gap-2">
+                                {loc} <X size={14} className="cursor-pointer" onClick={() => setPreferredLocations(prev => prev.filter(l => l !== loc))} />
+                              </span>
+                            ))}
+                            <button 
+                              onClick={() => {
+                                const newLoc = prompt(language === 'ar' ? 'أدخل الموقع الجديد:' : 'Entrez la nouvelle localisation :');
+                                if (newLoc) setPreferredLocations(prev => [...prev, newLoc]);
+                              }}
+                              className="px-4 py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-full text-sm font-bold hover:border-[#F68D58] hover:text-[#F68D58] transition-all"
+                            >
+                              + {language === 'ar' ? 'إضافة' : 'Ajouter'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                            {language === 'ar' ? 'الراتب المتوقع (شهرياً)' : 'Salaire souhaité (mensuel)'}
+                          </label>
+                          <input 
+                            type="range" 
+                            min="30000" 
+                            max="300000" 
+                            step="5000"
+                            value={salaryRange}
+                            onChange={(e) => setSalaryRange(parseInt(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#F68D58]"
+                          />
+                          <div className={`flex justify-between text-xs font-bold text-gray-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <span>30,000 DA</span>
+                            <span className="text-[#F68D58]">{salaryRange.toLocaleString()} DA</span>
+                            <span>300,000 DA</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {language === 'ar' ? 'تلقي تنبيهات الوظائف عبر البريد الإلكتروني' : 'Recevoir des alertes emploi par email'}
+                  )}
+
+                  {settingsTab === 'help' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      {helpAction ? (
+                        <div className="space-y-6">
+                          <button 
+                            onClick={() => setHelpAction(null)}
+                            className={`flex items-center gap-2 text-gray-400 hover:text-[#173E7D] transition-all font-bold ${isRTL ? 'flex-row-reverse' : ''}`}
+                          >
+                            <ChevronLeft size={20} className={isRTL ? 'rotate-180' : ''} />
+                            {language === 'ar' ? 'العودة' : 'Retour'}
+                          </button>
+                          
+                          {helpAction === 'helpCenter' && (
+                            <div className="space-y-6">
+                              <h3 className={`text-2xl font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{t('settings_new.helpCenter')}</h3>
+                              <div className="grid grid-cols-1 gap-4">
+                                {[
+                                  { id: 'article-cv', title: language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?", desc: language === 'ar' ? 'اكتشف نصائحنا لجذب انتباه أصحاب العمل.' : "Découvrez nos astuces pour attirer l'œil des recruteurs." },
+                                  { id: 'article-interview', title: language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche", desc: language === 'ar' ? 'الأسئلة الكلاسيكية وكيفية الإجابة عليها.' : "Les questions classiques et comment y répondre." },
+                                  { id: 'contact-advice', title: language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?", desc: language === 'ar' ? 'اتصل بنا للحصول على مساعدة شخصية.' : "Contactez-nous pour une aide personnalisée." }
+                                ].map((article, i) => (
+                                  <div 
+                                    key={i} 
+                                    onClick={() => setHelpAction(article.id)}
+                                    className={`p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all cursor-pointer ${isRTL ? 'text-right' : ''}`}
+                                  >
+                                    <div className="font-bold text-[#173E7D] mb-1">{article.title}</div>
+                                    <div className="text-sm text-gray-500">{article.desc}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {helpAction === 'article-cv' && (
+                            <div className="space-y-6">
+                              <h3 className={`text-2xl font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                {language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?"}
+                              </h3>
+                              <div className={`prose max-w-none text-gray-600 space-y-6 ${isRTL ? 'text-right' : ''}`}>
+                                <section className="space-y-3">
+                                  <h4 className="font-bold text-[#173E7D] text-lg">
+                                    {language === 'ar' ? 'استخدام صانع السيرة الذاتية بفعالية' : "1. Utilisation efficace de notre CV Maker"}
+                                  </h4>
+                                  <p>
+                                    {language === 'ar' 
+                                      ? 'صانع السيرة الذاتية لدينا مصمم لمساعدتك في إنشاء ملف احترافي في دقائق. تأكد من ملء جميع الأقسام، خاصة المهارات والخبرات. اختر قالباً يتناسب مع قطاع نشاطك.' 
+                                      : "Notre CV Maker est un outil puissant conçu pour structurer vos informations de manière professionnelle. Pour un résultat optimal, remplissez chaque section avec soin. Choisissez un modèle qui correspond à votre secteur d'activité (moderne pour la tech, classique pour la finance, créatif pour le design)."}
+                                  </p>
+                                </section>
+                                <section className="space-y-3">
+                                  <h4 className="font-bold text-[#173E7D] text-lg">
+                                    {language === 'ar' ? 'نصائح ذهبية لبناء سيرة ذاتية احترافية' : "2. Conseils d'experts pour un CV percutant"}
+                                  </h4>
+                                  <ul className="list-disc list-inside space-y-2">
+                                    <li>
+                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'التخصيص:' : "Personnalisation :"}</span> 
+                                      {language === 'ar' ? ' قم بتعديل سيرتك الذاتية لكل عرض عمل بناءً على الكلمات المفتاحية الموجودة في الإعلان.' : " Adaptez votre CV à chaque offre en utilisant les mots-clés présents dans l'annonce."}
+                                    </li>
+                                    <li>
+                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'الوضوح والإيجاز:' : "Clarté et Concision :"}</span> 
+                                      {language === 'ar' ? ' اجعل سيرتك الذاتية سهلة القراءة. استخدم نقاطاً واضحة (bullet points) وتجنب الفقرات الطويلة.' : " Utilisez des listes à puces et évitez les longs paragraphes. Un recruteur passe en moyenne 6 secondes sur un CV."}
+                                    </li>
+                                    <li>
+                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'الأرقام والإنجازات:' : "Chiffres et Réalisations :"}</span> 
+                                      {language === 'ar' ? ' لا تكتفِ بذكر مهامك، بل ركز على النتائج التي حققتها (مثال: زيادة المبيعات بنسبة 20%).' : " Ne listez pas seulement vos tâches, montrez vos résultats (ex: 'Augmentation du CA de 15%' ou 'Gestion d'une équipe de 10 personnes')."}
+                                    </li>
+                                    <li>
+                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'التدقيق اللغوي:' : "Orthographe irréprochable :"}</span> 
+                                      {language === 'ar' ? ' الأخطاء الإملائية قد تضيع عليك الفرصة. راجع سيرتك الذاتية عدة مرات.' : " Une seule faute peut être éliminatoire. Relisez-vous ou faites-vous relire par un proche."}
+                                    </li>
+                                  </ul>
+                                </section>
+                              </div>
+                            </div>
+                          )}
+
+                          {helpAction === 'article-interview' && (
+                            <div className="space-y-6">
+                              <h3 className={`text-2xl font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                {language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche"}
+                              </h3>
+                              <div className={`prose max-w-none text-gray-600 space-y-6 ${isRTL ? 'text-right' : ''}`}>
+                                <p className="italic">
+                                  {language === 'ar' 
+                                    ? 'المقابلة هي الخطوة الحاسمة. التحضير الجيد يقلل من التوتر ويزيد من فرصك في القبول.' 
+                                    : "L'entretien est le moment de transformer l'essai. Une bonne préparation est la clé pour gérer son stress et convaincre le recruteur."}
+                                </p>
+                                <section className="space-y-3">
+                                  <h4 className="font-bold text-[#173E7D] text-lg">
+                                    {language === 'ar' ? 'المرحلة الأولى: قبل المقابلة' : "Étape 1 : La préparation (Avant)"}
+                                  </h4>
+                                  <ul className="list-disc list-inside space-y-2">
+                                    <li>{language === 'ar' ? 'ابحث عن الشركة: افهم قيمها، مشاريعها، ومنافسيها.' : "Renseignez-vous sur l'entreprise : ses valeurs, ses actualités et ses concurrents."}</li>
+                                    <li>{language === 'ar' ? 'جهز عرضك التقديمي: تدرب على الإجابة عن سؤال "حدثنا عن نفسك" في دقيقتين.' : "Préparez votre 'Pitch' : sachez répondre à la question 'Présentez-vous' en 2 minutes de façon structurée."}</li>
+                                    <li>{language === 'ar' ? 'استخدم طريقة STAR: للإجابة على الأسئلة السلوكية (الموقف، المهمة، الإجراء، النتيجة).' : "Utilisez la méthode STAR (Situation, Tâche, Action, Résultat) pour illustrer vos compétences par des exemples concrets."}</li>
+                                  </ul>
+                                </section>
+                                <section className="space-y-3">
+                                  <h4 className="font-bold text-[#173E7D] text-lg">
+                                    {language === 'ar' ? 'المرحلة الثانية: خلال المقابلة' : "Étape 2 : L'attitude (Pendant)"}
+                                  </h4>
+                                  <ul className="list-disc list-inside space-y-2">
+                                    <li>{language === 'ar' ? 'لغة الجسد: حافظ على وضعية مستقيمة، تواصل بصري، وابتسامة واثقة.' : "Communication non-verbale : tenez-vous droit, maintenez un contact visuel et souriez."}</li>
+                                    <li>{language === 'ar' ? 'الاستماع النشط: تأكد من فهم السؤال قبل الإجابة. لا تتردد في طلب توضيح.' : "Écoute active : assurez-vous d'avoir bien compris la question avant de répondre."}</li>
+                                    <li>{language === 'ar' ? 'اطرح أسئلة: أظهر اهتمامك عبر طرح أسئلة حول الفريق أو تحديات المنصب.' : "Posez des questions : cela montre votre curiosité et votre motivation pour le poste."}</li>
+                                  </ul>
+                                </section>
+                                <section className="space-y-3">
+                                  <h4 className="font-bold text-[#173E7D] text-lg">
+                                    {language === 'ar' ? 'المرحلة الثالثة: بعد المقابلة' : "Étape 3 : Le suivi (Après)"}
+                                  </h4>
+                                  <p>
+                                    {language === 'ar' 
+                                      ? 'أرسل بريداً إلكترونياً للشكر في غضون 24 ساعة، مؤكداً على حماسك للمنصب.' 
+                                      : "Envoyez un mail de remerciement dans les 24h. C'est l'occasion de réitérer votre intérêt et de clarifier un point si nécessaire."}
+                                  </p>
+                                </section>
+                              </div>
+                            </div>
+                          )}
+
+                          {helpAction === 'contact-advice' && (
+                            <div className="space-y-6">
+                              <h3 className={`text-2xl font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                {language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?"}
+                              </h3>
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                    {language === 'ar' ? 'البريد الإلكتروني' : "Adresse mail"}
+                                  </label>
+                                  <input 
+                                    type="email" 
+                                    value={contactEmail}
+                                    onChange={(e) => setContactEmail(e.target.value)}
+                                    className={`w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none ${isRTL ? 'text-right' : ''}`}
+                                    placeholder="exemple@mail.com"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                    {language === 'ar' ? 'الموضوع' : "Sujet"}
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    value={contactSubject}
+                                    onChange={(e) => setContactSubject(e.target.value)}
+                                    className={`w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none ${isRTL ? 'text-right' : ''}`}
+                                    placeholder={language === 'ar' ? 'كيف يمكننا مساعدتك؟' : "Comment pouvons-nous vous aider ?"}
+                                  />
+                                </div>
+                                <button 
+                                  onClick={() => {
+                                    alert(language === 'ar' ? 'تم إرسال رسالتك!' : 'Votre message a été envoyé !');
+                                    setContactEmail('');
+                                    setContactSubject('');
+                                    setHelpAction(null);
+                                  }}
+                                  className="w-full py-3 bg-[#173E7D] text-white rounded-xl font-bold hover:bg-blue-800 transition-all"
+                                >
+                                  {language === 'ar' ? 'إرسال' : 'Envoyer'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                              <HelpCircle size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.helpSupport')}</h3>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-4">
+                            {[
+                              { id: 'article-cv', title: language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?", desc: language === 'ar' ? 'اكتشف نصائحنا لجذب انتباه أصحاب العمل.' : "Découvrez nos astuces pour attirer l'œil des recruteurs.", icon: BookOpen },
+                              { id: 'article-interview', title: language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche", desc: language === 'ar' ? 'الأسئلة الكلاسيكية وكيفية الإجابة عليها.' : "Les questions classiques et comment y répondre.", icon: Sparkles },
+                              { id: 'contact-advice', title: language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?", desc: language === 'ar' ? 'اتصل بنا للحصول على مساعدة شخصية.' : "Contactez-nous pour une aide personnalisée.", icon: MessageSquare }
+                            ].map((item, i) => (
+                              <button 
+                                key={i} 
+                                onClick={() => setHelpAction(item.id)}
+                                className={`p-6 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-all flex items-start gap-4 ${isRTL ? 'flex-row-reverse text-right' : 'text-left'}`}
+                              >
+                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-[#173E7D] shadow-sm shrink-0">
+                                  <item.icon size={20} />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-[#173E7D]">{item.title}</div>
+                                  <div className="text-xs text-gray-400 mt-1">{item.desc}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {settingsTab === 'general' && (
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                          <Globe size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button 
+                          onClick={() => setLanguage('en')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'en' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
+                              <div className="text-xs text-gray-400">English</div>
+                            </div>
+                          </div>
+                          {language === 'en' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={() => setLanguage('fr')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'fr' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇫🇷</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('french')}</div>
+                              <div className="text-xs text-gray-400">Français</div>
+                            </div>
+                          </div>
+                          {language === 'fr' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={() => setLanguage('ar')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'ar' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇩🇿</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('arabic')}</div>
+                              <div className="text-xs text-gray-400">العربية</div>
+                            </div>
+                          </div>
+                          {language === 'ar' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'security' && (
+                    <div className="space-y-8">
+                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                        <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
+                            <Lock size={24} />
+                          </div>
+                          <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.accountSecurity')}</h3>
+                        </div>
+                        
+                        <div className="space-y-6">
+                          {/* Changer le mot de passe */}
+                          <div className="p-6 bg-gray-50 rounded-2xl space-y-4">
+                            <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={isRTL ? 'text-right' : ''}>
+                                <div className="font-bold text-[#173E7D]">{t('settings_new.changePassword')}</div>
+                                <div className="text-xs text-gray-400">
+                                  {language === 'ar' ? 'آخر تغيير قبل 3 أشهر' : 'Dernière modification il y a 3 mois'}
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => setIsChangingPassword(!isChangingPassword)}
+                                className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-bold text-[#173E7D] hover:bg-gray-100 transition-all"
+                              >
+                                {isChangingPassword ? (language === 'ar' ? 'إلغاء' : 'Annuler') : (language === 'ar' ? 'تغيير' : 'Modifier')}
+                              </button>
+                            </div>
+
+                            {isChangingPassword && (
+                              <div className="pt-4 border-t border-gray-200 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <label className={`block text-xs font-bold text-gray-500 ${isRTL ? 'text-right' : ''}`}>
+                                      {language === 'ar' ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+                                    </label>
+                                    <input 
+                                      type="password"
+                                      value={newPassword}
+                                      onChange={(e) => setNewPassword(e.target.value)}
+                                      className={`w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none text-sm ${isRTL ? 'text-right' : ''}`}
+                                      placeholder="••••••••"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className={`block text-xs font-bold text-gray-500 ${isRTL ? 'text-right' : ''}`}>
+                                      {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirmation du mot de passe'}
+                                    </label>
+                                    <input 
+                                      type="password"
+                                      value={confirmPassword}
+                                      onChange={(e) => setConfirmPassword(e.target.value)}
+                                      className={`w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none text-sm ${isRTL ? 'text-right' : ''}`}
+                                      placeholder="••••••••"
+                                    />
+                                  </div>
+                                </div>
+                                <div className={`flex ${isRTL ? 'justify-start' : 'justify-end'}`}>
+                                  <button 
+                                    onClick={() => {
+                                      if (!newPassword || !confirmPassword) {
+                                        alert(language === 'ar' ? 'يرجى ملء جميع الحقول.' : 'Veuillez remplir tous les champs.');
+                                        return;
+                                      }
+                                      if (newPassword !== confirmPassword) {
+                                        alert(language === 'ar' ? 'كلمات المرور غير متطابقة.' : 'Les mots de passe ne correspondent pas.');
+                                        return;
+                                      }
+                                      alert(language === 'ar' ? 'تم تحديث كلمة المرور بنجاح!' : 'Mot de passe mis à jour avec succès !');
+                                      setIsChangingPassword(false);
+                                      setNewPassword('');
+                                      setConfirmPassword('');
+                                    }}
+                                    className="px-6 py-2 bg-[#173E7D] text-white rounded-xl text-sm font-bold hover:bg-blue-800 transition-all"
+                                  >
+                                    {language === 'ar' ? 'حفظ' : 'Enregistrer'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Authentification à deux facteurs */}
+                          <div className={`p-6 bg-gray-50 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={isRTL ? 'text-right' : ''}>
+                              <div className="font-bold text-[#173E7D]">{t('settings_new.twoFactor')}</div>
+                              <div className="text-xs text-gray-400">
+                                {language === 'ar' ? 'أضف طبقة أمان إضافية' : 'Ajoutez une couche de sécurité supplémentaire'}
+                              </div>
+                            </div>
+                            <div className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer">
+                              <div className={`absolute ${isRTL ? 'right-1' : 'left-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
+                            </div>
+                          </div>
+
+                          {/* Email de récupération */}
+                          <div className={`p-6 bg-gray-50 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-gray-400 shadow-sm">
+                                <Shield size={20} />
+                              </div>
+                              <div className={isRTL ? 'text-right' : 'text-left'}>
+                                <div className="font-bold text-[#173E7D]">Email de récupération</div>
+                                <div className="text-xs text-gray-400">walid***@gmail.com</div>
+                              </div>
+                            </div>
+                            <button className="text-sm font-bold text-[#173E7D] hover:underline">Modifier</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsTab === 'notifications' && (
+                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
+                        <Bell size={24} />
+                      </div>
+                      <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.notificationsPrefs')}</h3>
+                    </div>
+
+                    <div className="space-y-8">
+                      <div className="space-y-4">
+                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Canaux de réception</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {[
+                            { id: 'email', label: "Email", icon: Mail },
+                            { id: 'push', label: "Push", icon: Bell },
+                            { id: 'sms', label: "SMS", icon: Smartphone }
+                          ].map((channel, i) => {
+                            const isActive = notificationChannels[channel.id as keyof typeof notificationChannels];
+                            return (
+                              <button 
+                                key={i} 
+                                onClick={() => setNotificationChannels(prev => ({ ...prev, [channel.id]: !isActive }))}
+                                className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${isActive ? 'border-[#173E7D] bg-blue-50/30' : 'border-gray-100 hover:border-gray-200'} ${isRTL ? 'flex-row-reverse' : ''}`}
+                              >
+                                <channel.icon size={18} className={isActive ? 'text-[#173E7D]' : 'text-gray-400'} />
+                                <span className={`font-bold text-sm ${isActive ? 'text-[#173E7D]' : 'text-gray-400'}`}>{channel.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Types d'alertes</h4>
+                        {[
+                          { id: 'jobAlerts', label: "Alertes emploi", desc: "Nouveaux postes correspondant à votre profil" },
+                          { id: 'applications', label: "Mises à jour de candidature", desc: "Changements de statut de vos candidatures" },
+                          { id: 'newsletter', label: "Newsletter carrière", desc: "Conseils et actualités du marché" }
+                        ].map((pref, idx) => {
+                          const isActive = notificationTypes[pref.id as keyof typeof notificationTypes];
+                          return (
+                            <div key={idx} className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={isRTL ? 'text-right' : ''}>
+                                <div className="font-bold text-[#173E7D]">{pref.label}</div>
+                                <div className="text-xs text-gray-400">{pref.desc}</div>
+                              </div>
+                              <div 
+                                onClick={() => setNotificationTypes(prev => ({ ...prev, [pref.id]: !isActive }))}
+                                className={`w-12 h-6 ${isActive ? 'bg-emerald-500' : 'bg-gray-200'} rounded-full relative cursor-pointer transition-colors`}
+                              >
+                                <div className={`absolute ${isActive ? (isRTL ? 'left-1' : 'right-1') : (isRTL ? 'right-1' : 'left-1')} top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all`} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                  <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
-                    <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
-                  </div>
-                </div>
-                <div className={`flex items-center justify-between p-4 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className={isRTL ? 'text-right' : ''}>
-                    <div className="font-bold text-[#173E7D]">
-                      {language === 'ar' ? 'الملف الشخصي العام' : 'Profil public'}
+                )}
+
+                {settingsTab === 'privacy' && (
+                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                        <Shield size={24} />
+                      </div>
+                      <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.privacy')}</h3>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {language === 'ar' ? 'السماح للموظفين بالعثور على ملفك الشخصي' : 'Permettre aux recruteurs de trouver votre profil'}
+
+                    <div className="space-y-6">
+                      <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={isRTL ? 'text-right' : ''}>
+                          <div className="font-bold text-[#173E7D]">{t('settings_new.profileVisibility')}</div>
+                          <div className="text-xs text-gray-400">Permettre aux recruteurs de trouver votre profil</div>
+                        </div>
+                        <div 
+                          onClick={() => setProfileVisible(!profileVisible)}
+                          className={`w-12 h-6 ${profileVisible ? 'bg-emerald-500' : 'bg-gray-200'} rounded-full relative cursor-pointer transition-all`}
+                        >
+                          <div className={`absolute ${profileVisible ? (isRTL ? 'left-1' : 'right-1') : (isRTL ? 'right-1' : 'left-1')} top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all`} />
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={isRTL ? 'text-right' : ''}>
+                          <div className="font-bold text-[#173E7D]">Masquer mon profil actuel</div>
+                          <div className="text-xs text-gray-400">Votre entreprise actuelle ne pourra pas voir votre profil</div>
+                        </div>
+                        <div 
+                          onClick={() => setHideCurrentEmployer(!hideCurrentEmployer)}
+                          className={`w-12 h-6 ${hideCurrentEmployer ? 'bg-[#173E7D]' : 'bg-gray-200'} rounded-full relative cursor-pointer transition-all`}
+                        >
+                          <div className={`absolute ${hideCurrentEmployer ? (isRTL ? 'left-1' : 'right-1') : (isRTL ? 'right-1' : 'left-1')} top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all`} />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer">
-                    <div className={`absolute ${isRTL ? 'right-1' : 'left-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
-                  </div>
-                </div>
+                )}
+
+
+                {/* Danger Zone - Always visible at bottom of General or dedicated tab */}
               </div>
             </div>
           </div>
@@ -2378,12 +4498,7 @@ export default function Dashboard({
             className="fixed inset-y-0 left-0 w-[260px] bg-[#DEE6E2] border-r border-gray-200 z-50 flex flex-col lg:hidden shadow-2xl"
           >
             <div className="p-8 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#F68D58] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
-                  <Briefcase size={22} className="text-white" />
-                </div>
-                <span className="text-xl font-display font-black tracking-tighter text-[#173E7D]">DAR L'EMPLOI</span>
-              </div>
+              <Logo size="md" onClick={onGoHome} />
               <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
                 <X size={20} className="text-[#173E7D]" />
               </button>
@@ -2425,7 +4540,7 @@ export default function Dashboard({
                   />
                   <SidebarItem 
                     icon={Gem} 
-                    label="Subscription" 
+                    label={t('subscription')} 
                     active={activeTab === 'subscription'} 
                     onClick={() => { setActiveTab('subscription'); setIsSidebarOpen(false); }} 
                   />
@@ -2514,10 +4629,7 @@ export default function Dashboard({
         className={`bg-[#DEE6E2] border-r border-gray-200 overflow-hidden hidden lg:flex flex-col sticky top-0 h-screen ${isRTL ? 'border-l border-r-0' : 'border-r'}`}
       >
         <div className="p-8 flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#F68D58] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
-            <Briefcase size={22} className="text-white" />
-          </div>
-          <span className="text-xl font-display font-black tracking-tighter text-[#173E7D]">DAR L'EMPLOI</span>
+          <Logo size="md" onClick={onGoHome} />
         </div>
 
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
@@ -2556,7 +4668,7 @@ export default function Dashboard({
               />
               <SidebarItem 
                 icon={Gem} 
-                label="Subscription" 
+                label={t('subscription')} 
                 active={activeTab === 'subscription'} 
                 onClick={() => setActiveTab('subscription')} 
               />
@@ -2980,13 +5092,115 @@ export default function Dashboard({
                   Fermer
                 </button>
                 <button 
-                  onClick={() => {
-                    handleApplyToJob(selectedJob.title);
-                    setSelectedJob(null);
-                  }}
+                  onClick={() => setShowApplyConfirmation(true)}
                   className="px-12 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
                 >
                   Postuler maintenant
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Invitation Simulation Modal */}
+      <AnimatePresence>
+        {showInviteSimulation && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl"
+            >
+              <div className="bg-[#173E7D] p-8 text-white">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Mail size={20} />
+                  </div>
+                  <span className="font-black uppercase tracking-widest text-sm">Simulation Email</span>
+                </div>
+                <h2 className="text-2xl font-bold">Invitation à rejoindre TechDz Solutions</h2>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="w-12 h-12 bg-blue-100 text-[#173E7D] rounded-full flex items-center justify-center font-bold">
+                    {showInviteSimulation.inviterName.charAt(0)}
+                  </div>
+                  <div className={isRTL ? 'text-right' : ''}>
+                    <div className="text-sm text-gray-400">De: <span className="text-gray-700 font-bold">{showInviteSimulation.inviterName}</span></div>
+                    <div className="text-sm text-gray-400">À: <span className="text-gray-700 font-bold">{showInviteSimulation.email}</span></div>
+                  </div>
+                </div>
+
+                <div className={`text-gray-600 leading-relaxed ${isRTL ? 'text-right' : ''}`}>
+                  Bonjour,<br /><br />
+                  <strong>{showInviteSimulation.inviterName}</strong> vous a invité à rejoindre l'équipe de recrutement sur la plateforme <strong>Dar L'emploi</strong>.<br /><br />
+                  En rejoignant l'équipe, vous pourrez collaborer sur les offres d'emploi, gérer les candidatures et utiliser nos outils d'IA.
+                </div>
+
+                <div className="pt-4">
+                  <button 
+                    onClick={() => handleAcceptInvite(showInviteSimulation)}
+                    className="w-full py-4 bg-[#F68D58] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-200/50"
+                  >
+                    Accepter l'invitation
+                  </button>
+                </div>
+
+                <p className="text-center text-xs text-gray-400">
+                  Ceci est une simulation de l'email que recevrait l'utilisateur invité.
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Apply Confirmation Modal */}
+      <AnimatePresence>
+        {showApplyConfirmation && selectedJob && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowApplyConfirmation(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20 p-10 text-center"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-[#173E7D] rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <Briefcase size={40} strokeWidth={1.5} />
+              </div>
+              <h3 className="text-2xl font-display font-black text-[#173E7D] mb-4 tracking-tighter">
+                {language === 'ar' ? 'هل أنت متأكد من رغبتك في التقديم؟' : 'Êtes-vous sûr de vouloir postuler à cette offre ?'}
+              </h3>
+              <p className="text-sm text-gray-400 mb-10 font-medium leading-relaxed">
+                {language === 'ar' ? 'سيتم إرسال ملفك الشخصي وسيرتك الذاتية إلى صاحب العمل.' : 'Votre profil et votre CV seront envoyés à l\'employeur.'}
+              </p>
+              
+              <div className="flex flex-col gap-4">
+                <button 
+                  onClick={() => {
+                    handleApplyToJob(selectedJob.title);
+                    setShowApplyConfirmation(false);
+                    setSelectedJob(null);
+                  }}
+                  className="w-full py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
+                >
+                  {language === 'ar' ? 'نعم، قدم الآن' : 'Oui, postuler'}
+                </button>
+                <button 
+                  onClick={() => setShowApplyConfirmation(false)}
+                  className="w-full py-5 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Annuler'}
                 </button>
               </div>
             </motion.div>

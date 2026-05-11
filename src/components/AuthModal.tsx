@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
-import { supabase } from '../supabase';
+import { db, auth } from '../firebase';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  createUserWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
+import { doc, setDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
 import Logo from './Logo';
 
 import { translations, Language } from '../translations';
@@ -91,22 +98,32 @@ export default function AuthModal({ isOpen, onClose, language }: AuthModalProps)
 
   const handleGoogleLogin = async () => {
     try {
-      // Save intended role to localStorage to persist across redirect
-      localStorage.setItem('intended_role', role);
-      
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const currentUser = result.user;
+
+      if (currentUser) {
+        // Check if user exists in Firestore
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDocFromServer(userDocRef);
+
+        if (!userDoc.exists()) {
+          // Create new user profile if it doesn't exist
+          await setDoc(userDocRef, {
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL,
+            role: role, // Use the selected role (user or employer)
+            createdAt: serverTimestamp(),
+            lastLogin: serverTimestamp()
+          });
         }
-      });
-      if (error) throw error;
+      }
+      onClose();
     } catch (err: any) {
-      setError(err.message);
+      console.error("Error during Google Login:", err);
+      setError(err.message || t.error);
     }
   };
 
@@ -129,31 +146,35 @@ export default function AuthModal({ isOpen, onClose, language }: AuthModalProps)
     setLoading(true);
 
     try {
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: role === 'user' ? formData.name : null,
-            company_name: role === 'employer' ? formData.companyName : null,
-            role: role
-          }
-        }
-      });
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const currentUser = userCredential.user;
 
-      if (signupError) throw signupError;
+      if (currentUser) {
+        // Update Firebase profile with name
+        const displayName = role === 'user' ? formData.name : formData.companyName;
+        await updateProfile(currentUser, { displayName });
 
-      if (data.user) {
-        // Profile creation is handled by the useEffect in App.tsx or a trigger
+        // Create Firestore profile
+        await setDoc(doc(db, 'users', currentUser.uid), {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: displayName,
+          companyName: role === 'employer' ? formData.companyName : null,
+          role: role,
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp()
+        });
+
         const successMsg = {
-          en: "Registration successful! Please check your email.",
-          fr: "Inscription réussie ! Veuillez vérifier votre email.",
-          ar: "تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني."
+          en: "Registration successful!",
+          fr: "Inscription réussie !",
+          ar: "تم التسجيل بنجاح!"
         }[language];
         alert(successMsg);
         onClose();
       }
     } catch (err: any) {
+      console.error("Error during Email Signup:", err);
       setError(err.message || t.error);
     } finally {
       setLoading(false);

@@ -1,0 +1,211 @@
+218:      alert(language === 'ar' ? 'تم رفع السيرة الذاتية بنجاح!' : 'CV téléchargé avec succès !');
+221:      alert(language === 'ar' ? 'خطأ أثناء رفع الملف.' : 'Erreur lors du téléchargement du fichier.');
+257:    { name: "Walid Hadef", email: "walid@company.dz", role: "Admin", status: language === 'ar' ? 'نشط' : 'Actif' },
+258:    { name: "Amine Ben", email: "amine@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'نشط' : 'Actif' },
+259:    { name: "Sara Dz", email: "sara@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'قيد الانتظار' : 'En attente' }
+375:        title: language === 'ar' ? 'تم قبول الدعوة' : 'Invitation acceptée',
+376:        message: language === 'ar' 
+387:      alert(language === 'ar' ? 'تم قبول الدعوة بنجاح!' : 'Invitation acceptée avec succès !');
+410:        role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur',
+411:        status: language === 'ar' ? 'نشط' : 'Actif'
+414:      alert(language === 'ar' ? 'تم منح الوصول بنجاح!' : 'Accès accordé avec succès !');
+429:      summary: language === 'ar'
+515:  const isRTL = language === 'ar';
+675:            {language === 'ar' ? 'منذ يومين' : 'Il y a 2j'}
+684:            {language === 'ar' ? 'الراتب المتوقع' : 'Salaire Estimé'}
+736:        company: language === 'ar' ? 'شركة مثال تيك' : 'Exemple Tech', 
+737:        role: language === 'ar' ? 'مطور' : 'Développeur', 
+738:        period: language === 'ar' ? '2022 - الحالي' : '2022 - Présent', 
+739:        desc: language === 'ar' ? 'تطوير حلول ويب مبتكرة.' : 'Développement de solutions web innovantes.',
+745:        school: language === 'ar' ? 'جامعة الجزائر' : 'Université d\'Alger', 
+746:        degree: language === 'ar' ? 'ماستر في المعلوماتية' : 'Master en Informatique', 
+752:      { name: language === 'ar' ? 'العربية' : 'Arabe', level: language === 'ar' ? 'أصلي' : 'Natif' },
+753:      { name: 'Français', level: language === 'ar' ? 'بطلاقة' : 'Courant' },
+754:      { name: 'Anglais', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }
+822:      alert(language === 'ar' ? 'يرجى ملء جميع الحقول المطلوبة.' : 'Veuillez remplir tous les champs obligatoires.');
+848:    alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
+853:    alert(language === 'ar' ? `تم إرسال طلبك لوظيفة ${jobTitle} بنجاح!` : `Votre candidature pour le poste de ${jobTitle} a été envoyée avec succès !`);
+891:      title: language === 'ar' ? 'مطور فول ستاك سينيور' : 'Développeur Fullstack Senior',
+893:      location: language === 'ar' ? 'الجزائر' : 'Alger',
+895:      remote: language === 'ar' ? 'عن بعد' : 'Télétravail',
+898:      description: language === 'ar'
+902:      benefits: language === 'ar'
+906:      sector: language === 'ar' ? 'المعلوماتية / التكنولوجيا' : 'Informatique / Technologie'
+912:      location: language === 'ar' ? 'وهران' : 'Oran',
+914:      remote: language === 'ar' ? 'هجين' : 'Hybride',
+917:      description: language === 'ar'
+921:      benefits: language === 'ar'
+925:      sector: language === 'ar' ? 'التصميم / الإبداع' : 'Design / Création'
+929:      title: language === 'ar' ? 'رئيس مشروع IT' : 'Chef de Projet IT',
+931:      location: language === 'ar' ? 'قسنطينة' : 'Constantine',
+933:      remote: language === 'ar' ? 'في الموقع' : 'Sur site',
+936:      description: language === 'ar'
+940:      benefits: language === 'ar'
+944:      sector: language === 'ar' ? 'الإدارة / التسيير' : 'Management / Gestion'
+948:      title: language === 'ar' ? 'متربص في التسويق الرقمي' : 'Stagiaire Marketing Digital',
+950:      location: language === 'ar' ? 'الجزائر' : 'Alger',
+952:      remote: language === 'ar' ? 'هجين' : 'Hybride',
+955:      description: language === 'ar'
+959:      benefits: language === 'ar'
+963:      sector: language === 'ar' ? 'التسويق / الاتصال' : 'Marketing / Communication'
+967:      title: language === 'ar' ? 'محاسب مؤكد' : 'Comptable Confirmé',
+969:      location: language === 'ar' ? 'سطيف' : 'Sétif',
+971:      remote: language === 'ar' ? 'في الموقع' : 'Sur site',
+974:      description: language === 'ar'
+978:      benefits: language === 'ar'
+982:      sector: language === 'ar' ? 'المالية / المحاسبة' : 'Finance / Comptabilité'
+1007:      alert(language === 'ar' ? 'تم تحديث الملف الشخصي بنجاح!' : 'Profil mis à jour avec succès !');
+1010:      alert(language === 'ar' ? 'خطأ أثناء تحديث الملف الشخصي.' : 'Erreur lors de la mise à jour du profil.');
+1026:      alert(language === 'ar' ? 'تم حفظ السيرة الذاتية بنجاح!' : 'CV sauvegardé avec succès !');
+1029:      alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
+1043:                    {language === 'ar' ? 'مرحباً بك،' : 'Bienvenue,'} {user?.displayName?.split(' ')[0]} !
+1046:                    {language === 'ar' ? 'إليك ما يحدث في حملات التوظيف الخاصة بك اليوم.' : 'Voici ce qui se passe dans vos campagnes de recrutement aujourd\'hui.'}
+1059:                    {language === 'ar' ? 'تقارير' : 'Rapports'}
+1938:                  {language === 'ar' 
+1956:                        { id: 'history', icon: History, label: language === 'ar' ? 'سجل النشاط' : 'Historique' },
+2037:                            language === 'ar' 
+2049:                          {language === 'ar' && (
+2090:                              <h4 className="font-bold text-[#173E7D]">{language === 'ar' ? 'دعوة عضو جديد' : 'Inviter un nouveau membre'}</h4>
+2091:                              <p className="text-xs text-gray-500">{language === 'ar' ? 'أدخل البريد الإلكتروني للشخص الذي تريد دعوته.' : 'Entrez l\'adresse e-mail de la personne que vous souhaitez inviter.'}</p>
+2112:                              {language === 'ar' ? 'إرسال' : 'Envoyer'}
+2121:                              {language === 'ar' ? 'إلغاء' : 'Annuler'}
+2131:                            {language === 'ar' ? 'طلبات الوصول المعلقة' : 'Demandes d\'accès en attente'}
+2148:                                {language === 'ar' ? 'منح الوصول' : 'Donner accès'}
+2157:                          {language === 'ar' ? 'أعضاء الفريق' : 'Membres de l\'équipe'}
+2172:                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${member.status === (language === 'ar' ? 'نشط' : 'Actif') ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+2195:                              { id: 'help-center', title: t('settings_new.helpCenter'), desc: language === 'ar' ? 'أدلة ودروس كاملة' : 'Guides et tutoriels complets', icon: BookOpen },
+2196:                              { id: 'direct-support', title: t('settings_new.directSupport'), desc: language === 'ar' ? 'اتصل بفريقنا 24/7' : 'Contactez notre équipe 24/7', icon: MessageSquare },
+2218:                            {language === 'ar' ? 'العودة' : 'Retour'}
+2246:                            {language === 'ar' ? 'العودة' : 'Retour'}
+2318:                                <div className="text-sm text-gray-400 mb-1">{language === 'ar' ? 'الخطة الحالية' : 'Plan actuel'}</div>
+2322:                                {language === 'ar' ? 'نشط' : 'Actif'}
+2329:                              <span>{language === 'ar' ? '20 يوم متبقية' : '20 jours restants'}</span>
+2330:                              <span>{language === 'ar' ? 'تجديد في 15 أفريل' : 'Renouvellement le 15 Avril'}</span>
+2335:                            <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'طرق الدفع' : 'Modes de paiement'}</h4>
+2345:                                {language === 'ar' ? 'تعديل' : 'Modifier'}
+2355:                              {language === 'ar' ? 'ترقية الخطة' : 'Mettre à niveau le plan'}
+2363:                            {language === 'ar' ? 'العودة' : 'Retour'}
+2367:                            <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'اختر خطتك' : 'Choisissez votre plan'}</h3>
+2368:                            <p className="text-gray-400">{language === 'ar' ? 'اختر الباقة التي تناسب احتياجات توظيفك.' : 'Sélectionnez le forfait qui correspond à vos besoins de recrutement.'}</p>
+2401:                                      setBillingSuccessMessage(language === 'ar' ? 'تم تفعيل الخطة المجانية بنجاح!' : 'Plan Gratuit activé avec succès !');
+2411:                                  {plan.id === 'Gratuit' ? (language === 'ar' ? 'تفعيل' : 'Activer') : (language === 'ar' ? 'اختيار' : 'Choisir')}
+2421:                            {language === 'ar' ? 'العودة' : 'Retour'}
+2426:                              <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'الدفع الآمن' : 'Paiement Sécurisé'}</h3>
+2427:                              <p className="text-gray-400">{language === 'ar' ? 'أكمل اشتراكك في باقة' : 'Complétez votre abonnement au plan'} <span className="text-[#173E7D] font-bold">{selectedPlan?.name}</span></p>
+2430:                              <div className="text-xs text-gray-400 uppercase font-black tracking-widest">{language === 'ar' ? 'إجمالي الدفع' : 'Total à payer'}</div>
+2438:                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'اختر وسيلة الدفع' : 'Choisir une méthode de paiement'}</h4>
+2470:                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'معلومات البطاقة' : 'Informations de la carte'}</h4>
+2474:                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'رقم البطاقة' : 'Numéro de carte'}</label>
+2491:                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'تاريخ الانتهاء' : "Date d'expiration"}</label>
+2513:                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'الاسم على البطاقة' : 'Nom sur la carte'}</label>
+2526:                                  setBillingSuccessMessage(language === 'ar' ? 'تم الدفع بنجاح عبر Chargily Pay!' : 'Paiement effectué avec succès via Chargily Pay !');
+2533:                                {language === 'ar' ? 'تأكيد الدفع' : 'Confirmer le paiement'}
+2538:                                <span className="text-[10px] font-bold uppercase tracking-widest">{language === 'ar' ? 'دفع مشفر SSL 256 بت' : 'Paiement crypté SSL 256-bit'}</span>
+2564:                                  {language === 'ar' ? 'آخر تغيير قبل 3 أشهر' : 'Dernière modification il y a 3 mois'}
+2571:                                {isChangingPassword ? (language === 'ar' ? 'إلغاء' : 'Annuler') : (language === 'ar' ? 'تغيير' : 'Modifier')}
+2580:                                      {language === 'ar' ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+2592:                                      {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirmation du mot de passe'}
+2607:                                        alert(language === 'ar' ? 'يرجى ملء جميع الحقول.' : 'Veuillez remplir tous les champs.');
+2611:                                        alert(language === 'ar' ? 'كلمات المرور غير متطابقة.' : 'Les mots de passe ne correspondent pas.');
+2614:                                      alert(language === 'ar' ? 'تم تحديث كلمة المرور بنجاح!' : 'Mot de passe mis à jour avec succès !');
+2621:                                    {language === 'ar' ? 'حفظ' : 'Enregistrer'}
+2633:                                {language === 'ar' ? 'أضف طبقة أمان إضافية' : 'Ajoutez une couche de sécurité supplémentaire'}
+2832:                        <h3 className="text-xl font-bold text-[#173E7D]">{language === 'ar' ? 'سجل النشاط' : 'Historique d\'activité'}</h3>
+2869:                  {t('welcome')}, {user?.displayName?.split(' ')[0] || (language === 'ar' ? 'باحث' : 'Chercheur')} ! 👋
+2937:        const JOB_TYPES = language === 'ar' 
+2940:        const SECTORS = language === 'ar'
+3081:                    {language === 'ar' 
+3119:                      { company: 'Ooredoo', role: 'UX Designer', date: language === 'ar' ? '12 مارس 2024' : '12 Mars 2024', status: language === 'ar' ? 'قيد المراجعة' : 'En examen', color: 'text-blue-600 bg-blue-50' },
+3120:                      { company: 'Yassir', role: 'Product Manager', date: language === 'ar' ? '10 مارس 2024' : '10 Mars 2024', status: language === 'ar' ? 'مقابلة' : 'Entretien', color: 'text-orange-600 bg-orange-50' },
+3121:                      { company: 'Sonatrach', role: 'Ingénieur IT', date: language === 'ar' ? '05 مارس 2024' : '05 Mars 2024', status: language === 'ar' ? 'مرفوض' : 'Refusé', color: 'text-red-600 bg-red-50' },
+3153:                {language === 'ar' ? 'تغيير الصورة' : 'Modifier la photo'}
+3222:                  {isUploading ? (language === 'ar' ? 'جاري الرفع...' : 'Téléchargement...') : (language === 'ar' ? 'رفع CV' : 'Uploader CV')}
+3370:                                  placeholder={language === 'ar' ? 'المهمات والمسؤوليات' : 'Missions et responsabilités'} 
+3427:                                    placeholder={language === 'ar' ? 'المدرسة / الجامعة' : 'École / Université'} 
+3440:                                    placeholder={language === 'ar' ? 'الدبلوم' : 'Diplôme'} 
+3453:                                    placeholder={language === 'ar' ? 'السنة' : 'Année'} 
+3473:                            {language === 'ar' ? '+ إضافة تكوين' : '+ Ajouter une formation'}
+3508:                              placeholder={language === 'ar' ? 'أضف مهارة (مثال: React)' : 'Ajouter une compétence (ex: React)'} 
+3512:                              {language === 'ar' ? 'إضافة' : 'Ajouter'}
+3545:                                  {language === 'ar' ? (
+3577:                              languages: [...cvData.languages, { name: '', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }]
+3581:                            {language === 'ar' ? '+ إضافة لغة' : '+ Ajouter une langue'}
+3596:                    {language === 'ar' ? 'المعاينة النهائية' : 'Aperçu final'}
+3605:                    <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
+3608:                    onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
+3611:                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
+3647:                            <User size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'الملف الشخصي' : 'Résumé Professionnel'}
+3657:                          <Briefcase size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'الخبرة' : 'Expériences Professionnelles'}
+3677:                          <FileText size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'التكوين' : 'Formation & Éducation'}
+3730:                          <p className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={18} className="text-[#F68D58]" /> {language === 'ar' ? 'الجزائر، الجزائر' : 'Alger, Algérie'}</p>
+3752:              {language === 'ar' ? 'الوظائف المحفوظة' : 'Offres sauvegardées'}
+3771:                  {language === 'ar' ? 'لا توجد وظائف محفوظة' : 'Aucune offre sauvegardée'}
+3774:                  {language === 'ar' ? 'تصفح الوظائف واحفظ تلك التي تهمك لتجدها هنا.' : "Parcourez les offres d'emploi et sauvegardez celles qui vous intéressent pour les retrouver ici."}
+3777:                  {language === 'ar' ? 'تصفح الوظائف' : 'Parcourir les offres'}
+3788:                {language === 'ar' ? 'الإشعارات' : 'Notifications'}
+3798:                  {language === 'ar' ? 'تحديد الكل كمقروء' : 'Tout marquer comme lu'}
+3831:                  {language === 'ar' ? 'لا توجد إشعارات حالياً' : 'Aucune notification pour le moment'}
+3892:                            {language === 'ar' ? 'المناصب المفضلة' : 'Postes préférés'}
+3902:                                const newRole = prompt(language === 'ar' ? 'أدخل المنصب الجديد:' : 'Entrez le nouveau poste :');
+3907:                              + {language === 'ar' ? 'إضافة' : 'Ajouter'}
+3914:                            {language === 'ar' ? 'المواقع المفضلة' : 'Localisations préférées'}
+3924:                                const newLoc = prompt(language === 'ar' ? 'أدخل الموقع الجديد:' : 'Entrez la nouvelle localisation :');
+3929:                              + {language === 'ar' ? 'إضافة' : 'Ajouter'}
+3936:                            {language === 'ar' ? 'الراتب المتوقع (شهرياً)' : 'Salaire souhaité (mensuel)'}
+3966:                            {language === 'ar' ? 'العودة' : 'Retour'}
+3974:                                  { id: 'article-cv', title: language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?", desc: language === 'ar' ? 'اكتشف نصائحنا لجذب انتباه أصحاب العمل.' : "Découvrez nos astuces pour attirer l'œil des recruteurs." },
+3975:                                  { id: 'article-interview', title: language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche", desc: language === 'ar' ? 'الأسئلة الكلاسيكية وكيفية الإجابة عليها.' : "Les questions classiques et comment y répondre." },
+3976:                                  { id: 'contact-advice', title: language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?", desc: language === 'ar' ? 'اتصل بنا للحصول على مساعدة شخصية.' : "Contactez-nous pour une aide personnalisée." }
+3994:                                {language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?"}
+3999:                                    {language === 'ar' ? 'استخدام صانع السيرة الذاتية بفعالية' : "1. Utilisation efficace de notre CV Maker"}
+4002:                                    {language === 'ar' 
+4009:                                    {language === 'ar' ? 'نصائح ذهبية لبناء سيرة ذاتية احترافية' : "2. Conseils d'experts pour un CV percutant"}
+4013:                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'التخصيص:' : "Personnalisation :"}</span> 
+4014:                                      {language === 'ar' ? ' قم بتعديل سيرتك الذاتية لكل عرض عمل بناءً على الكلمات المفتاحية الموجودة في الإعلان.' : " Adaptez votre CV à chaque offre en utilisant les mots-clés présents dans l'annonce."}
+4017:                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'الوضوح والإيجاز:' : "Clarté et Concision :"}</span> 
+4018:                                      {language === 'ar' ? ' اجعل سيرتك الذاتية سهلة القراءة. استخدم نقاطاً واضحة (bullet points) وتجنب الفقرات الطويلة.' : " Utilisez des listes à puces et évitez les longs paragraphes. Un recruteur passe en moyenne 6 secondes sur un CV."}
+4021:                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'الأرقام والإنجازات:' : "Chiffres et Réalisations :"}</span> 
+4022:                                      {language === 'ar' ? ' لا تكتفِ بذكر مهامك، بل ركز على النتائج التي حققتها (مثال: زيادة المبيعات بنسبة 20%).' : " Ne listez pas seulement vos tâches, montrez vos résultats (ex: 'Augmentation du CA de 15%' ou 'Gestion d'une équipe de 10 personnes')."}
+4025:                                      <span className="font-bold text-[#173E7D]">{language === 'ar' ? 'التدقيق اللغوي:' : "Orthographe irréprochable :"}</span> 
+4026:                                      {language === 'ar' ? ' الأخطاء الإملائية قد تضيع عليك الفرصة. راجع سيرتك الذاتية عدة مرات.' : " Une seule faute peut être éliminatoire. Relisez-vous ou faites-vous relire par un proche."}
+4037:                                {language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche"}
+4041:                                  {language === 'ar' 
+4047:                                    {language === 'ar' ? 'المرحلة الأولى: قبل المقابلة' : "Étape 1 : La préparation (Avant)"}
+4050:                                    <li>{language === 'ar' ? 'ابحث عن الشركة: افهم قيمها، مشاريعها، ومنافسيها.' : "Renseignez-vous sur l'entreprise : ses valeurs, ses actualités et ses concurrents."}</li>
+4051:                                    <li>{language === 'ar' ? 'جهز عرضك التقديمي: تدرب على الإجابة عن سؤال "حدثنا عن نفسك" في دقيقتين.' : "Préparez votre 'Pitch' : sachez répondre à la question 'Présentez-vous' en 2 minutes de façon structurée."}</li>
+4052:                                    <li>{language === 'ar' ? 'استخدم طريقة STAR: للإجابة على الأسئلة السلوكية (الموقف، المهمة، الإجراء، النتيجة).' : "Utilisez la méthode STAR (Situation, Tâche, Action, Résultat) pour illustrer vos compétences par des exemples concrets."}</li>
+4057:                                    {language === 'ar' ? 'المرحلة الثانية: خلال المقابلة' : "Étape 2 : L'attitude (Pendant)"}
+4060:                                    <li>{language === 'ar' ? 'لغة الجسد: حافظ على وضعية مستقيمة، تواصل بصري، وابتسامة واثقة.' : "Communication non-verbale : tenez-vous droit, maintenez un contact visuel et souriez."}</li>
+4061:                                    <li>{language === 'ar' ? 'الاستماع النشط: تأكد من فهم السؤال قبل الإجابة. لا تتردد في طلب توضيح.' : "Écoute active : assurez-vous d'avoir bien compris la question avant de répondre."}</li>
+4062:                                    <li>{language === 'ar' ? 'اطرح أسئلة: أظهر اهتمامك عبر طرح أسئلة حول الفريق أو تحديات المنصب.' : "Posez des questions : cela montre votre curiosité et votre motivation pour le poste."}</li>
+4067:                                    {language === 'ar' ? 'المرحلة الثالثة: بعد المقابلة' : "Étape 3 : Le suivi (Après)"}
+4070:                                    {language === 'ar' 
+4082:                                {language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?"}
+4087:                                    {language === 'ar' ? 'البريد الإلكتروني' : "Adresse mail"}
+4099:                                    {language === 'ar' ? 'الموضوع' : "Sujet"}
+4106:                                    placeholder={language === 'ar' ? 'كيف يمكننا مساعدتك؟' : "Comment pouvons-nous vous aider ?"}
+4111:                                    alert(language === 'ar' ? 'تم إرسال رسالتك!' : 'Votre message a été envoyé !');
+4118:                                  {language === 'ar' ? 'إرسال' : 'Envoyer'}
+4135:                              { id: 'article-cv', title: language === 'ar' ? 'كيف تحسن سيرتك الذاتية؟' : "Comment optimiser son CV ?", desc: language === 'ar' ? 'اكتشف نصائحنا لجذب انتباه أصحاب العمل.' : "Découvrez nos astuces pour attirer l'œil des recruteurs.", icon: BookOpen },
+4136:                              { id: 'article-interview', title: language === 'ar' ? 'النجاح في مقابلة العمل' : "Réussir son entretien d'embauche", desc: language === 'ar' ? 'الأسئلة الكلاسيكية وكيفية الإجابة عليها.' : "Les questions classiques et comment y répondre.", icon: Sparkles },
+4137:                              { id: 'contact-advice', title: language === 'ar' ? 'هل تحتاج إلى نصيحة؟' : "Besoin d'un conseil ?", desc: language === 'ar' ? 'اتصل بنا للحصول على مساعدة شخصية.' : "Contactez-nous pour une aide personnalisée.", icon: MessageSquare }
+4216:                            language === 'ar' 
+4228:                          {language === 'ar' && (
+4255:                                  {language === 'ar' ? 'آخر تغيير قبل 3 أشهر' : 'Dernière modification il y a 3 mois'}
+4262:                                {isChangingPassword ? (language === 'ar' ? 'إلغاء' : 'Annuler') : (language === 'ar' ? 'تغيير' : 'Modifier')}
+4271:                                      {language === 'ar' ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+4283:                                      {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirmation du mot de passe'}
+4298:                                        alert(language === 'ar' ? 'يرجى ملء جميع الحقول.' : 'Veuillez remplir tous les champs.');
+4302:                                        alert(language === 'ar' ? 'كلمات المرور غير متطابقة.' : 'Les mots de passe ne correspondent pas.');
+4305:                                      alert(language === 'ar' ? 'تم تحديث كلمة المرور بنجاح!' : 'Mot de passe mis à jour avec succès !');
+4312:                                    {language === 'ar' ? 'حفظ' : 'Enregistrer'}
+4324:                                {language === 'ar' ? 'أضف طبقة أمان إضافية' : 'Ajoutez une couche de sécurité supplémentaire'}
+4463:              {language === 'ar' ? 'الصفحة قيد الإنشاء' : 'Page en construction'}
+4466:              {language === 'ar' 
+4764:              <span>{language === 'ar' ? 'مساحة' : 'Espace'}</span>
+4781:                    ? (language === 'ar' ? 'صاحب عمل' : 'Employeur')
+4782:                    : (language === 'ar' ? 'باحث عن عمل' : 'Chercheur d\'emploi')}
+5182:                {language === 'ar' ? 'هل أنت متأكد من رغبتك في التقديم؟' : 'Êtes-vous sûr de vouloir postuler à cette offre ?'}
+5185:                {language === 'ar' ? 'سيتم إرسال ملفك الشخصي وسيرتك الذاتية إلى صاحب العمل.' : 'Votre profil et votre CV seront envoyés à l\'employeur.'}
+5197:                  {language === 'ar' ? 'نعم، قدم الآن' : 'Oui, postuler'}
+5203:                  {language === 'ar' ? 'إلغاء' : 'Annuler'}

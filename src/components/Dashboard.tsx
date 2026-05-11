@@ -215,10 +215,10 @@ export default function Dashboard({
 
       if (updateError) throw updateError;
 
-      alert(language === 'ar' ? 'تم رفع السيرة الذاتية بنجاح!' : 'CV téléchargé avec succès !');
+      alert(lt('CV uploaded successfully!', 'CV téléchargé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert(language === 'ar' ? 'خطأ أثناء رفع الملف.' : 'Erreur lors du téléchargement du fichier.');
+      alert(lt('Error uploading file.', 'Erreur lors du téléchargement du fichier.', 'خطأ أثناء رفع الملف.'));
     } finally {
       setIsUploading(false);
     }
@@ -254,9 +254,9 @@ export default function Dashboard({
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [showInviteSimulation, setShowInviteSimulation] = useState<any>(null);
   const [teamMembers, setTeamMembers] = useState([
-    { name: "Walid Hadef", email: "walid@company.dz", role: "Admin", status: language === 'ar' ? 'نشط' : 'Actif' },
-    { name: "Amine Ben", email: "amine@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'نشط' : 'Actif' },
-    { name: "Sara Dz", email: "sara@company.dz", role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur', status: language === 'ar' ? 'قيد الانتظار' : 'En attente' }
+    { name: "Walid Hadef", email: "walid@company.dz", role: "Admin", status: lt('Active', 'Actif', 'نشط') },
+    { name: "Amine Ben", email: "amine@company.dz", role: lt('Recruiter', 'Recruteur', 'مسؤول توظيف'), status: lt('Active', 'Actif', 'نشط') },
+    { name: "Sara Dz", email: "sara@company.dz", role: lt('Recruiter', 'Recruteur', 'مسؤول توظيف'), status: lt('Pending', 'En attente', 'قيد الانتظار') }
   ]);
   const [aiFilterStep, setAiFilterStep] = useState<'select' | 'results'>('select');
   const [selectedJobForAI, setSelectedJobForAI] = useState('Développeur Full Stack — 23 candidatures');
@@ -372,10 +372,12 @@ export default function Dashboard({
       // 2. Notify the inviter
       await addDoc(collection(db, 'notifications'), {
         userId: invitation.inviterId,
-        title: language === 'ar' ? 'تم قبول الدعوة' : 'Invitation acceptée',
-        message: language === 'ar' 
-          ? `${invitation.email} قبل دعوتك للانضمام إلى الفريق.`
-          : `${invitation.email} a accepté votre invitation à rejoindre l'équipe.`,
+        title: lt('Invitation accepted', 'Invitation acceptée', 'تم قبول الدعوة'),
+        message: lt(
+          `${invitation.email} accepted your invitation to join the team.`,
+          `${invitation.email} a accepté votre invitation à rejoindre l'équipe.`,
+          `${invitation.email} قبل دعوتك للانضمام إلى الفريق.`
+        ),
         type: 'invitation_accepted',
         invitationId: invitation.id,
         inviteeEmail: invitation.email,
@@ -384,7 +386,7 @@ export default function Dashboard({
       });
 
       setShowInviteSimulation(null);
-      alert(language === 'ar' ? 'تم قبول الدعوة بنجاح!' : 'Invitation acceptée avec succès !');
+      alert(lt('Invitation accepted successfully!', 'Invitation acceptée avec succès !', 'تم قبول الدعوة بنجاح!'));
     } catch (error) {
       console.error("Error accepting invite:", error);
     }
@@ -407,11 +409,11 @@ export default function Dashboard({
       setTeamMembers(prev => [...prev, {
         name: notification.inviteeEmail.split('@')[0],
         email: notification.inviteeEmail,
-        role: language === 'ar' ? 'مسؤول توظيف' : 'Recruteur',
-        status: language === 'ar' ? 'نشط' : 'Actif'
+        role: lt('Recruiter', 'Recruteur', 'مسؤول توظيف'),
+        status: lt('Active', 'Actif', 'نشط')
       }]);
 
-      alert(language === 'ar' ? 'تم منح الوصول بنجاح!' : 'Accès accordé avec succès !');
+      alert(lt('Access granted successfully!', 'Accès accordé avec succès !', 'تم منح الوصول بنجاح!'));
     } catch (error) {
       console.error("Error granting access:", error);
     }
@@ -426,9 +428,11 @@ export default function Dashboard({
       location: 'Alger',
       match: 92,
       category: 'Excellent match',
-      summary: language === 'ar'
-        ? 'ممتاز مع خبرة قوية في Full Stack. الملف الشخصي مناسب جداً لمتطلبات الوظيفة.'
-        : 'Excellent candidat avec une solide expérience Full Stack. Profil très adapté aux exigences du poste.',
+      summary: lt(
+        'Excellent candidate with solid Full Stack experience. Profile very well suited to the job requirements.',
+        'Excellent candidat avec une solide expérience Full Stack. Profil très adapté aux exigences du poste.',
+        'ممتاز مع خبرة قوية في Full Stack. الملف الشخصي مناسب جداً لمتطلبات الوظيفة.'
+      ),
       email: 'ahmed.benali@email.dz',
       phone: '+213 550 12 34 56',
       scores: { exp: 95, skills: 90, edu: 88 },
@@ -513,6 +517,12 @@ export default function Dashboard({
   };
 
   const isRTL = language === 'ar';
+  
+  const lt = (en: string, fr: string, ar: string) => {
+    if (language === 'ar') return ar;
+    if (language === 'fr') return fr;
+    return en;
+  };
 
   const renderSidebar = () => {
     if (user?.role === 'employer') {
@@ -672,7 +682,7 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2 text-gray-400 text-[10px] font-black uppercase tracking-widest">
             <Clock size={14} className="text-[#F68D58]" />
-            {language === 'ar' ? 'منذ يومين' : 'Il y a 2j'}
+            {lt('2 days ago', 'Il y a 2j', 'منذ يومين')}
           </div>
         </div>
       </div>
@@ -681,7 +691,7 @@ export default function Dashboard({
       <div className="relative z-10 flex items-center justify-between pt-8 mt-8 border-t border-gray-50">
         <div className="space-y-1">
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            {language === 'ar' ? 'الراتب المتوقع' : 'Salaire Estimé'}
+            {lt('Estimated Salary', 'Salaire Estimé', 'الراتب المتوقع')}
           </p>
           <div className="text-xl font-black text-[#173E7D]">
             {job.salary}
@@ -733,17 +743,17 @@ export default function Dashboard({
     summary: '',
     experiences: [
       { 
-        company: language === 'ar' ? 'شركة مثال تيك' : 'Exemple Tech', 
-        role: language === 'ar' ? 'مطور' : 'Développeur', 
-        period: language === 'ar' ? '2022 - الحالي' : '2022 - Présent', 
-        desc: language === 'ar' ? 'تطوير حلول ويب مبتكرة.' : 'Développement de solutions web innovantes.',
+        company: lt('Example Tech', 'Exemple Tech', 'شركة مثال تيك'), 
+        role: lt('Developer', 'Développeur', 'مطور'), 
+        period: lt('2022 - Present', '2022 - Présent', '2022 - الحالي'), 
+        desc: lt('Developing innovative web solutions.', 'Développement de solutions web innovantes.', 'تطوير حلول ويب مبتكرة.'),
         missions: ''
       }
     ],
     education: [
       { 
-        school: language === 'ar' ? 'جامعة الجزائر' : 'Université d\'Alger', 
-        degree: language === 'ar' ? 'ماستر في المعلوماتية' : 'Master en Informatique', 
+        school: lt('University of Algiers', 'Université d\'Alger', 'جامعة الجزائر'), 
+        degree: lt('Master in Computer Science', 'Master en Informatique', 'ماستر في المعلوماتية'), 
         year: '2021' 
       }
     ],
@@ -2087,8 +2097,8 @@ export default function Dashboard({
                               <Mail size={20} />
                             </div>
                             <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
-                              <h4 className="font-bold text-[#173E7D]">{language === 'ar' ? 'دعوة عضو جديد' : 'Inviter un nouveau membre'}</h4>
-                              <p className="text-xs text-gray-500">{language === 'ar' ? 'أدخل البريد الإلكتروني للشخص الذي تريد دعوته.' : 'Entrez l\'adresse e-mail de la personne que vous souhaitez inviter.'}</p>
+                              <h4 className="font-bold text-[#173E7D]">{lt('Invite a new member', 'Inviter un nouveau membre', 'دعوة عضو جديد')}</h4>
+                              <p className="text-xs text-gray-500">{lt('Enter the email of the person you want to invite.', 'Entrez l\'adresse e-mail de la personne que vous souhaitez inviter.', 'أدخل البريد الإلكتروني للشخص الذي تريد دعوته.')}</p>
                             </div>
                           </div>
                           <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -2118,7 +2128,7 @@ export default function Dashboard({
                               }}
                               className="px-6 py-3 bg-white text-gray-500 border border-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all"
                             >
-                              {language === 'ar' ? 'إلغاء' : 'Annuler'}
+                              {lt('Cancel', 'Annuler', 'إلغاء')}
                             </button>
                           </div>
                         </motion.div>
@@ -2128,7 +2138,7 @@ export default function Dashboard({
                       {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).length > 0 && (
                         <div className="space-y-4">
                           <h4 className={`text-sm font-black text-[#F68D58] uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>
-                            {language === 'ar' ? 'طلبات الوصول المعلقة' : 'Demandes d\'accès en attente'}
+                            {lt('Pending Access Requests', 'Demandes d\'accès en attente', 'طلبات الوصول المعلقة')}
                           </h4>
                           {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).map((notif, i) => (
                             <div key={i} className={`flex items-center justify-between p-6 bg-orange-50 border border-orange-100 rounded-3xl ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -2192,8 +2202,8 @@ export default function Dashboard({
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {[
-                              { id: 'help-center', title: t('settings_new.helpCenter'), desc: language === 'ar' ? 'أدلة ودروس كاملة' : 'Guides et tutoriels complets', icon: BookOpen },
-                              { id: 'direct-support', title: t('settings_new.directSupport'), desc: language === 'ar' ? 'اتصل بفريقنا 24/7' : 'Contactez notre équipe 24/7', icon: MessageSquare },
+                              { id: 'help-center', title: t('settings_new.helpCenter'), desc: lt('Full guides and tutorials', 'Guides et tutoriels complets', 'أدلة ودروس كاملة'), icon: BookOpen },
+                              { id: 'direct-support', title: t('settings_new.directSupport'), desc: lt('Contact our team 24/7', 'Contactez notre équipe 24/7', 'اتصل بفريقنا 24/7'), icon: MessageSquare },
                             ].map((item, i) => (
                               <button 
                                 key={i} 
@@ -2315,24 +2325,24 @@ export default function Dashboard({
                           <div className="p-8 bg-gray-50 rounded-3xl border border-gray-100">
                             <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                               <div>
-                                <div className="text-sm text-gray-400 mb-1">{language === 'ar' ? 'الخطة الحالية' : 'Plan actuel'}</div>
+                                <div className="text-sm text-gray-400 mb-1">{lt('Current Plan', 'Plan actuel', 'الخطة الحالية')}</div>
                                 <div className="text-2xl font-black text-[#173E7D]">Plan Pro</div>
                               </div>
                               <div className="px-4 py-2 bg-emerald-100 text-emerald-600 rounded-xl text-xs font-black uppercase tracking-widest">
-                                {language === 'ar' ? 'نشط' : 'Actif'}
+                                {lt('Active', 'Actif', 'نشط')}
                               </div>
                             </div>
                             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div className="h-full bg-[#F68D58] w-2/3"></div>
                             </div>
                             <div className={`flex justify-between mt-4 text-xs font-bold text-gray-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                              <span>{language === 'ar' ? '20 يوم متبقية' : '20 jours restants'}</span>
-                              <span>{language === 'ar' ? 'تجديد في 15 أفريل' : 'Renouvellement le 15 Avril'}</span>
+                              <span>{lt('20 days remaining', '20 jours restants', '20 يوم متبقية')}</span>
+                              <span>{lt('Renewal on April 15', 'Renouvellement le 15 Avril', 'تجديد في 15 أفريل')}</span>
                             </div>
                           </div>
 
                           <div className="space-y-4">
-                            <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'طرق الدفع' : 'Modes de paiement'}</h4>
+                            <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{lt('Payment Methods', 'Modes de paiement', 'طرق الدفع')}</h4>
                             <div className={`p-6 border border-gray-100 rounded-2xl flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                               <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                                 <div className="w-12 h-8 bg-gray-100 rounded flex items-center justify-center font-bold text-gray-400 text-[10px]">VISA</div>
@@ -2342,7 +2352,7 @@ export default function Dashboard({
                                 </div>
                               </div>
                               <button className="text-[#F68D58] font-bold text-sm hover:underline">
-                                {language === 'ar' ? 'تعديل' : 'Modifier'}
+                                {lt('Edit', 'Modifier', 'تعديل')}
                               </button>
                             </div>
                           </div>
@@ -2352,7 +2362,7 @@ export default function Dashboard({
                               onClick={() => setBillingView('plans')}
                               className="w-full py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-800 transition-all shadow-lg shadow-blue-900/10"
                             >
-                              {language === 'ar' ? 'ترقية الخطة' : 'Mettre à niveau le plan'}
+                              {lt('Upgrade Plan', 'Mettre à niveau le plan', 'ترقية الخطة')}
                             </button>
                           </div>
                         </>
@@ -2364,8 +2374,8 @@ export default function Dashboard({
                           </button>
                           
                           <div className={isRTL ? 'text-right' : ''}>
-                            <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'اختر خطتك' : 'Choisissez votre plan'}</h3>
-                            <p className="text-gray-400">{language === 'ar' ? 'اختر الباقة التي تناسب احتياجات توظيفك.' : 'Sélectionnez le forfait qui correspond à vos besoins de recrutement.'}</p>
+                            <h3 className="text-2xl font-bold text-[#173E7D]">{lt('Choose your plan', 'Choisissez votre plan', 'اختر خطتك')}</h3>
+                            <p className="text-gray-400">{lt('Select the package that fits your recruitment needs.', 'Sélectionnez le forfait qui correspond à vos besoins de recrutement.', 'اختر الباقة التي تناسب احتياجات توظيفك.')}</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2398,7 +2408,7 @@ export default function Dashboard({
                                 <button 
                                   onClick={() => {
                                     if (plan.id === 'Gratuit') {
-                                      setBillingSuccessMessage(language === 'ar' ? 'تم تفعيل الخطة المجانية بنجاح!' : 'Plan Gratuit activé avec succès !');
+                                      setBillingSuccessMessage(lt('Free plan activated successfully!', 'Plan Gratuit activé avec succès !', 'تم تفعيل الخطة المجانية بنجاح!'));
                                       setShowBillingSuccess(true);
                                       setBillingView('current');
                                     } else {
@@ -2408,7 +2418,7 @@ export default function Dashboard({
                                   }}
                                   className={`w-full py-4 rounded-xl font-bold text-sm transition-all ${plan.popular ? 'bg-[#F68D58] text-white hover:bg-[#e57d47]' : 'bg-[#173E7D] text-white hover:bg-blue-800'}`}
                                 >
-                                  {plan.id === 'Gratuit' ? (language === 'ar' ? 'تفعيل' : 'Activer') : (language === 'ar' ? 'اختيار' : 'Choisir')}
+                                  {plan.id === 'Gratuit' ? lt('Activate', 'Activer', 'تفعيل') : lt('Choose', 'Choisir', 'اختيار')}
                                 </button>
                               </div>
                             ))}
@@ -2423,11 +2433,11 @@ export default function Dashboard({
 
                           <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                             <div className={isRTL ? 'text-right' : ''}>
-                              <h3 className="text-2xl font-bold text-[#173E7D]">{language === 'ar' ? 'الدفع الآمن' : 'Paiement Sécurisé'}</h3>
-                              <p className="text-gray-400">{language === 'ar' ? 'أكمل اشتراكك في باقة' : 'Complétez votre abonnement au plan'} <span className="text-[#173E7D] font-bold">{selectedPlan?.name}</span></p>
+                              <h3 className="text-2xl font-bold text-[#173E7D]">{lt('Secure Payment', 'Paiement Sécurisé', 'الدفع الآمن')}</h3>
+                              <p className="text-gray-400">{lt('Complete your subscription to the plan', 'Complétez votre abonnement au plan', 'أكمل اشتراكك في باقة')} <span className="text-[#173E7D] font-bold">{selectedPlan?.name}</span></p>
                             </div>
                             <div className="text-right">
-                              <div className="text-xs text-gray-400 uppercase font-black tracking-widest">{language === 'ar' ? 'إجمالي الدفع' : 'Total à payer'}</div>
+                              <div className="text-xs text-gray-400 uppercase font-black tracking-widest">{lt('Total to pay', 'Total à payer', 'إجمالي الدفع')}</div>
                               <div className="text-3xl font-black text-[#F68D58]">{selectedPlan?.price} DA</div>
                             </div>
                           </div>
@@ -2435,7 +2445,7 @@ export default function Dashboard({
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                             {/* Payment Methods */}
                             <div className="space-y-6">
-                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{language === 'ar' ? 'اختر وسيلة الدفع' : 'Choisir une méthode de paiement'}</h4>
+                              <h4 className={`font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{lt('Choose a payment method', 'Choisir une méthode de paiement', 'اختر وسيلة الدفع')}</h4>
                               <div className="grid grid-cols-1 gap-4">
                                 {[
                                   { id: 'EDAHABIA', name: 'EDAHABIA', icon: '💳' },

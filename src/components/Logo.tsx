@@ -9,9 +9,9 @@ interface LogoProps {
 
 export default function Logo({ className = '', size = 'md', onClick }: LogoProps) {
   const sizes = {
-    sm: 'h-10',
-    md: 'h-16',
-    lg: 'h-32'
+    sm: 'h-6',    // 24px
+    md: 'h-12',   // 48px
+    lg: 'h-24',   // 96px
   };
 
   // Using the exact attachment ID for the logo image provided by the user (Handshake version)
@@ -27,7 +27,7 @@ export default function Logo({ className = '', size = 'md', onClick }: LogoProps
       <img
         src={logoImage}
         alt="Dar L'emploi"
-        className={`${sizes[12px]} w-auto block object-contain`}
+        className={`${sizes[size]} w-auto block object-contain`}
       />
     </div>
   );

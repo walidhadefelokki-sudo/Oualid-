@@ -27,7 +27,7 @@ export default function Logo({ className = '', size = 'md', onClick }: LogoProps
       <img
         src={logoImage}
         alt="Dar L'emploi"
-        className={`${sizes[size]} w-auto block object-contain`}
+        className={`${sizes[12px]} w-auto block object-contain`}
       />
     </div>
   );

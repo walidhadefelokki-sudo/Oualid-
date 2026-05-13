@@ -1,4 +1,5 @@
 import React from 'react';
+import logoImage from '../assets/logo.jpg';
 
 interface LogoProps {
   className?: string;
@@ -24,7 +25,7 @@ export default function Logo({ className = '', size = 'md', onClick }: LogoProps
       aria-label="Dar L'emploi Logo"
     >
       <img 
-        src={logoUrl} 
+        src={logoImage} 
         alt="Dar L'emploi" 
         className={`${sizes[size]} w-auto block object-contain min-w-[180px]`}
         referrerPolicy="no-referrer"

@@ -24,7 +24,7 @@ export default function Logo({ className = '', size = 'md', onClick }: LogoProps
       aria-label="Dar L'emploi Logo"
     >
       <img 
-        src={https://drive.google.com/file/d/1iv0G-U_51Xa9BHDctwHuhJZoynVyOfHq/view?usp=sharing} 
+        src={logourl} 
         alt="Dar L'emploi" 
         className={`${sizes[size]} w-auto block object-contain min-w-[180px]`}
         referrerPolicy="no-referrer"

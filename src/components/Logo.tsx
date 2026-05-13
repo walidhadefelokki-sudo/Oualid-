@@ -24,23 +24,10 @@ export default function Logo({ className = '', size = 'md', onClick }: LogoProps
       role={onClick ? 'button' : 'img'}
       aria-label="Dar L'emploi Logo"
     >
-      <img 
-        src={logoImage} 
-        alt="Dar L'emploi" 
-        className={`${sizes[size]} w-auto block object-contain min-w-[180px]`}
-        referrerPolicy="no-referrer"
-        onError={(e) => {
-          // Fallback to text if image fails to load
-          const target = e.target as HTMLImageElement;
-          target.style.display = 'none'; // Hide the broken image icon
-          const parent = target.parentElement;
-          if (parent && !parent.querySelector('.logo-fallback')) {
-            const span = document.createElement('span');
-            span.className = 'logo-fallback font-display font-black text-[#173E7D] text-xl tracking-tighter ml-2';
-            span.innerText = "Dar L'emploi";
-            parent.appendChild(span);
-          }
-        }}
+      <img
+        src={logoImage}
+        alt="Dar L'emploi"
+        className={`${sizes[size]} w-auto block object-contain`}
       />
     </div>
   );

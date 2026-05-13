@@ -39,16 +39,8 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { db, auth } from './firebase';
-import { 
-  signInAnonymously, 
-  onAuthStateChanged as onFirebaseAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut
-} from 'firebase/auth';
-import { doc, getDocFromServer, setDoc, serverTimestamp } from 'firebase/firestore';
+import { signInAnonymously, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
+import { doc, getDocFromServer } from 'firebase/firestore';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
 import { translations, Language } from './translations';
@@ -78,6 +70,8 @@ export default function App() {
   const [loginRole, setLoginRole] = useState<'user' | 'employer'>('user');
   const [language, setLanguage] = useState<Language>('fr');
   const [isDemo, setIsDemo] = useState(false);
+  const [modalInitialRole, setModalInitialRole] = useState<'user' | 'employer'>('user');
+  const [modalInitialStep, setModalInitialStep] = useState<'selection' | 'form'>('selection');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
@@ -164,6 +158,12 @@ export default function App() {
     resume: null as File | null
   });
 
+  const handleOpenRegister = (role: 'user' | 'employer') => {
+    setModalInitialRole(role);
+    setModalInitialStep('form');
+    setIsAuthModalOpen(true);
+  };
+
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     // Placeholder for Firebase submission
@@ -188,40 +188,24 @@ export default function App() {
       if (user || isDemo) {
         setView('dashboard');
       } else {
-        handleDemoCandidate();
+        setIsLoginOpen(true);
       }
     }, 1500);
   };
 
-  const handleGoogleLogin = async (role: 'user' | 'employer') => {
+  const handleGoogleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const currentUser = result.user;
-
-      if (currentUser) {
-        // Check if user exists in Firestore
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDocFromServer(userDocRef);
-
-        if (!userDoc.exists()) {
-          // Create new user profile if it doesn't exist
-          await setDoc(userDocRef, {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            role: role,
-            createdAt: serverTimestamp(),
-            lastLogin: serverTimestamp()
-          });
-        } else {
-          // Update last login
-          await setDoc(userDocRef, { lastLogin: serverTimestamp() }, { merge: true });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
         }
-      }
-      setIsLoginOpen(false);
-      setIsAuthModalOpen(false);
+      });
+      
+      if (error) throw error;
+      
+      // Note: Profile creation is usually handled via Supabase Triggers/Functions 
+      // or on the first session load in the useEffect below.
     } catch (error) {
       console.error("Error during Google Login:", error);
       alert("Erreur lors de la connexion avec Google.");
@@ -232,7 +216,11 @@ export default function App() {
     e.preventDefault();
     setLoginError(null);
     try {
-      await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      if (error) throw error;
       setIsLoginOpen(false);
       setLoginEmail('');
       setLoginPassword('');
@@ -244,7 +232,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await firebaseSignOut(auth);
+      await supabase.auth.signOut();
       setView('landing');
     } catch (error) {
       console.error("Error during logout:", error);
@@ -264,42 +252,70 @@ export default function App() {
     };
     testConnection();
 
-    const unsubscribe = onFirebaseAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser && !currentUser.isAnonymous) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDocFromServer(userDocRef);
-        
-        if (userDoc.exists()) {
-          const profile = userDoc.data();
-          setUser({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: profile.displayName || currentUser.displayName,
-            photoURL: profile.photoURL || currentUser.photoURL,
-            role: profile.role || 'user'
-          });
-        } else {
-          // Profile might still be being created in handleGoogleLogin or AuthModal
-          // Fallback to basic info
-          setUser({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            role: 'user'
-          });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user;
+      
+      if (currentUser) {
+        // Sign into Firebase Auth anonymously if not already signed in
+        // This is a bridge to allow Firestore access while using Supabase Auth
+        if (!auth.currentUser) {
+          try {
+            await signInAnonymously(auth);
+          } catch (err) {
+            console.error("Error signing into Firebase anonymously:", err);
+          }
         }
-      } else if (currentUser && currentUser.isAnonymous && isDemo) {
-        // Handle demo user persistence if needed, otherwise stay in current state
+
+        let profile = await fetchUserProfile(currentUser.id);
+        
+        const metadata = currentUser.user_metadata;
+        const savedRole = localStorage.getItem('intended_role');
+        const roleFromMetadata = metadata.role || savedRole || loginRole;
+        
+        // Clean up localStorage
+        if (savedRole) localStorage.removeItem('intended_role');
+        
+        if (!profile) {
+          // Create profile if it doesn't exist
+          const { data: newProfile, error: createError } = await supabase
+            .from('users')
+            .upsert({
+              uid: currentUser.id,
+              email: currentUser.email,
+              display_name: metadata.full_name || currentUser.email,
+              photo_url: metadata.avatar_url,
+              company_name: metadata.company_name,
+              role: roleFromMetadata,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (!createError) profile = newProfile;
+        } else if (roleFromMetadata === 'employer' && profile.role !== 'employer') {
+          // Update role if needed
+          await supabase
+            .from('users')
+            .update({ role: 'employer' })
+            .eq('uid', currentUser.id);
+          profile.role = 'employer';
+        }
+        
+        setUser({ 
+          uid: currentUser.id,
+          email: currentUser.email,
+          displayName: profile?.display_name || currentUser.user_metadata.full_name,
+          photoURL: profile?.photo_url || currentUser.user_metadata.avatar_url,
+          role: profile?.role || loginRole
+        });
       } else {
-        setUser(null);
-        setIsDemo(false);
+        setUser((prev) => isDemo ? prev : null);
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, [isDemo]);
+    return () => subscription.unsubscribe();
+  }, [loginRole]);
 
   useEffect(() => {
     // Cycle through colors for the intro effect
@@ -366,12 +382,6 @@ export default function App() {
         <div className={`hidden md:flex items-center gap-6 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
           {/* Language Toggle */}
           <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-full border border-gray-100">
-            <button 
-              onClick={() => setLanguage('en')}
-              className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${language === 'en' ? 'bg-[#173E7D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              EN
-            </button>
             <button 
               onClick={() => setLanguage('fr')}
               className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${language === 'fr' ? 'bg-[#173E7D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
@@ -454,7 +464,7 @@ export default function App() {
                 <LogOut size={24} /> {translations[language].logout}
               </button>
             ) : (
-              <button onClick={() => { setIsMenuOpen(false); handleDemoCandidate(); }} className="px-12 py-4 rounded-full bg-[#173E7D] text-white shadow-xl">{translations[language].nav.login}</button>
+              <button onClick={() => { setIsMenuOpen(false); setIsLoginOpen(true); }} className="px-12 py-4 rounded-full bg-[#173E7D] text-white shadow-xl">{translations[language].nav.login}</button>
             )}
           </motion.div>
         )}
@@ -481,13 +491,15 @@ export default function App() {
             transition={{ duration: 0.8 }}
             className="relative z-10 flex-1 text-left"
           >
-            <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-xs font-black uppercase tracking-[0.3em] mb-8 w-fit backdrop-blur-xl border border-white/20">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F68D58] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F68D58]"></span>
-              </span>
-              <span>{translations[language].hero.badge}</span>
-            </div>
+            {translations[language].hero.badge && (
+              <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-xs font-black uppercase tracking-[0.3em] mb-8 w-fit backdrop-blur-xl border border-white/20">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F68D58] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F68D58]"></span>
+                </span>
+                <span>{translations[language].hero.badge}</span>
+              </div>
+            )}
             
             <h1 className="text-5xl md:text-7xl font-display font-black text-white leading-[1.1] tracking-tighter mb-8 uppercase">
               {language === 'fr' ? (
@@ -565,10 +577,7 @@ export default function App() {
           >
             {/* Candidate Card */}
             <div 
-              onClick={() => {
-                setLoginRole('user');
-                setIsAuthModalOpen(true);
-              }}
+              onClick={() => handleOpenRegister('user')}
               className="relative group cursor-pointer h-[240px] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10"
             >
               <img 
@@ -596,10 +605,7 @@ export default function App() {
 
             {/* Recruiter Card */}
             <div 
-              onClick={() => {
-                setLoginRole('employer');
-                setIsAuthModalOpen(true);
-              }}
+              onClick={() => handleOpenRegister('employer')}
               className="relative group cursor-pointer h-[240px] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10"
             >
               <img 
@@ -960,7 +966,7 @@ export default function App() {
               <p className="text-2xl text-gray-500 font-light max-w-2xl">{language === 'fr' ? 'Découvrez les meilleures opportunités sélectionnées pour vous.' : 'اكتشف أفضل الفرص المختارة لك.'}</p>
             </div>
             <button 
-              onClick={handleDemoCandidate}
+              onClick={() => setIsLoginOpen(true)}
               className="bg-white text-[#173E7D] px-12 py-6 rounded-full font-black flex items-center gap-4 hover:bg-[#173E7D] hover:text-white transition-all duration-500 group shadow-2xl border border-gray-100 text-xl"
             >
               {language === 'fr' ? 'Voir tout' : 'عرض الكل'} 
@@ -1440,95 +1446,84 @@ export default function App() {
                   <Logo size="md" onClick={() => setView('landing')} />
                 </div>
                 <h3 className="text-2xl font-display font-black text-[#173E7D] mb-2 tracking-tighter">
-                  {language === 'en' ? 'Welcome back' : language === 'fr' ? 'Bon retour' : 'مرحباً بعودتك'}
+                  {language === 'fr' ? 'Bon retour' : 'مرحباً بعودتك'}
                 </h3>
                 <p className="text-sm text-gray-400 mb-6 font-light leading-relaxed">
-                  {language === 'en' ? 'Log in to manage your applications.' : language === 'fr' ? 'Connectez-vous pour gérer vos candidatures.' : 'سجل دخولك لإدارة طلباتك.'}
+                  {language === 'fr' ? 'Connectez-vous pour gérer vos candidatures.' : 'سجل دخولك لإدارة طلباتك.'}
                 </p>
                 
-                <div className="flex flex-col gap-3 mb-6">
-                  <form onSubmit={handleEmailLogin} className="space-y-4">
-                    {loginError && (
-                      <div className="p-2.5 bg-red-50 text-red-600 rounded-xl text-[10px] font-bold animate-shake">
-                        {loginError}
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
-                        {language === 'en' ? 'Email Address' : language === 'fr' ? 'Adresse Email' : 'البريد الإلكتروني'}
-                      </label>
-                      <input 
-                        type="email" 
-                        required
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
-                        placeholder={language === 'en' ? 'your@email.com' : 'votre@email.com'}
-                      />
+                <form onSubmit={handleEmailLogin} className="space-y-4 mb-5">
+                  {loginError && (
+                    <div className="p-2.5 bg-red-50 text-red-600 rounded-xl text-[10px] font-bold animate-shake">
+                      {loginError}
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
-                        {language === 'en' ? 'Password' : language === 'fr' ? 'Mot de passe' : 'كلمة المرور'}
-                      </label>
-                      <input 
-                        type="password" 
-                        required
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
-                        placeholder="••••••••"
-                      />
-                    </div>
-                    <button 
-                      type="submit"
-                      className="w-full bg-[#173E7D] text-white py-3 rounded-xl font-black text-base hover:bg-[#F68D58] transition-all duration-500 shadow-lg shadow-blue-900/10 uppercase tracking-[0.2em]"
-                    >
-                      {language === 'en' ? 'Log in' : language === 'fr' ? 'Se connecter' : 'تسجيل الدخول'}
-                    </button>
-                  </form>
-
+                  )}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
+                      {language === 'fr' ? 'Adresse Email' : 'البريد الإلكتروني'}
+                    </label>
+                    <input 
+                      type="email" 
+                      required
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
+                      placeholder={language === 'fr' ? 'votre@email.com' : 'votre@email.com'}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block text-left">
+                      {language === 'fr' ? 'Mot de passe' : 'كلمة المرور'}
+                    </label>
+                    <input 
+                      type="password" 
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full px-5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] focus:bg-white transition-all text-sm font-medium"
+                      placeholder="••••••••"
+                    />
+                  </div>
                   <button 
-                    onClick={() => handleGoogleLogin('user')}
-                    className="w-full flex items-center justify-center gap-3 bg-white border border-gray-100 text-[#173E7D] py-3 rounded-xl font-black hover:bg-gray-50 transition-all shadow-sm text-sm group"
+                    type="submit"
+                    className="w-full bg-[#173E7D] text-white py-3 rounded-xl font-black text-base hover:bg-[#F68D58] transition-all duration-500 shadow-lg shadow-blue-900/10 uppercase tracking-[0.2em]"
                   >
-                    <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    {language === 'en' ? 'Login with Google' : language === 'fr' ? 'Connexion Google' : 'الدخول عبر جوجل'}
+                    {language === 'fr' ? 'Se connecter' : 'تسجيل الدخول'}
                   </button>
-                </div>
+                </form>
 
                 <div className="relative py-2 mb-5">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-100"></div>
                   </div>
                   <div className="relative flex justify-center text-[9px] uppercase tracking-widest font-black text-gray-300">
-                    <span className="bg-white px-2">{language === 'en' ? 'Or' : language === 'fr' ? 'Ou' : 'أو'}</span>
+                    <span className="bg-white px-2">{language === 'fr' ? 'DÉMO' : 'تجريبي'}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   <button 
                     onClick={handleDemoCandidate}
-                    className="bg-gray-50 text-[#173E7D] py-3 rounded-xl font-black text-[9px] uppercase tracking-tighter hover:bg-[#173E7D] hover:text-white transition-all"
+                    className="flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 text-[#173E7D] p-4 rounded-2xl font-black hover:bg-gray-50 transition-all shadow-sm group"
                   >
-                    {language === 'en' ? 'Demo User' : language === 'fr' ? 'Démo Candidat' : 'ديمو مترشح'}
+                    <UserIcon size={20} className="group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] uppercase tracking-tighter">{language === 'fr' ? "Candidat" : "مترشح"}</span>
                   </button>
                   <button 
                     onClick={handleDemoEmployer}
-                    className="bg-gray-50 text-[#173E7D] py-3 rounded-xl font-black text-[9px] uppercase tracking-tighter hover:bg-[#173E7D] hover:text-white transition-all"
+                    className="flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 text-[#173E7D] p-4 rounded-2xl font-black hover:bg-gray-50 transition-all shadow-sm group"
                   >
-                    {language === 'en' ? 'Demo Employer' : language === 'fr' ? 'Démo Recruteur' : 'ديمو موظف'}
+                    <Building2 size={20} className="group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] uppercase tracking-tighter">{language === 'fr' ? "Recruteur" : "صاحب عمل"}</span>
                   </button>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <button 
-                    onClick={() => {
-                      setIsLoginOpen(false);
-                      setIsAuthModalOpen(true);
-                    }}
+                    onClick={handleDemoCandidate}
                     className="text-gray-400 hover:text-[#173E7D] font-black text-[10px] uppercase tracking-widest transition-colors"
                   >
-                    {language === 'en' ? 'New here? Sign up' : language === 'fr' ? "Nouveau ? S'inscrire" : "عضو جديد؟ سجل الآن"}
+                    {language === 'fr' ? "S'inscrire" : "سجل الآن"}
                   </button>
                 </div>
               </div>
@@ -1541,6 +1536,8 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         language={language}
+        initialRole={modalInitialRole}
+        initialStep={modalInitialStep}
       />
     </div>
   );

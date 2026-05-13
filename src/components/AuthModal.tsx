@@ -1,14 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
-import { db, auth } from '../firebase';
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  createUserWithEmailAndPassword,
-  updateProfile
-} from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
+import { supabase } from '../supabase';
 import Logo from './Logo';
 
 import { translations, Language } from '../translations';
@@ -17,14 +10,24 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   language: Language;
+  initialRole?: 'user' | 'employer';
+  initialStep?: 'selection' | 'form';
 }
 
-export default function AuthModal({ isOpen, onClose, language }: AuthModalProps) {
-  const [step, setStep] = useState<'selection' | 'form'>('selection');
-  const [role, setRole] = useState<'user' | 'employer'>('user');
+export default function AuthModal({ isOpen, onClose, language, initialRole, initialStep }: AuthModalProps) {
+  const [step, setStep] = useState<'selection' | 'form'>(initialStep || 'selection');
+  const [role, setRole] = useState<'user' | 'employer'>(initialRole || 'user');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync state if props change (when modal is opened)
+  React.useEffect(() => {
+    if (isOpen) {
+      if (initialRole) setRole(initialRole);
+      if (initialStep) setStep(initialStep);
+    }
+  }, [isOpen, initialRole, initialStep]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -98,32 +101,22 @@ export default function AuthModal({ isOpen, onClose, language }: AuthModalProps)
 
   const handleGoogleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const currentUser = result.user;
-
-      if (currentUser) {
-        // Check if user exists in Firestore
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDocFromServer(userDocRef);
-
-        if (!userDoc.exists()) {
-          // Create new user profile if it doesn't exist
-          await setDoc(userDocRef, {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            role: role, // Use the selected role (user or employer)
-            createdAt: serverTimestamp(),
-            lastLogin: serverTimestamp()
-          });
+      // Save intended role to localStorage to persist across redirect
+      localStorage.setItem('intended_role', role);
+      
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         }
-      }
-      onClose();
+      });
+      if (error) throw error;
     } catch (err: any) {
-      console.error("Error during Google Login:", err);
-      setError(err.message || t.error);
+      setError(err.message);
     }
   };
 
@@ -146,35 +139,31 @@ export default function AuthModal({ isOpen, onClose, language }: AuthModalProps)
     setLoading(true);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const currentUser = userCredential.user;
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: role === 'user' ? formData.name : null,
+            company_name: role === 'employer' ? formData.companyName : null,
+            role: role
+          }
+        }
+      });
 
-      if (currentUser) {
-        // Update Firebase profile with name
-        const displayName = role === 'user' ? formData.name : formData.companyName;
-        await updateProfile(currentUser, { displayName });
+      if (signupError) throw signupError;
 
-        // Create Firestore profile
-        await setDoc(doc(db, 'users', currentUser.uid), {
-          uid: currentUser.uid,
-          email: currentUser.email,
-          displayName: displayName,
-          companyName: role === 'employer' ? formData.companyName : null,
-          role: role,
-          createdAt: serverTimestamp(),
-          lastLogin: serverTimestamp()
-        });
-
+      if (data.user) {
+        // Profile creation is handled by the useEffect in App.tsx or a trigger
         const successMsg = {
-          en: "Registration successful!",
-          fr: "Inscription réussie !",
-          ar: "تم التسجيل بنجاح!"
+          en: "Registration successful! Please check your email.",
+          fr: "Inscription réussie ! Veuillez vérifier votre email.",
+          ar: "تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني."
         }[language];
         alert(successMsg);
         onClose();
       }
     } catch (err: any) {
-      console.error("Error during Email Signup:", err);
       setError(err.message || t.error);
     } finally {
       setLoading(false);
@@ -418,16 +407,16 @@ export default function AuthModal({ isOpen, onClose, language }: AuthModalProps)
                     </div>
                     <h4 className="text-2xl font-display font-black text-white mb-4 leading-tight tracking-tight uppercase">
                       {role === 'user' ? (
-                        language === 'en' ? "Boost your career" : language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
+                        language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
                       ) : (
-                        language === 'en' ? "Find your future talent" : language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
+                        language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
                       )}
                     </h4>
                     <p className="text-white/60 text-base font-medium leading-relaxed max-w-sm mx-auto">
                       {role === 'user' ? (
-                        language === 'en' ? "Access thousands of exclusive offers in Algeria." : language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
+                        language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
                       ) : (
-                        language === 'en' ? "Use our AI to filter the best candidates." : language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
+                        language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
                       )}
                     </p>
                   </div>

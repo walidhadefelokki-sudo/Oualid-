@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Mail,
   Phone,
+  MessageCircle,
+  MessageSquare,
   CheckSquare,
   Ban,
   MoreHorizontal,
@@ -51,7 +53,6 @@ import {
   Info,
   Copy,
   BookOpen,
-  MessageSquare,
   Code2,
   Activity,
   Sparkles,
@@ -139,7 +140,7 @@ interface Notification {
 }
 
 export default function Dashboard({ 
-  user, 
+  user: initialUser, 
   language, 
   setLanguage,
   onGoHome
@@ -149,8 +150,52 @@ export default function Dashboard({
   setLanguage: (lang: Language) => void; 
   onGoHome: () => void;
 }) {
+  // Use a default user if none provided (especially for demo mode/crash prevention)
+  const user = initialUser || {
+    uid: 'anonymous',
+    displayName: 'Utilisateur',
+    email: '',
+    role: 'candidate',
+    photoURL: ''
+  };
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  const t = (key: string, variables?: Record<string, any>) => {
+    const keys = key.split('.');
+    let result: any = translations[language];
+    for (const k of keys) {
+      if (result[k]) result = result[k];
+      else return key;
+    }
+    if (variables && typeof result === 'string') {
+      Object.entries(variables).forEach(([k, v]) => {
+        result = result.replace(`{${k}}`, v);
+      });
+    }
+    return result;
+  };
+
+  const lt = (en: string, fr: string, ar: string) => {
+    if (language === 'ar') return ar;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
+  const isRTL = language === 'ar';
+
+  const handleWhatsAppContact = (phoneNumber: string, candidateName: string) => {
+    const message = encodeURIComponent(`Bonjour ${candidateName}, nous avons bien reçu votre candidature sur Algeria Jobs. Souhaitez-vous fixer un entretien ?`);
+    window.open(`https://wa.me/${phoneNumber.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
+  };
+
+  const PremiumBadge = () => (
+    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-md text-[8px] font-black uppercase tracking-wider shadow-sm">
+      <Gem size={10} />
+      <span>Premium 2026</span>
+    </div>
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -225,6 +270,7 @@ export default function Dashboard({
   };
 
   const [activeTab, setActiveTab] = useState(user?.role === 'employer' ? 'employer-dashboard' : 'dashboard');
+  const [sourcingJobFilter, setSourcingJobFilter] = useState('Tous les postes');
   const [settingsTab, setSettingsTab] = useState('general');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -501,28 +547,6 @@ export default function Dashboard({
     }
   ];
 
-  const t = (key: string, variables?: Record<string, any>) => {
-    const keys = key.split('.');
-    let result: any = translations[language];
-    for (const k of keys) {
-      if (result[k]) result = result[k];
-      else return key;
-    }
-    if (variables && typeof result === 'string') {
-      Object.entries(variables).forEach(([k, v]) => {
-        result = result.replace(`{${k}}`, v);
-      });
-    }
-    return result;
-  };
-
-  const isRTL = language === 'ar';
-  
-  const lt = (en: string, fr: string, ar: string) => {
-    if (language === 'ar') return ar;
-    if (language === 'fr') return fr;
-    return en;
-  };
 
   const renderSidebar = () => {
     if (user?.role === 'employer') {
@@ -542,8 +566,10 @@ export default function Dashboard({
             <SidebarItem icon={Briefcase} label="Mes offres" active={activeTab === 'manage-jobs'} onClick={() => setActiveTab('manage-jobs')} />
             <SidebarItem icon={UsersIcon} label="Candidatures" active={activeTab === 'candidates'} onClick={() => setActiveTab('candidates')} />
 
-            <SectionLabel>IA & Outils</SectionLabel>
-            <SidebarItem icon={Cpu} label="Filtrage IA" active={activeTab === 'ai-filter'} onClick={() => setActiveTab('ai-filter')} />
+            <SectionLabel>IA & Innovation 2026</SectionLabel>
+            <SidebarItem icon={Cpu} label="Sourcing IA" active={activeTab === 'sourcing-ia'} onClick={() => setActiveTab('sourcing-ia')} />
+            <SidebarItem icon={BarChart3} label="Analytics Wilayas" active={activeTab === 'analytics-wilaya'} onClick={() => setActiveTab('analytics-wilaya')} />
+            <SidebarItem icon={Zap} label="Filtrage IA" active={activeTab === 'ai-filter'} onClick={() => setActiveTab('ai-filter')} />
             <SidebarItem icon={Building2} label="Mon entreprise" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
 
             <SectionLabel>Compte</SectionLabel>
@@ -1367,13 +1393,29 @@ export default function Dashboard({
                             </div>
 
                             {/* Action Button */}
-                            <button 
-                              onClick={() => setSelectedCandidateCV(candidate)}
-                              className="w-full bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-[#F68D58] hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10 flex items-center justify-center gap-3 group/btn"
-                            >
-                              <span>Analyser le profil</span>
-                              <ChevronRight size={18} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
-                            </button>
+                            <div className="grid grid-cols-5 gap-3 w-full">
+                              <button 
+                                onClick={() => setSelectedCandidateCV(candidate)}
+                                className="col-span-3 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10 flex items-center justify-center gap-2 group/btn"
+                              >
+                                <span>Voir Profil</span>
+                                <ChevronRight size={14} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
+                              </button>
+                              <button 
+                                onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
+                                className="col-span-1 bg-[#25D366] text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-green-500/10 flex items-center justify-center"
+                                title="Contact WhatsApp"
+                              >
+                                <MessageCircle size={20} />
+                              </button>
+                              <button 
+                                onClick={() => alert('Lecture du Pitch Vidéo (Fonctionnalité 2026)')}
+                                className="col-span-1 bg-gradient-to-br from-purple-500 to-pink-500 text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-purple-500/10 flex items-center justify-center"
+                                title="Voir Video Pitch"
+                              >
+                                <Camera size={20} />
+                              </button>
+                            </div>
                           </div>
                         </motion.div>
                       ))}
@@ -1383,17 +1425,173 @@ export default function Dashboard({
               </div>
             </div>
           );
+        case 'sourcing-ia':
+          return (
+            <div className="space-y-12">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">Sourcing IA Stratégique</h2>
+                    <PremiumBadge />
+                  </div>
+                  <p className="text-gray-500 font-medium max-w-2xl">
+                    Découvrez des talents "dormants" qui n'ont pas encore postulé mais dont le profil correspond à 95% à vos besoins. Propulsé par Gemini Pro.
+                  </p>
+                </div>
+                <div className="bg-white p-2 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-2">
+                  <select 
+                    value={sourcingJobFilter}
+                    onChange={(e) => setSourcingJobFilter(e.target.value)}
+                    className="bg-transparent border-none text-sm font-bold text-[#173E7D] focus:ring-0 px-4 py-2"
+                  >
+                    <option>Tous les postes</option>
+                    <option>Dev Full Stack</option>
+                    <option>Data Analyst</option>
+                    <option>Chef de Projet</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {[
+                  { name: 'Kamel Driss', role: 'DevOps Engineer', location: 'Alger', match: 98, exp: '8 ans', tags: ['Kubernetes', 'Cloud Computing'], score: 'Excellent' },
+                  { name: 'Sami Rahmani', role: 'Architecte Cloud', location: 'Oran', match: 94, exp: '12 ans', tags: ['AWS', 'Azure'], score: 'Profil Rare' },
+                  { name: 'Lydia Meziane', role: 'Lead Data Scientist', location: 'Bejaia', match: 91, exp: '6 ans', tags: ['Python', 'MLOps'], score: 'Top Talent' },
+                ].map((talent, i) => (
+                  <div key={i} className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-purple-100 transition-colors" />
+                    
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                      <div className="w-20 h-20 rounded-2xl bg-gray-50 border-4 border-white shadow-lg overflow-hidden">
+                        <img src={`https://i.pravatar.cc/150?u=${talent.name}`} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-1">Match IA</div>
+                        <div className="text-3xl font-black text-[#173E7D]">{talent.match}%</div>
+                      </div>
+                    </div>
+
+                    <div className="relative z-10">
+                      <h4 className="text-xl font-black text-[#173E7D] mb-1">{talent.name}</h4>
+                      <p className="text-xs font-bold text-[#F68D58] uppercase tracking-wider mb-4">{talent.role}</p>
+                      
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {talent.tags.map(t => (
+                          <span key={t} className="px-3 py-1 bg-gray-50 text-gray-500 rounded-lg text-[9px] font-black uppercase tracking-wider border border-gray-100 group-hover:bg-white transition-colors">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-white transition-colors">
+                          <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
+                          <p className="text-sm font-black text-[#173E7D]">{talent.exp}</p>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-2xl">
+                          <p className="text-[8px] text-purple-400 font-black uppercase tracking-widest mb-1">Status IA</p>
+                          <p className="text-sm font-black text-purple-600">{talent.score}</p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => alert('Contacting talent...')}
+                        className="w-full bg-[#173E7D] text-white py-4 rounded-2xl font-bold text-sm hover:bg-[#F68D58] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/10"
+                      >
+                        <Zap size={18} />
+                        Débloquer & Contacter
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        case 'analytics-wilaya':
+          return (
+            <div className="space-y-12">
+              <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden relative">
+                <div className="absolute top-10 right-10 flex gap-4">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                    <span className="text-xs font-black uppercase tracking-widest">Temps Réel</span>
+                  </div>
+                  <PremiumBadge />
+                </div>
+
+                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight mb-2">Carte de Chaleur des Talents</h2>
+                <p className="text-gray-500 font-medium mb-10 max-w-xl">
+                  Découvrez la concentration des candidats qualifiés par région en Algérie pour optimiser votre recrutement local.
+                </p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                  <div className="bg-gray-50 rounded-[2rem] p-8 min-h-[400px] flex items-center justify-center relative border border-gray-100">
+                    <div className="text-center">
+                      <MapPin size={64} className="text-[#173E7D]/10 mx-auto mb-6" />
+                      <p className="text-gray-400 font-black text-sm uppercase tracking-widest">Heatmap interactive activée</p>
+                      <p className="text-xs text-gray-400 mt-2">Visualisation des 48 Wilayas disponible en plan Entreprise</p>
+                    </div>
+                    {/* Simplified Heatmap Overlay */}
+                    <div className="absolute inset-0 p-10 flex flex-col justify-center space-y-4">
+                       <div className="flex items-center gap-4">
+                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
+                           <div className="absolute inset-0 bg-blue-600 w-[85%]" />
+                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-white uppercase">Alger (42%)</span>
+                         </div>
+                       </div>
+                       <div className="flex items-center gap-4">
+                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
+                           <div className="absolute inset-0 bg-blue-400 w-[15%]" />
+                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-[#173E7D] uppercase tracking-widest">Oran (15%)</span>
+                         </div>
+                       </div>
+                       <div className="flex items-center gap-4">
+                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
+                           <div className="absolute inset-0 bg-blue-300 w-[10%]" />
+                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-[#173E7D] uppercase tracking-widest">Constantine (10%)</span>
+                         </div>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <h4 className="text-xl font-black text-[#173E7D] tracking-tight">Top Regions ce mois-ci</h4>
+                    {[
+                      { region: 'Alger Centre', count: 1240, trend: '+12%', color: 'blue' },
+                      { region: 'Oran Ouest', count: 860, trend: '+18%', color: 'emerald' },
+                      { region: 'Sétif / Bordj', count: 540, trend: '-2%', color: 'orange' },
+                      { region: 'Annaba / Skikda', count: 420, trend: '+5%', color: 'purple' },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center justify-between p-6 bg-white border border-gray-100 rounded-3xl hover:border-[#173E7D] transition-all cursor-pointer group">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${item.color}-50 text-${item.color}-600 group-hover:bg-${item.color}-600 group-hover:text-white transition-colors`}>
+                            <TrendingUp size={20} />
+                          </div>
+                          <div>
+                            <p className="font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{item.region}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.count} Talents actifs</p>
+                          </div>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${item.trend.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                          {item.trend}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
         case 'ai-filter':
           return (
             <div className="space-y-10">
-              {/* Header */}
-              <div className="bg-[#F0FDF4] rounded-[2rem] p-8 border border-emerald-100 flex items-center gap-6">
-                <div className="w-16 h-16 bg-[#7C3AED] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
-                  <div className="text-2xl">🤖</div>
+              <div className="bg-[#fcfdf2] rounded-[2rem] p-8 border border-blue-50 flex items-center gap-6">
+                <div className="w-16 h-16 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <Zap size={32} />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-[#173E7D]">Filtrage IA — Gemini 2.0 Flash</h2>
-                  <p className="text-gray-500 font-medium">Analysez automatiquement les candidatures et identifiez les meilleurs profils grâce à l'intelligence artificielle.</p>
+                  <h2 className="text-2xl font-black text-[#173E7D]">Intelligence Artificielle de Recrutement</h2>
+                  <p className="text-gray-500 font-medium">Automatisez le tri de vos candidatures avec les modèles Gemini les plus avancés.</p>
                 </div>
               </div>
 
@@ -1996,29 +2194,7 @@ export default function Dashboard({
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button 
-                          onClick={() => setLanguage('en')}
-                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                            language === 'en' 
-                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
-                              : 'border-gray-100 hover:border-gray-200 bg-white'
-                          } ${isRTL ? 'flex-row-reverse' : ''}`}
-                        >
-                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
-                            <div className={isRTL ? 'text-right' : 'text-left'}>
-                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
-                              <div className="text-xs text-gray-400">English</div>
-                            </div>
-                          </div>
-                          {language === 'en' && (
-                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
-                              <CheckCircle2 size={14} />
-                            </div>
-                          )}
-                        </button>
-
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
@@ -2381,8 +2557,8 @@ export default function Dashboard({
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {[
                               { id: 'Gratuit', name: 'Gratuit', price: '0', features: ['3 annonces / mois', 'Filtrage basique', 'Support email'] },
-                              { id: 'Pro', name: 'Pro', price: '4900', features: ['15 annonces / mois', 'IA Matching Avancé', 'Support prioritaire'], popular: true },
-                              { id: 'Entreprise', name: 'Entreprise', price: '12900', features: ['Annonces illimitées', 'Accès API complet', 'Gestionnaire dédié'] }
+                              { id: 'Pro', name: 'Pro', price: '4900', features: ['15 annonces / mois', 'IA Matching Score 2026', 'WhatsApp Direct', 'Filtrage IA Avancé'], popular: true },
+                              { id: 'Entreprise', name: 'Entreprise', price: '12900', features: ['Annonces illimitées', 'Video Pitch Access', 'Sourcing Prédictif IA', 'Analytics Wilayas'] }
                             ].map((plan) => (
                               <div key={plan.id} className={`relative p-8 rounded-[2rem] border-2 transition-all flex flex-col ${plan.popular ? 'border-[#F68D58] bg-orange-50/20 shadow-xl shadow-orange-200/20' : 'border-gray-100 hover:border-gray-200 bg-white'}`}>
                                 {plan.popular && (
@@ -4175,29 +4351,7 @@ export default function Dashboard({
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button 
-                          onClick={() => setLanguage('en')}
-                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                            language === 'en' 
-                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
-                              : 'border-gray-100 hover:border-gray-200 bg-white'
-                          } ${isRTL ? 'flex-row-reverse' : ''}`}
-                        >
-                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
-                            <div className={isRTL ? 'text-right' : 'text-left'}>
-                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
-                              <div className="text-xs text-gray-400">English</div>
-                            </div>
-                          </div>
-                          {language === 'en' && (
-                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
-                              <CheckCircle2 size={14} />
-                            </div>
-                          )}
-                        </button>
-
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${

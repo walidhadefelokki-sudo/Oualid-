@@ -82,6 +82,9 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+
 interface SidebarItemProps {
   icon: React.ElementType;
   label: string;
@@ -162,6 +165,40 @@ export default function Dashboard({
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  const cvMakerRef = React.useRef<HTMLDivElement>(null);
+  const candidateCVRef = React.useRef<HTMLDivElement>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  const downloadPDF = async (ref: React.RefObject<HTMLDivElement>, pdfName: string) => {
+    if (!ref.current) return;
+    
+    setIsGeneratingPDF(true);
+    try {
+      const element = ref.current;
+      
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${pdfName.replace(/\s+/g, '_')}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert(language === 'ar' ? 'فشل تحميل الملف' : 'Erreur lors du téléchargement du fichier.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   const t = (key: string, variables?: Record<string, any>) => {
     const keys = key.split('.');
@@ -3945,16 +3982,17 @@ export default function Dashboard({
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
                   </button>
                   <button 
-                    onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
-                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
+                    onClick={() => downloadPDF(cvMakerRef, cvData.name || 'CV')}
+                    disabled={isGeneratingPDF}
+                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 disabled:opacity-50"
                   >
-                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
+                    <Download size={20} /> {isGeneratingPDF ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') : (language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF')}
                   </button>
                 </div>
               </div>
 
               {/* CV Design matching Candidate Modal */}
-              <div className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
+              <div ref={cvMakerRef} className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
                 {/* CV Header */}
                 <div className="bg-[#173E7D] p-12 text-white relative">
                   <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -5153,6 +5191,7 @@ export default function Dashboard({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              ref={candidateCVRef}
               className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
               {/* CV Header */}
@@ -5265,8 +5304,12 @@ export default function Dashboard({
               {/* CV Footer / Actions */}
               <div className="p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <div className="flex gap-4">
-                  <button className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3">
-                    <FileText size={20} /> Télécharger PDF
+                  <button 
+                    onClick={() => downloadPDF(candidateCVRef, selectedCandidateCV.name)}
+                    disabled={isGeneratingPDF}
+                    className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-50"
+                  >
+                    <FileText size={20} /> {isGeneratingPDF ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') : (language === 'ar' ? 'Télécharger PDF' : 'Télécharger PDF')}
                   </button>
                   <button className="px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
                     Imprimer

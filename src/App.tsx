@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
+import Logo2 from './components/Logo2';
 import { 
   Search, 
   Briefcase, 
@@ -1362,7 +1363,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
             <div className={language === 'ar' ? 'text-right' : ''}>
-              <Logo size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
+              <Logo2 size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
               <p className="text-gray-400 text-lg leading-relaxed mb-10 font-medium">
                 {language === 'fr' ? "La plateforme de recrutement nouvelle génération en Algérie. Connectez-vous aux meilleures opportunités." : "منصة التوظيف من الجيل الجديد في الجزائر. تواصل مع أفضل الفرص."}
               </p>

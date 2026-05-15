@@ -1160,7 +1160,7 @@ export default function App() {
                   transition={{ delay: i * 0.1 }}
                   whileHover={{ y: -15, scale: 1.02 }}
                   onClick={() => setSelectedJob(job as any)}
-                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
                 >
                   {job.featured && (
                     <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">

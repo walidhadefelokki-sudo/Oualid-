@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
+import Logo2 from './components/Logo2';
 import { 
   Search, 
   Briefcase, 
@@ -1066,7 +1067,7 @@ export default function App() {
                   className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
                 >
                   {job.featured && (
-                    <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">
+                    <div className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full">
                       {language === 'fr' ? 'À la une' : 'مميز'}
                     </div>
                   )}
@@ -1260,7 +1261,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
             <div className={language === 'ar' ? 'text-right' : ''}>
-              <Logo size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
+              <Logo2 size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
               <p className="text-gray-400 text-lg leading-relaxed mb-10 font-medium">
                 {language === 'fr' ? "La plateforme de recrutement nouvelle génération en Algérie. Connectez-vous aux meilleures opportunités." : "منصة التوظيف من الجيل الجديد في الجزائر. تواصل مع أفضل الفرص."}
               </p>

@@ -642,7 +642,7 @@ export default function Dashboard({
   const JobCard: React.FC<JobCardProps> = ({ job, isSaved, onToggleSave }) => (
     <div 
       onClick={() => setSelectedJob(job)}
-      className="bg-white rounded-[2.5rem] border border-gray-100 p-8 hover:shadow-2xl hover:shadow-blue-900/5 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full"
+      className="bg-white rounded-[2.5rem] border-2 border-[#173E7D] p-8 hover:shadow-2xl hover:shadow-blue-900/5 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
       {/* Decorative background element */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />

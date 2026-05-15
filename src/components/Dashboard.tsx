@@ -243,13 +243,13 @@ export default function Dashboard({
       const filePath = `cvs/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('candidate-cvs')
+        .from('cvs')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('candidate-cvs')
+        .from('cvs') // Correction effectuée
         .getPublicUrl(filePath);
 
       // Update user profile or CV record with the new URL

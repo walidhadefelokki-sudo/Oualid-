@@ -62,6 +62,12 @@ export const translations = {
     totalApplications: "Candidatures reçues",
     newCandidates: "Candidats filtrés par IA",
     recruitmentsMonth: "Recrutements ce mois",
+    candidatesDirectory: "Répertoire CV",
+    searchCandidatePlaceholder: "Rechercher un candidat (ex: Développeur React)...",
+    filterByJob: "Filtrer par poste",
+    filterByLocation: "Filtrer par ville",
+    noCandidatesFound: "Aucun candidat trouvé",
+    viewCandidateProfile: "Voir le profil",
     aiFiltering: "Filtrage IA",
     myCompany: "Mon entreprise",
     subscription: "Abonnement",
@@ -138,6 +144,7 @@ export const translations = {
       features: "Fonctionnalités",
       sectors: "Secteurs",
       howItWorks: "Comment ça marche",
+      aboutUs: "Qui sommes-nous",
       pricing: "Tarifs",
       login: "Se connecter",
       signup: "S'inscrire",
@@ -207,6 +214,17 @@ export const translations = {
       demoDesc: "Nos experts vous accompagnent dans votre stratégie de recrutement.",
       learnMore: "En savoir plus",
       bookMeeting: "Prendre rendez-vous"
+    },
+    about: {
+      badge: "",
+      title: "Qui sommes-nous",
+      subtitle: "L'expertise au service de votre avenir professionnel.",
+      visionTitle: "Notre Identité",
+      visionText: "Basée à Constantine, notre plateforme est portée par une équipe d'experts hautement qualifiés et passionnés. Nous combinons une connaissance approfondie du terrain avec une expertise sectorielle pour accompagner chaque talent vers l'excellence.",
+      innovationTitle: "Innovation Localisée",
+      innovationText: "Notre technologie de pointe, développée pour répondre aux défis nationaux, redéfinit le recrutement en Algérie. Nous offrons des solutions intelligentes et adaptées à chaque wilaya, garantissant un avantage concurrentiel majeur pour les recruteurs locaux.",
+      expertiseTitle: "Flexibilité & Accessibilité",
+      expertiseText: "Bien que nous couvrions l'ensemble des métiers, nous nous distinguons par notre expertise unique dans le travail à temps partiel et flexible. Dar L'emploi est le pont entre l'agilité recherchée par les entreprises et la liberté souhaitée par les candidats."
     }
   },
   ar: {
@@ -272,6 +290,12 @@ export const translations = {
     totalApplications: "الترشيحات المستلمة",
     newCandidates: "المترشحون المصفون بالذكاء الاصطناعي",
     recruitmentsMonth: "التوظيفات هذا الشهر",
+    candidatesDirectory: "دليل السير الذاتية",
+    searchCandidatePlaceholder: "ابحث عن مترشح (مثلاً: مطور React)...",
+    filterByJob: "تصفية حسب المنصب",
+    filterByLocation: "تصفية حسب المدينة",
+    noCandidatesFound: "لم يتم العثور على مترشحين",
+    viewCandidateProfile: "عرض الملف الشخصي",
     aiFiltering: "تصفية بالذكاء الاصطناعي",
     myCompany: "شركتي",
     subscription: "الاشتراك",
@@ -348,6 +372,7 @@ export const translations = {
       features: "المميزات",
       sectors: "القطاعات",
       howItWorks: "كيف يعمل",
+      aboutUs: "من نحن",
       pricing: "الأسعار",
       login: "تسجيل الدخول",
       signup: "إنشاء حساب",
@@ -417,6 +442,17 @@ export const translations = {
       demoDesc: "خبراؤنا يرافقونك في استراتيجية التوظيف الخاصة بك.",
       learnMore: "اكتشف المزيد",
       bookMeeting: "تحديد موعد"
+    },
+    about: {
+      badge: "",
+      title: "من نحن",
+      subtitle: "الخبرة في خدمة مستقبلك المهني.",
+      visionTitle: "هويتنا",
+      visionText: "من قلب قسنطينة، منصتنا يقودها فريق من الخبراء المؤهلين تأهيلاً عالياً والشغوفين. نحن نجمع بين المعرفة الميدانية العميقة والخبرة القطاعية مرافقة كل موهبة نحو التميز.",
+      innovationTitle: "ابتكار محلي",
+      innovationText: "تقنياتنا المتطورة، التي تم تطويرها للاستجابة للتحديات الوطنية، تعيد تعريف التوظيف في الجزائر. نحن نقدم حلولاً ذكية ومتكيفة مع كل ولاية، مما يضمن ميزة تنافسية كبرى للموظفين المحليين.",
+      expertiseTitle: "مرونة وسهولة الوصول",
+      expertiseText: "بينما نغطي جميع المهن، نتميز بخبرتنا الفريدة في العمل بدوام جزئي ومرن. دار التشغيل هي الجسر بين الرشاقة التي تبحث عنها الشركات والحرية التي يطمح إليها المترشحون."
     }
   }
 };

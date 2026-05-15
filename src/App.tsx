@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
-import Logo2 from './components/Logo2';
 import { 
   Search, 
   Briefcase, 
@@ -36,7 +35,8 @@ import {
   Linkedin,
   Instagram,
   Mail,
-  Phone
+  Phone,
+  ShieldCheck
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { db, auth } from './firebase';
@@ -87,13 +87,16 @@ export default function App() {
     if (!auth.currentUser) {
       try {
         await signInAnonymously(auth);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error signing into Firebase anonymously for demo:", err);
+        if (err.code === 'auth/admin-restricted-operation') {
+          console.warn("Anonymous auth is disabled in the Firebase console. Demo will continue in offline mode for Firebase features.");
+        }
       }
     }
 
     setUser({
-      uid: 'demo-candidate',
+      uid: auth.currentUser?.uid || 'demo-candidate',
       displayName: 'Amine Benali',
       email: 'amine.benali@example.dz',
       photoURL: 'https://i.pravatar.cc/150?u=amine',
@@ -114,13 +117,16 @@ export default function App() {
     if (!auth.currentUser) {
       try {
         await signInAnonymously(auth);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error signing into Firebase anonymously for demo:", err);
+        if (err.code === 'auth/admin-restricted-operation') {
+          console.warn("Anonymous auth is disabled in the Firebase console. Demo will continue in offline mode for Firebase features.");
+        }
       }
     }
 
     setUser({
-      uid: 'demo-employer',
+      uid: auth.currentUser?.uid || 'demo-employer',
       displayName: 'Oualid Elhadef Elokki',
       email: 'oualidelhadefelokki@outlook.com',
       photoURL: 'https://i.pravatar.cc/150?u=oualid',
@@ -377,6 +383,7 @@ export default function App() {
           <button onClick={() => scrollToSection('features')} className="hover:text-[#173E7D] transition-colors">{translations[language].nav.features}</button>
           <button onClick={() => scrollToSection('sectors')} className="hover:text-[#173E7D] transition-colors">{translations[language].nav.sectors}</button>
           <button onClick={() => scrollToSection('how-it-works')} className="hover:text-[#173E7D] transition-colors">{translations[language].nav.howItWorks}</button>
+          <button onClick={() => scrollToSection('about-us')} className="hover:text-[#173E7D] transition-colors">{translations[language].nav.aboutUs}</button>
           <button onClick={() => scrollToSection('pricing')} className="hover:text-[#173E7D] transition-colors">{translations[language].nav.pricing}</button>
         </div>
 
@@ -459,6 +466,7 @@ export default function App() {
             <button onClick={() => { scrollToSection('features'); setIsMenuOpen(false); }}>{translations[language].nav.features}</button>
             <button onClick={() => { scrollToSection('sectors'); setIsMenuOpen(false); }}>{translations[language].nav.sectors}</button>
             <button onClick={() => { scrollToSection('how-it-works'); setIsMenuOpen(false); }}>{translations[language].nav.howItWorks}</button>
+            <button onClick={() => { scrollToSection('about-us'); setIsMenuOpen(false); }}>{translations[language].nav.aboutUs}</button>
             <button onClick={() => { scrollToSection('pricing'); setIsMenuOpen(false); }}>{translations[language].nav.pricing}</button>
             {user ? (
               <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} className="px-12 py-4 rounded-full bg-red-500 text-white shadow-xl flex items-center gap-3">
@@ -635,6 +643,9 @@ export default function App() {
         </div>
       </section>
 
+      {/* Hero to Vision Gradient Transition */}
+      <div className={`h-32 w-full bg-gradient-to-b ${COLORS[colorIndex]} to-white transition-colors duration-1000`} />
+
       {/* Vision Section */}
       <section className="bg-white py-40 px-6 overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-gray-50/50 to-white -z-10" />
@@ -725,6 +736,9 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      {/* Vision to Stats Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-white to-gray-50/50" />
 
       {/* Stats Section */}
       <section id="stats" className="bg-gray-50/50 py-32 px-6">
@@ -829,6 +843,9 @@ export default function App() {
         </div>
       </section>
 
+      {/* Sectors to Features Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-gray-50/50 to-white" />
+
       {/* Key Features Section */}
       <section id="features" className="py-40 px-6 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto">
@@ -896,6 +913,9 @@ export default function App() {
         </div>
       </section>
 
+      {/* Features to How It Works Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-white to-gray-50/30" />
+
       {/* Steps Section */}
       <section id="how-it-works" className="py-40 px-6 bg-gray-50/30">
         <div className="max-w-7xl mx-auto">
@@ -955,6 +975,81 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      {/* How It Works to About Us Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-gray-50/30 to-white" />
+
+      <section id="about-us" className="py-20 px-6 bg-white overflow-hidden">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col gap-12 items-center text-center">
+            <motion.div 
+              initial={{ opacity: 0, y: -30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="max-w-4xl"
+            >
+              {language === 'fr' ? (
+                <h2 className="text-6xl md:text-8xl font-display font-black text-[#173E7D] leading-none tracking-tighter mb-4 uppercase italic">
+                  Qui sommes-<span className="text-[#F68D58]">nous</span>
+                </h2>
+              ) : (
+                <h2 className="text-6xl md:text-8xl font-display font-black text-[#173E7D] leading-none tracking-tighter mb-4 uppercase italic">
+                  من <span className="text-[#F68D58]">نحن</span>
+                </h2>
+              )}
+              
+              <div className="w-24 h-2 bg-[#F68D58] mx-auto mb-10" />
+              
+              <p className="text-2xl text-gray-400 font-medium leading-relaxed max-w-2xl mx-auto">
+                {translations[language].about.subtitle}
+              </p>
+            </motion.div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-16 max-w-6xl">
+              {[
+                {
+                  title: translations[language].about.visionTitle,
+                  text: translations[language].about.visionText,
+                  icon: <Zap className="text-[#F68D58]" size={32} />
+                },
+                {
+                  title: translations[language].about.innovationTitle,
+                  text: translations[language].about.innovationText,
+                  icon: <Cpu className="text-[#F68D58]" size={32} />
+                },
+                {
+                  title: translations[language].about.expertiseTitle,
+                  text: translations[language].about.expertiseText,
+                  icon: <ShieldCheck className="text-[#F68D58]" size={32} />
+                }
+              ].map((item, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.2 }}
+                  className="group flex flex-col items-center"
+                >
+                  <div className="mb-8 group-hover:scale-125 transition-transform duration-500">
+                    {item.icon}
+                  </div>
+                  <h3 className="text-2xl font-black text-[#173E7D] mb-4 uppercase tracking-tight">
+                    {item.title}
+                  </h3>
+                  <div className="w-12 h-1 bg-[#F68D58] mb-6 group-hover:w-24 transition-all duration-500 mx-auto" />
+                  <p className="text-gray-500 text-lg leading-relaxed font-medium">
+                    {item.text}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* About Us to Featured Jobs Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-white to-gray-50/30" />
 
       {/* Featured Jobs */}
       <section className="bg-gray-50/30 py-40 px-6 relative overflow-hidden">
@@ -1064,7 +1159,7 @@ export default function App() {
                   transition={{ delay: i * 0.1 }}
                   whileHover={{ y: -15, scale: 1.02 }}
                   onClick={() => setSelectedJob(job as any)}
-                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
                 >
                   {job.featured && (
                     <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">
@@ -1131,6 +1226,9 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      {/* Featured Jobs to Hiring Partners Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-gray-50/30 to-white" />
 
       {/* Hiring Partners Section */}
       <section className="bg-white py-40 overflow-hidden relative">
@@ -1255,13 +1353,16 @@ export default function App() {
         </div>
       </section>
 
+      {/* Pricing to Footer Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
+
       {/* Footer */}
       <footer className="bg-[#0A1118] text-white pt-40 pb-20 px-6 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
             <div className={language === 'ar' ? 'text-right' : ''}>
-              <Logo2 size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
+              <Logo size="lg" onClick={() => setView('landing')} className="mb-10 !justify-start" />
               <p className="text-gray-400 text-lg leading-relaxed mb-10 font-medium">
                 {language === 'fr' ? "La plateforme de recrutement nouvelle génération en Algérie. Connectez-vous aux meilleures opportunités." : "منصة التوظيف من الجيل الجديد في الجزائر. تواصل مع أفضل الفرص."}
               </p>

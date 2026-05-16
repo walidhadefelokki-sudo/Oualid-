@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import Logo2 from './components/Logo2';
-import ContactForm from './components/ContactForm';
+import ContactFormDesign from './components/ContactFormDesign';
 import { 
   Search, 
   Briefcase, 
@@ -1359,7 +1359,7 @@ export default function App() {
       <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
 
       {/* Contact Form */}
-      <ContactForm language={language} />
+      <ContactFormContactFormDesign />
 
       {/* Footer */}
       <footer className="bg-[#0A1118] text-white pt-40 pb-20 px-6 relative overflow-hidden">

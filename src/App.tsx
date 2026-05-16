@@ -1359,7 +1359,7 @@ export default function App() {
       <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
 
       {/* Contact Form */}
-      <ContactFormContactFormDesign />
+      <ContactFormDesign />
 
       {/* Footer */}
       <footer className="bg-[#0A1118] text-white pt-40 pb-20 px-6 relative overflow-hidden">

@@ -60,7 +60,7 @@ export default function ContactForm({ language }: ContactFormProps) {
                       email: e.target.value,
                     })
                   }
-                  placeholder="email@exemple.dz"
+                  placeholder="email@example.com"
                   className="w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-medium"
                 />
               </div>
@@ -99,6 +99,7 @@ export default function ContactForm({ language }: ContactFormProps) {
                     message: e.target.value,
                   })
                 }
+                placeholder="Your message..."
                 className="w-full px-8 py-5 rounded-[2.5rem] border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-medium resize-none"
               />
             </div>

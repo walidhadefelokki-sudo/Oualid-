@@ -1355,11 +1355,13 @@ export default function App() {
         </div>
       </section>
 
-      {/* Pricing to Footer Gradient Transition */}
-      <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
+      
 
       {/* Contact Form */}
-      <ContactFormDesign />
+      <ContactFormDesign />;
+
+      {/* Pricing to Footer Gradient Transition */}
+      <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
 
       {/* Footer */}
       <footer className="bg-[#0A1118] text-white pt-40 pb-20 px-6 relative overflow-hidden">

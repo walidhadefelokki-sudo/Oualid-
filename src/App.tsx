@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import Logo2 from './components/Logo2';
+import ContactForm from './components/ContactForm';
 import { 
   Search, 
   Briefcase, 
@@ -1357,6 +1358,9 @@ export default function App() {
       {/* Pricing to Footer Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />
 
+      {/* Contact Form */}
+      <ContactForm language={language} />
+
       {/* Footer */}
       <footer className="bg-[#0A1118] text-white pt-40 pb-20 px-6 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -1368,11 +1372,18 @@ export default function App() {
                 {language === 'fr' ? "La plateforme de recrutement nouvelle génération en Algérie. Connectez-vous aux meilleures opportunités." : "منصة التوظيف من الجيل الجديد في الجزائر. تواصل مع أفضل الفرص."}
               </p>
               <div className={`flex gap-6 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                {[Facebook, Twitter, Linkedin, Instagram].map((Icon, i) => (
-                  <a key={i} href="#" className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-[#F68D58] hover:text-white transition-all duration-500 border border-white/10">
-                    <Icon size={20} />
-                  </a>
-                ))}
+                <a href="https://web.facebook.com/profile.php?id=61566305343265&locale=fr_FR" target="_blank" rel="noopener noreferrer" className="...">
+                  <Facebook size={20} />
+                </a>
+                <a href="#" target="_blank" rel="noopener noreferrer" className="...">
+                  <Twitter size={20} />
+                </a>
+                <a href="#" target="_blank" rel="noopener noreferrer" className="...">
+                  <Linkedin size={20} />
+                </a>
+                <a href="https://www.instagram.com/dar.lemploi/" target="_blank" rel="noopener noreferrer" className="...">
+                  <Instagram size={20} />
+                </a>
               </div>
             </div>
 

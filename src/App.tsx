@@ -1277,77 +1277,121 @@ export default function App() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-40 px-6 bg-white overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent" />
+      <section id="pricing" className="py-40 px-6 bg-gray-50/50 overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-24">
-            <span className="text-[#F68D58] font-black text-sm tracking-[0.5em] uppercase mb-6 block">{language === 'fr' ? 'Tarification' : 'الأسعار'}</span>
-            <h2 className="text-6xl md:text-7xl font-display font-black text-[#173E7D] mb-8 tracking-tighter">{language === 'fr' ? 'Des tarifs adaptés à votre croissance' : 'أسعار تتناسب مع نموك'}</h2>
-            <p className="text-2xl text-gray-500 max-w-3xl mx-auto font-light leading-relaxed">
-              {language === 'fr' ? 'Que vous soyez une startup ou une grande entreprise, nous avons le plan idéal pour vos besoins de recrutement.' : 'سواء كنت شركة ناشئة أو شركة كبيرة، لدينا الخطة المثالية لاحتياجات التوظيف الخاصة بك.'}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="inline-flex items-center gap-2 px-6 py-2 bg-orange-100/50 text-[#F68D58] rounded-full text-[10px] font-black uppercase tracking-[0.4em] mb-8 border border-orange-200/50"
+            >
+              <Zap size={12} fill="currentColor" />
+              <span>{translations[language].pricing.title}</span>
+            </motion.div>
+            <h2 className="text-6xl md:text-8xl font-display font-black text-[#173E7D] mb-8 tracking-tighter leading-[0.9]">
+              {language === 'fr' ? 'Évoluez sans\nlimites' : 'تطور بلا\nحدود'}
+            </h2>
+            <p className="text-2xl text-gray-500 max-w-2xl mx-auto font-light leading-relaxed">
+              {language === 'fr' ? 'La meilleure technologie de recrutement au service de votre entreprise.' : 'أفضل تقنيات التوظيف في خدمة شركتك.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { 
-                name: language === 'fr' ? 'Gratuit' : 'مجاني', 
-                price: '0', 
-                features: language === 'fr' ? ['3 offres actives', 'Filtres basiques', 'Support email', 'Visibilité standard'] : ['3 عروض نشطة', 'فلاتر أساسية', 'دعم عبر البريد', 'رؤية قياسية'], 
+                ...translations[language].pricing.free,
                 color: 'gray',
-                cta: language === 'fr' ? 'Commencer gratuitement' : 'ابدأ مجاناً'
+                icon: <Zap size={32} />
               },
               { 
-                name: language === 'fr' ? 'Pro' : 'برو', 
-                price: '4,900', 
-                features: language === 'fr' ? ['Offres illimitées', 'AI Filter Premium', 'Support 24/7', 'Mise en avant des offres', 'Accès CVthèque'] : ['عروض غير محدودة', 'فلتر ذكاء اصطناعي', 'دعم 24/7', 'تمييز العروض', 'الوصول لقاعدة السير'], 
+                ...translations[language].pricing.annonces,
                 color: 'orange', 
                 popular: true,
-                cta: language === 'fr' ? 'Passer au Pro' : 'الترقية لبرو'
+                icon: <Briefcase size={32} />
               },
               { 
-                name: language === 'fr' ? 'Entreprise' : 'مؤسسة', 
-                price: '12,900', 
-                features: language === 'fr' ? ['Multi-comptes', 'API Access', 'Account Manager', 'Marque employeur premium', 'Intégration ATS'] : ['حسابات متعددة', 'وصول API', 'مدير حساب', 'علامة صاحب عمل مميزة', 'تكامل ATS'], 
+                ...translations[language].pricing.corporate,
                 color: 'blue',
-                cta: language === 'fr' ? 'Contacter la vente' : 'اتصل بالمبيعات'
+                icon: <Building2 size={32} />
               },
             ].map((plan, i) => (
               <motion.div 
                 key={i}
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.2 }}
-                className={`bg-white p-14 rounded-[4rem] border-2 transition-all relative flex flex-col ${plan.popular ? 'border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.15)] scale-105 z-10' : 'border-gray-100 hover:border-gray-200 shadow-sm hover:shadow-2xl'}`}
+                transition={{ delay: i * 0.15, type: "spring", damping: 20 }}
+                className={`group relative bg-white p-12 rounded-[4rem] flex flex-col transition-all duration-500 hover:-translate-y-4 ${
+                  plan.popular 
+                    ? 'border-2 border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.2)] scale-105 z-10' 
+                    : 'border border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)]'
+                }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-8 py-3 rounded-full text-xs font-black uppercase tracking-[0.2em] shadow-xl">
-                    {language === 'fr' ? 'Plus populaire' : 'الأكثر شعبية'}
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap">
+                    {language === 'fr' ? 'Recommandé' : 'موصى به'}
                   </div>
                 )}
-                <h3 className="text-3xl font-black text-[#173E7D] mb-6">{plan.name}</h3>
-                <div className="flex items-baseline gap-3 mb-12">
-                  <span className="text-6xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
-                  <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">{language === 'fr' ? 'DA/mois' : 'دج/شهر'}</span>
+                
+                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-10 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 ${
+                  plan.color === 'orange' ? 'bg-orange-50 text-[#F68D58] shadow-[inset_0_4px_12px_rgba(246,141,88,0.1)]' : 
+                  plan.color === 'blue' ? 'bg-blue-50 text-[#173E7D] shadow-[inset_0_4px_12px_rgba(23,62,125,0.1)]' : 
+                  'bg-gray-50 text-gray-400 shadow-inner'
+                }`}>
+                  {plan.icon}
                 </div>
-                <ul className="space-y-6 mb-16 flex-1">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-5 text-gray-500 font-bold text-lg">
-                      <div className="w-8 h-8 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 shadow-inner">
-                        <CheckCircle2 size={18} />
-                      </div>
-                      {f}
+
+                <div className="mb-8">
+                  <h3 className="text-3xl font-black text-[#173E7D] mb-2">{plan.name}</h3>
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">{plan.description}</p>
+                </div>
+                
+                <div className="mb-12">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-6xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
+                    {plan.price !== translations[language].pricing.corporate.price && plan.price !== '0' && (
+                      <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">
+                        {translations[language].pricing.currency}
+                      </span>
+                    )}
+                  </div>
+                  {plan.unit && (
+                    <div className="mt-2 inline-flex px-3 py-1 bg-orange-50 text-orange-500 rounded-full text-[9px] font-black uppercase tracking-[0.2em]">
+                      {plan.unit}
+                    </div>
+                  )}
+                </div>
+
+                <ul className="space-y-5 mb-16 flex-1">
+                  {(plan.features as any[]).map((f, j) => (
+                    <li key={j} className="flex items-start gap-4">
+                      {f.included ? (
+                        <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100">
+                          <CheckCircle2 size={12} strokeWidth={3} />
+                        </div>
+                      ) : (
+                        <div className="w-6 h-6 bg-red-50 text-red-300 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100 opacity-60">
+                          <XCircle size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                      <span className={`text-base font-bold leading-tight ${f.included ? 'text-gray-600' : 'text-gray-300 line-through decoration-1'}`}>
+                        {f.text}
+                      </span>
                     </li>
                   ))}
                 </ul>
+
                 <button 
-                  onClick={handleDemoEmployer}
-                  className={`w-full py-7 rounded-3xl font-black text-sm uppercase tracking-[0.2em] transition-all duration-500 ${
-                    plan.popular ? 'bg-[#F68D58] text-white shadow-2xl shadow-orange-500/30 hover:bg-[#e57d47] hover:scale-[1.02]' : 'bg-[#173E7D] text-white hover:bg-[#0A1118] shadow-xl'
+                  onClick={() => handlePricingInquiry(plan.name)}
+                  className={`w-full py-7 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 ${
+                    plan.popular 
+                      ? 'bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47] hover:scale-[1.02] active:scale-95' 
+                      : 'bg-[#173E7D] text-white hover:bg-[#0A1118] shadow-xl hover:shadow-2xl active:scale-95'
                   }`}
                 >
-                  {plan.cta}
+                  {user || isDemo ? translations[language].pricing.ctaConnected : translations[language].pricing.cta}
                 </button>
               </motion.div>
             ))}

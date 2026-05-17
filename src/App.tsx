@@ -81,28 +81,6 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-
-  const handlePricingInquiry = async (planName: string) => {
-    if (user || isDemo) {
-      // Simulate sending a direct inquiry
-      setLoading(true);
-      try {
-        // In a real app, this would be an API call
-        console.log(`Sending inquiry for ${planName} from ${user?.email || 'Demo User'}`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        alert(language === 'fr' 
-          ? `Demande pour le pack "${planName}" envoyée ! Notre équipe vous contactera sous peu.` 
-          : `تم إرسال طلبك لباقة "${planName}"! سيتواصل معك فريقنا قريباً.`);
-      } catch (error) {
-        console.error("Error sending inquiry:", error);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      scrollToSection('contact');
-    }
-  };
-
   const handleDemoCandidate = async () => {
     // Prevent multiple clicks
     if (loading) return;
@@ -1345,19 +1323,27 @@ export default function App() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.15, type: "spring", damping: 20 }}
-                className={`group relative bg-white p-12 rounded-[4rem] flex flex-col transition-all duration-500 hover:-translate-y-4 ${
+                className={`group relative bg-white p-12 rounded-[4rem] flex flex-col transition-all duration-700 hover:-translate-y-4 ${
                   plan.popular 
                     ? 'border-2 border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.2)] scale-105 z-10' 
-                    : 'border border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)]'
+                    : plan.color === 'blue'
+                      ? 'border-2 border-[#173E7D]/20 shadow-[0_40px_100px_-20px_rgba(23,62,125,0.1)]'
+                      : 'border border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)]'
                 }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap">
-                    {language === 'fr' ? 'Recommandé' : 'موصى به'}
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap z-20">
+                    {language === 'fr' ? 'Meilleur choix' : 'الخيار الأفضل'}
+                  </div>
+                )}
+
+                {plan.color === 'blue' && !plan.popular && (
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#173E7D] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap z-20">
+                    {language === 'fr' ? 'Élite' : 'نخبة'}
                   </div>
                 )}
                 
-                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-10 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 ${
+                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-10 transition-transform duration-700 group-hover:scale-110 group-hover:rotate-3 ${
                   plan.color === 'orange' ? 'bg-orange-50 text-[#F68D58] shadow-[inset_0_4px_12px_rgba(246,141,88,0.1)]' : 
                   plan.color === 'blue' ? 'bg-blue-50 text-[#173E7D] shadow-[inset_0_4px_12px_rgba(23,62,125,0.1)]' : 
                   'bg-gray-50 text-gray-400 shadow-inner'
@@ -1366,11 +1352,14 @@ export default function App() {
                 </div>
 
                 <div className="mb-8">
-                  <h3 className="text-3xl font-black text-[#173E7D] mb-2">{plan.name}</h3>
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">{plan.description}</p>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-3xl font-black text-[#173E7D]">{plan.name}</h3>
+                    {plan.color === 'blue' && <Zap size={16} className="text-[#F68D58] animate-pulse" fill="#F68D58" />}
+                  </div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-relaxed line-clamp-1">{plan.description}</p>
                 </div>
                 
-                <div className="mb-12">
+                <div className="mb-12 min-h-[100px]">
                   <div className="flex items-baseline gap-2">
                     <span className="text-6xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
                     {plan.price !== translations[language].pricing.corporate.price && plan.price !== '0' && (
@@ -1380,37 +1369,42 @@ export default function App() {
                     )}
                   </div>
                   {plan.unit && (
-                    <div className="mt-2 inline-flex px-3 py-1 bg-orange-50 text-orange-500 rounded-full text-[9px] font-black uppercase tracking-[0.2em]">
+                    <div className="mt-3 inline-flex px-4 py-1.5 bg-orange-100/50 text-[#F68D58] rounded-full text-[9px] font-black uppercase tracking-[0.2em] border border-orange-200/30">
                       {plan.unit}
                     </div>
                   )}
                 </div>
 
-                <ul className="space-y-5 mb-16 flex-1">
+                <div className="space-y-4 mb-16 flex-1">
+                  <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">
+                    {language === 'fr' ? 'Ce qui est inclus' : 'ما يتضمنه العرض'}
+                  </p>
                   {(plan.features as any[]).map((f, j) => (
-                    <li key={j} className="flex items-start gap-4">
+                    <li key={j} className="flex items-start gap-4 list-none group/item">
                       {f.included ? (
-                        <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100">
+                        <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110">
                           <CheckCircle2 size={12} strokeWidth={3} />
                         </div>
                       ) : (
-                        <div className="w-6 h-6 bg-red-50 text-red-300 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100 opacity-60">
+                        <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50 transition-opacity">
                           <XCircle size={12} strokeWidth={3} />
                         </div>
                       )}
-                      <span className={`text-base font-bold leading-tight ${f.included ? 'text-gray-600' : 'text-gray-300 line-through decoration-1'}`}>
+                      <span className={`text-sm font-bold leading-tight transition-colors ${f.included ? 'text-gray-600 group-hover/item:text-[#173E7D]' : 'text-gray-300 line-through decoration-red-200'}`}>
                         {f.text}
                       </span>
                     </li>
                   ))}
-                </ul>
+                </div>
 
                 <button 
                   onClick={() => handlePricingInquiry(plan.name)}
-                  className={`w-full py-7 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 ${
+                  className={`w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-500 group-hover:tracking-[0.3em] ${
                     plan.popular 
                       ? 'bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47] hover:scale-[1.02] active:scale-95' 
-                      : 'bg-[#173E7D] text-white hover:bg-[#0A1118] shadow-xl hover:shadow-2xl active:scale-95'
+                      : plan.color === 'blue'
+                        ? 'bg-[#173E7D] text-white hover:bg-[#1f4a8f] shadow-[0_20px_40px_-5px_rgba(23,62,125,0.3)] hover:scale-[1.02] active:scale-95'
+                        : 'bg-white text-[#173E7D] border-2 border-[#173E7D] hover:bg-[#173E7D] hover:text-white shadow-xl hover:shadow-2xl active:scale-95'
                   }`}
                 >
                   {user || isDemo ? translations[language].pricing.ctaConnected : translations[language].pricing.cta}
@@ -1420,6 +1414,7 @@ export default function App() {
           </div>
         </div>
       </section>
+
 
       
 

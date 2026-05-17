@@ -81,6 +81,28 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
+
+  const handlePricingInquiry = async (planName: string) => {
+    if (user || isDemo) {
+      // Simulate sending a direct inquiry
+      setLoading(true);
+      try {
+        // In a real app, this would be an API call
+        console.log(`Sending inquiry for ${planName} from ${user?.email || 'Demo User'}`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        alert(language === 'fr' 
+          ? `Demande pour le pack "${planName}" envoyée ! Notre équipe vous contactera sous peu.` 
+          : `تم إرسال طلبك لباقة "${planName}"! سيتواصل معك فريقنا قريباً.`);
+      } catch (error) {
+        console.error("Error sending inquiry:", error);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      scrollToSection('contact');
+    }
+  };
+
   const handleDemoCandidate = async () => {
     // Prevent multiple clicks
     if (loading) return;

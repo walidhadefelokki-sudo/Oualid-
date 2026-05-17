@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum RecruiterPlan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWED
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  role          Role      @default(CANDIDATE)
+  firstName     String?
+  lastName      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Profiles
+  candidateProfile CandidateProfile?
+  recruiterProfile RecruiterProfile?
+
+  // Notifications
+  notifications Notification[]
+}
+
+model CandidateProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone        String?
+  bio          String?
+  resumeUrl    String?
+  skills       String[]
+  wilaya       String?
+  jobMatchNotifications Boolean @default(true)
+  
+  applications Application[]
+  savedJobs    SavedJob[]
+}
+
+model RecruiterProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName  String
+  industry     String?
+  website      String?
+  description  String?
+  logoUrl      String?
+  plan         RecruiterPlan @default(BASIC)
+
+  jobs         Job[]
+}
+
+model Job {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  location        String
+  type            String   // Full-time, Part-time, etc.
+  salary          String?
+  category        String?
+  requirements    String[]
+  responsibilities String[]
+  featured        Boolean  @default(false)
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  recruiterId     String
+  recruiter       RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  applications    Application[]
+  savedBy         SavedJob[]
+}
+
+model Application {
+  id          String            @id @default(uuid())
+  jobId       String
+  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CandidateProfile  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  resumeUrl   String?           // Snapshot of resume at time of application
+  coverLetter String?
+  status      ApplicationStatus @default(PENDING)
+  appliedAt   DateTime          @default(now())
+}
+
+model SavedJob {
+  id          String   @id @default(uuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([jobId, candidateId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  type      String   @default("info")
+  createdAt DateTime @default(now())
+}

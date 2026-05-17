@@ -50,6 +50,22 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "Saved timestamp" }
       },
       "required": ["userId", "jobId"]
+    },
+    "applications": {
+      "title": "Application",
+      "description": "Job application data",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "integer", "description": "ID of the job" },
+        "candidateId": { "type": "string", "description": "UID of the candidate" },
+        "candidateName": { "type": "string", "description": "Candidate name" },
+        "candidateEmail": { "type": "string", "description": "Candidate email" },
+        "candidatePhone": { "type": "string", "description": "Candidate phone number" },
+        "resumeUrl": { "type": "string", "description": "URL to the resume/CV" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "accepted", "rejected"], "description": "Application status" },
+        "appliedAt": { "type": "string", "format": "date-time", "description": "Timestamp when applied" }
+      },
+      "required": ["jobId", "candidateId", "resumeUrl", "appliedAt"]
     }
   },
   "firestore": {
@@ -68,6 +84,10 @@
     "saved_jobs/{savedJobId}": {
       "schema": "saved_jobs",
       "description": "User's saved jobs"
+    },
+    "applications/{applicationId}": {
+      "schema": "applications",
+      "description": "Job applications"
     }
   }
 }

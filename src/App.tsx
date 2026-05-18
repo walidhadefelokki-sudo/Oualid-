@@ -1455,7 +1455,7 @@ export default function App() {
       
 
       {/* Contact Form */}
-      <ContactForm />;
+      <ContactForm language={language}/>;
 
       {/* Pricing to Footer Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import Logo2 from './components/Logo2';
 import ContactFormDesign from './components/ContactFormDesign';
-// import ContactForm from './components/ContactForm';
+import ContactForm from './components/ContactForm';
 import { 
   Search, 
   Briefcase, 
@@ -1455,7 +1455,7 @@ export default function App() {
       
 
       {/* Contact Form */}
-      <ContactFormDesign />;
+      <ContactForm language={language}/>;
 
       {/* Pricing to Footer Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-white to-[#0A1118]" />

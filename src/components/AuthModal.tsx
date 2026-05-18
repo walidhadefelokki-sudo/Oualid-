@@ -151,7 +151,19 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
         }
       });
 
-      if (signupError) throw signupError;
+      if (signupError) {
+        // Handle specific rate limit error (429)
+        if (signupError.status === 429 || signupError.message?.toLowerCase().includes('rate limit')) {
+          const rateLimitMsg = {
+            en: "Rate limit exceeded. Please try again in 1 hour or check your Inbox/Spam for an existing confirmation email.",
+            fr: "Limite de tentatives atteinte. Réessayez dans 1 heure ou vérifiez vos Emails/Spams pour un mail de confirmation.",
+            ar: "تم تجاوز حد المحاولات. يرجى المحاولة بعد ساعة أو التحقق من بريدك الإلكتروني (بما في ذلك الرسائل المزعجة)."
+          }[language];
+          setError(rateLimitMsg);
+          return;
+        }
+        throw signupError;
+      }
 
       if (data.user) {
         // Profile creation is handled by the useEffect in App.tsx or a trigger
@@ -407,16 +419,16 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                     </div>
                     <h4 className="text-2xl font-display font-black text-white mb-4 leading-tight tracking-tight uppercase">
                       {role === 'user' ? (
-                        language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
+                        language === 'en' ? "Boost your career" : language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
                       ) : (
-                        language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
+                        language === 'en' ? "Find your future talent" : language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
                       )}
                     </h4>
                     <p className="text-white/60 text-base font-medium leading-relaxed max-w-sm mx-auto">
                       {role === 'user' ? (
-                        language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
+                        language === 'en' ? "Access thousands of exclusive offers in Algeria." : language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
                       ) : (
-                        language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
+                        language === 'en' ? "Use our AI to filter the best candidates." : language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
                       )}
                     </p>
                   </div>

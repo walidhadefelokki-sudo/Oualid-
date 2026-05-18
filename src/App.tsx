@@ -1380,6 +1380,18 @@ export default function App() {
                   <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
                   <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Filtrage par IA Gemini</span>
                 </li>
+                <li className="flex items-start gap-4 list-none opacity-50">
+                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
+                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Répertoire CV</span>
+                </li>
+                <li className="flex items-start gap-4 list-none opacity-50">
+                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
+                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Présélection de candidats</span>
+                </li>
+                <li className="flex items-start gap-4 list-none opacity-50">
+                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
+                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Support Prioritaire</span>
+                </li>
               </div>
               <button className="w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47]">
                 Choisir ce plan
@@ -1421,7 +1433,15 @@ export default function App() {
                 </li>
                 <li className="flex items-start gap-4 list-none group/item">
                   <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
+                  <span className="text-sm font-bold text-gray-600">Présélection decandidats</span>
+                </li>
+                <li className="flex items-start gap-4 list-none group/item">
+                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
                   <span className="text-sm font-bold text-gray-600">Répertoire CV & Support</span>
+                </li>
+                <li className="flex items-start gap-4 list-none group/item">
+                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
+                  <span className="text-sm font-bold text-gray-600">Gestionnaire d'équipe</span>
                 </li>
               </div>
               <button className="w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-[#173E7D] text-white shadow-[0_20px_40px_-5px_rgba(23,62,125,0.3)] hover:bg-[#1f4a8f]">

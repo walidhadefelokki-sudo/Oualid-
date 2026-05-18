@@ -38,7 +38,13 @@ export default function ContactForm({ language }: ContactFormProps) {
     }
   };
 
-  const t = translations[language].contact;
+  const contactTranslations = translations[language]?.contact || translations['fr']?.contact || translations['en']?.contact;
+
+  if (!contactTranslations) {
+    return null;
+  }
+
+  const t = contactTranslations;
 
   return (
     <section id="contact" className="py-40 px-6 bg-gray-50/50 relative overflow-hidden">

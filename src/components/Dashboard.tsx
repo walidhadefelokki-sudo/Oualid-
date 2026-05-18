@@ -77,13 +77,9 @@ import {
   getDoc,
   getDocs,
   setDoc,
-  deleteDoc,
-  limit
+  deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -145,14 +141,17 @@ interface Notification {
 
 export default function Dashboard({ 
   user: initialUser, 
+  // Add isDemo to props
   language, 
   setLanguage,
-  onGoHome
+  onGoHome,
+  isDemo = false
 }: { 
   user: any; 
   language: Language; 
   setLanguage: (lang: Language) => void; 
   onGoHome: () => void;
+  isDemo?: boolean;
 }) {
   // Use a default user if none provided (especially for demo mode/crash prevention)
   const user = initialUser || {
@@ -166,45 +165,11 @@ export default function Dashboard({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const cvMakerRef = React.useRef<HTMLDivElement>(null);
-  const candidateCVRef = React.useRef<HTMLDivElement>(null);
-  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-
-  const downloadPDF = async (ref: React.RefObject<HTMLDivElement>, pdfName: string) => {
-    if (!ref.current) return;
-    
-    setIsGeneratingPDF(true);
-    try {
-      const element = ref.current;
-      
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${pdfName.replace(/\s+/g, '_')}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert(language === 'ar' ? 'فشل تحميل الملف' : 'Erreur lors du téléchargement du fichier.');
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
-
   const t = (key: string, variables?: Record<string, any>) => {
     const keys = key.split('.');
-    let result: any = translations[language];
+    let result: any = translations[language] || translations['fr'] || translations['en'];
     for (const k of keys) {
-      if (result[k]) result = result[k];
+      if (result && result[k]) result = result[k];
       else return key;
     }
     if (variables && typeof result === 'string') {
@@ -236,17 +201,21 @@ export default function Dashboard({
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isDemo) return;
 
     // Fetch initial notifications
     const fetchNotifications = async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.uid)
-        .order('created_at', { ascending: false });
-      
-      if (!error && data) setNotifications(data);
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.uid)
+          .order('created_at', { ascending: false });
+        
+        if (!error && data) setNotifications(data);
+      } catch (err) {
+        console.error("Error fetching notifications:", err);
+      }
     };
 
     fetchNotifications();
@@ -261,18 +230,22 @@ export default function Dashboard({
         filter: `user_id=eq.${user.uid}`
       }, payload => {
         setNotifications(prev => [payload.new as Notification, ...prev]);
-        // Optional: Show a toast or browser notification
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, isDemo]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
+    if (isDemo) {
+      alert(lt('CV uploaded successfully (Demo)!', 'CV téléchargé avec succès (Démo) !', 'تم رفع السيرة الذاتية بنجاح (تجربة)!'));
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -284,10 +257,15 @@ export default function Dashboard({
         .from('cvs')
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        if (uploadError.message === 'Failed to fetch') {
+          throw new Error('Impossible de se connecter au serveur de stockage. Veuillez vérifier votre connexion ou la configuration de stockage.');
+        }
+        throw uploadError;
+      }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('cvs') // Correction effectuée
+        .from('cvs')
         .getPublicUrl(filePath);
 
       // Update user profile or CV record with the new URL
@@ -299,9 +277,9 @@ export default function Dashboard({
       if (updateError) throw updateError;
 
       alert(lt('CV uploaded successfully!', 'CV téléchargé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
-      alert(lt('Error uploading file.', 'Erreur lors du téléchargement du fichier.', 'خطأ أثناء رفع الملف.'));
+      alert(lt(`Error: ${error.message}`, `Erreur: ${error.message}`, `خطأ: ${error.message}`));
     } finally {
       setIsUploading(false);
     }
@@ -369,74 +347,72 @@ export default function Dashboard({
   });
   const [showBillingSuccess, setShowBillingSuccess] = useState(false);
   const [billingSuccessMessage, setBillingSuccessMessage] = useState('');
-  const [candidateSearchQuery, setCandidateSearchQuery] = useState('');
-  const [candidateLocationFilter, setCandidateLocationFilter] = useState('');
-  const [candidateJobFilter, setCandidateJobFilter] = useState('');
 
   // Firebase Invitation & Notification Logic
   useEffect(() => {
-    if (!user || !auth.currentUser) return;
+    if (!user || isDemo) return;
 
-    const path = 'notifications';
+    // Skip real Firestore logic if user is not authenticated in Firebase
+    if (!auth.currentUser) return;
+
     // Listen for notifications (especially for invitation acceptance)
     const q = query(
-      collection(db, path), 
+      collection(db, 'notifications'), 
       where('userId', '==', user.uid),
-      where('read', '==', false),
-      limit(50) // Added limit to help with assertion issues
+      where('read', '==', false)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const notification = change.doc.data();
+          // If it's an invitation acceptance, we can handle it
           if (notification.type === 'invitation_accepted') {
-            // ...
+            // Optional: Show a specific UI alert
           }
         }
       });
     }, (error) => {
-      // Use handleFirestoreError to wrap the error for better diagnosis
-      try {
-        handleFirestoreError(error, OperationType.LIST, path);
-      } catch (err) {
-        // Silent catch for live listeners if you don't want to crash 
-        // the app, but log it properly.
+      // Gracefully handle permission errors
+      if (error.code === 'permission-denied') {
+        console.warn("Firestore permissions denied - expected in demo mode without auth");
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'notifications');
       }
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isDemo]);
 
   // Firebase Saved Jobs Logic
   useEffect(() => {
-    if (!user || !auth.currentUser) return;
+    if (!user || isDemo) return;
 
-    const path = 'saved_jobs';
+    // Skip real Firestore logic if user is not authenticated in Firebase
+    if (!auth.currentUser) return;
+
     const q = query(
-      collection(db, path),
-      where('userId', '==', user.uid),
-      limit(100)
+      collection(db, 'saved_jobs'),
+      where('userId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const jobIds = snapshot.docs.map(doc => doc.data().jobId);
       setSavedJobs(jobIds);
     }, (error) => {
-      try {
-        handleFirestoreError(error, OperationType.LIST, path);
-      } catch (err) {
-        // Log handled
+      if (error.code === 'permission-denied') {
+        console.warn("Firestore permissions denied for saved_jobs - expected in demo mode without auth");
+      } else {
+        console.error("Error fetching saved jobs:", error);
       }
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isDemo]);
 
   const handleSendInvite = async () => {
     if (!inviteEmail || !user) return;
     setIsSendingInvite(true);
-    const path = 'invitations';
     try {
       const invitationData = {
         email: inviteEmail,
@@ -445,7 +421,7 @@ export default function Dashboard({
         status: 'pending',
         createdAt: serverTimestamp()
       };
-      const docRef = await addDoc(collection(db, path), invitationData);
+      const docRef = await addDoc(collection(db, 'invitations'), invitationData);
       
       // Simulate sending email
       setTimeout(() => {
@@ -459,23 +435,21 @@ export default function Dashboard({
       }, 1500);
 
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
+      console.error("Error sending invite:", error);
       setIsSendingInvite(false);
     }
   };
 
   const handleAcceptInvite = async (invitation: any) => {
-    const invitationsPath = 'invitations';
-    const notificationsPath = 'notifications';
     try {
       // 1. Update invitation status to 'accepted'
-      await updateDoc(doc(db, invitationsPath, invitation.id), {
+      await updateDoc(doc(db, 'invitations', invitation.id), {
         status: 'accepted',
         acceptedAt: serverTimestamp()
       });
 
       // 2. Notify the inviter
-      await addDoc(collection(db, notificationsPath), {
+      await addDoc(collection(db, 'notifications'), {
         userId: invitation.inviterId,
         title: lt('Invitation accepted', 'Invitation acceptée', 'تم قبول الدعوة'),
         message: lt(
@@ -493,22 +467,20 @@ export default function Dashboard({
       setShowInviteSimulation(null);
       alert(lt('Invitation accepted successfully!', 'Invitation acceptée avec succès !', 'تم قبول الدعوة بنجاح!'));
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, invitationsPath);
+      console.error("Error accepting invite:", error);
     }
   };
 
   const handleGrantAccess = async (notification: any) => {
-    const invitationsPath = 'invitations';
-    const notificationsPath = 'notifications';
     try {
       // 1. Update invitation status to 'approved'
-      await updateDoc(doc(db, invitationsPath, notification.invitationId), {
+      await updateDoc(doc(db, 'invitations', notification.invitationId), {
         status: 'approved',
         approvedAt: serverTimestamp()
       });
 
       // 2. Mark notification as read
-      await updateDoc(doc(db, notificationsPath, notification.id), {
+      await updateDoc(doc(db, 'notifications', notification.id), {
         read: true
       });
 
@@ -522,7 +494,7 @@ export default function Dashboard({
 
       alert(lt('Access granted successfully!', 'Accès accordé avec succès !', 'تم منح الوصول بنجاح!'));
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, invitationsPath);
+      console.error("Error granting access:", error);
     }
   };
 
@@ -622,11 +594,10 @@ export default function Dashboard({
 
           <div className="flex-1 px-4 space-y-2 overflow-y-auto no-scrollbar">
             <SectionLabel>Principal</SectionLabel>
-            <SidebarItem icon={LayoutDashboard} label={t('dashboard')} active={activeTab === 'employer-dashboard'} onClick={() => setActiveTab('employer-dashboard')} />
-            <SidebarItem icon={PlusCircle} label={t('postJob')} active={activeTab === 'post-job'} onClick={() => setActiveTab('post-job')} />
-            <SidebarItem icon={Briefcase} label={t('manageJobs')} active={activeTab === 'manage-jobs'} onClick={() => setActiveTab('manage-jobs')} />
-            <SidebarItem icon={Search} label={t('candidatesDirectory')} active={activeTab === 'candidates-directory'} onClick={() => setActiveTab('candidates-directory')} />
-            <SidebarItem icon={UsersIcon} label={t('candidates')} active={activeTab === 'candidates'} onClick={() => setActiveTab('candidates')} />
+            <SidebarItem icon={LayoutDashboard} label="Tableau de bord" active={activeTab === 'employer-dashboard'} onClick={() => setActiveTab('employer-dashboard')} />
+            <SidebarItem icon={PlusCircle} label="Publier une offre" active={activeTab === 'post-job'} onClick={() => setActiveTab('post-job')} />
+            <SidebarItem icon={Briefcase} label="Mes offres" active={activeTab === 'manage-jobs'} onClick={() => setActiveTab('manage-jobs')} />
+            <SidebarItem icon={UsersIcon} label="Candidatures" active={activeTab === 'candidates'} onClick={() => setActiveTab('candidates')} />
 
             <SectionLabel>IA & Innovation 2026</SectionLabel>
             <SidebarItem icon={Cpu} label="Sourcing IA" active={activeTab === 'sourcing-ia'} onClick={() => setActiveTab('sourcing-ia')} />
@@ -947,8 +918,32 @@ export default function Dashboard({
     setActiveTab('manage-jobs');
   };
 
-  const handleApplyToJob = (jobTitle: string) => {
-    alert(language === 'ar' ? `تم إرسال طلبك لوظيفة ${jobTitle} بنجاح!` : `Votre candidature pour le poste de ${jobTitle} a été envoyée avec succès !`);
+  const handleApplyToJob = async (jobTitle: string) => {
+    if (!user) {
+      alert(language === 'ar' ? 'يرجى تسجيل الدخول للتقديم.' : 'Veuillez vous connecter pour postuler.');
+      return;
+    }
+
+    try {
+      // Find the job object from MOCK_JOBS
+      const job = MOCK_JOBS.find(j => j.title === jobTitle || j.title === jobTitle);
+      
+      const applicationData = {
+        jobId: job?.id || 0,
+        candidateId: user.uid,
+        candidateName: user.displayName || user.email,
+        candidateEmail: user.email,
+        candidatePhone: user.phone || '', // Need to ensure phone is in user profile
+        resumeUrl: user.resumeUrl || '', // Assuming it's in the profile
+        status: 'pending',
+        appliedAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'applications'), applicationData);
+      alert(language === 'ar' ? `تم إرسال طلبك لوظيفة ${jobTitle} بنجاح!` : `Votre candidature pour le poste de ${jobTitle} a été envoyée avec succès !`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'applications');
+    }
   };
 
   // Filter States
@@ -968,7 +963,7 @@ export default function Dashboard({
       try {
         await deleteDoc(docRef);
       } catch (error) {
-        console.error("Error removing saved job:", error);
+        handleFirestoreError(error, OperationType.DELETE, 'saved_jobs');
       }
     } else {
       try {
@@ -978,7 +973,7 @@ export default function Dashboard({
           createdAt: serverTimestamp()
         });
       } catch (error) {
-        console.error("Error saving job:", error);
+        handleFirestoreError(error, OperationType.CREATE, 'saved_jobs');
       }
     }
   };
@@ -1348,135 +1343,6 @@ export default function Dashboard({
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          );
-        case 'candidates-directory':
-          const allCandidates = [
-            ...aiCandidates,
-            { id: 6, name: 'Sami Mansour', role: 'Frontend Engineer', exp: '4 ans', location: 'Alger', match: 89, category: 'Bon match', summary: 'Spécialiste React.', email: 's.mansour@email.dz', phone: '+213 554 11 22 33', scores: { exp: 88, skills: 92, edu: 80 }, strengths: ['React expert', 'UI/UX knowledge'], weaknesses: ['Limited backend experience'] },
-            { id: 7, name: 'Karim Zidi', role: 'DevOps Engineer', exp: '7 ans', location: 'Oran', match: 92, category: 'Excellent match', summary: 'Expert Cloud & CI/CD.', email: 'k.zidi@email.dz', phone: '+213 772 55 66 77', scores: { exp: 95, skills: 90, edu: 85 }, strengths: ['Kubernetes', 'Docker'], weaknesses: ['No mobile experience'] },
-            { id: 8, name: 'Lina Kaci', role: 'Product Manager', exp: '4 ans', location: 'Alger', match: 85, category: 'Bon match', summary: 'Product Leader.', email: 'l.kaci@email.dz', phone: '+213 553 88 99 00', scores: { exp: 85, skills: 88, edu: 90 }, strengths: ['Agile expert', 'Market analysis'], weaknesses: ['Technical background depth'] },
-            { id: 9, name: 'Omar Sy', role: 'Visual Designer', exp: '5 ans', location: 'Constantine', match: 82, category: 'Bon match', summary: 'Creative Designer.', email: 'o.sy@email.dz', phone: '+213 552 33 44 55', scores: { exp: 80, skills: 90, edu: 70 }, strengths: ['Creative', 'Photoshop expert'], weaknesses: ['Limited coding'] },
-            { id: 10, name: 'Yacine Brahimi', role: 'Growth Hacker', exp: '6 ans', location: 'Alger', match: 91, category: 'Excellent match', summary: 'Marketing expert.', email: 'y.brahimi@email.dz', phone: '+213 662 44 55 66', scores: { exp: 90, skills: 92, edu: 88 }, strengths: ['Growth mindset', 'Data driven'], weaknesses: ['Niche experience'] },
-          ];
-
-          const filteredDirectoryCandidates = allCandidates.filter(c => {
-            const matchesSearch = c.name.toLowerCase().includes(candidateSearchQuery.toLowerCase()) || 
-                                 c.role.toLowerCase().includes(candidateSearchQuery.toLowerCase());
-            const matchesLocation = candidateLocationFilter === '' || c.location === candidateLocationFilter;
-            const matchesJob = candidateJobFilter === '' || c.role === candidateJobFilter;
-            return matchesSearch && matchesLocation && matchesJob;
-          });
-
-          return (
-            <div className="space-y-10">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className={isRTL ? 'text-right' : ''}>
-                  <h1 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">{t('candidatesDirectory')}</h1>
-                  <p className="text-gray-500 mt-2 text-lg font-medium">Explorez notre base de données de talents qualifiés et trouvez les meilleurs profils.</p>
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm ${isRTL ? 'rtl' : ''}`}>
-                <div className="relative">
-                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <input 
-                    type="text" 
-                    placeholder={t('searchCandidatePlaceholder')}
-                    value={candidateSearchQuery}
-                    onChange={(e) => setCandidateSearchQuery(e.target.value)}
-                    className="w-full pl-16 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] transition-all font-bold text-sm"
-                  />
-                </div>
-                <div className="relative">
-                  <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <select 
-                    value={candidateLocationFilter}
-                    onChange={(e) => setCandidateLocationFilter(e.target.value)}
-                    className="w-full pl-16 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] transition-all font-bold text-sm appearance-none cursor-pointer"
-                  >
-                    <option value="">{t('filterByLocation')}</option>
-                    {Array.from(new Set(allCandidates.map(c => c.location))).map(loc => (
-                      <option key={loc} value={loc}>{loc}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="relative">
-                  <Briefcase className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <select 
-                    value={candidateJobFilter}
-                    onChange={(e) => setCandidateJobFilter(e.target.value)}
-                    className="w-full pl-16 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#173E7D] transition-all font-bold text-sm appearance-none cursor-pointer"
-                  >
-                    <option value="">{t('filterByJob')}</option>
-                    {Array.from(new Set(allCandidates.map(c => c.role))).map(role => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Results */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredDirectoryCandidates.length > 0 ? (
-                  filteredDirectoryCandidates.map((candidate, i) => (
-                    <motion.div 
-                      key={candidate.id} 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      whileHover={{ y: -10, scale: 1.02 }}
-                      className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden"
-                    >
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50 blur-3xl group-hover:bg-blue-100 transition-colors"></div>
-                      
-                      <div className="flex flex-col items-center text-center space-y-6 relative z-10">
-                        <div className="space-y-1">
-                          <h4 className="text-xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight">{candidate.name}</h4>
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{candidate.role}</p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 w-full">
-                          <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-white transition-colors">
-                            <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
-                            <p className="text-xs font-black text-[#173E7D]">{candidate.exp}</p>
-                          </div>
-                          <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-white transition-colors">
-                            <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mb-1">Ville</p>
-                            <p className="text-xs font-black text-[#173E7D]">{candidate.location}</p>
-                          </div>
-                        </div>
-
-                        <div className="w-full pt-4">
-                          <button 
-                            onClick={() => setSelectedCandidateCV(candidate)}
-                            className="w-full bg-[#173E7D] text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-[#F68D58] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/10 group/btn"
-                          >
-                            <span>{t('viewCandidateProfile')}</span>
-                            <ChevronRight size={14} className={isRTL ? 'rotate-180' : ''} />
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))
-                ) : (
-                  <div className="col-span-full py-32 text-center bg-white rounded-[3rem] border border-dashed border-gray-200">
-                    <Search size={48} className="mx-auto text-gray-200 mb-6" />
-                    <p className="text-xl font-black text-gray-400 uppercase tracking-widest">{t('noCandidatesFound')}</p>
-                    <button 
-                      onClick={() => {
-                        setCandidateSearchQuery('');
-                        setCandidateLocationFilter('');
-                        setCandidateJobFilter('');
-                      }}
-                      className="mt-6 text-[#F68D58] font-black text-xs uppercase tracking-widest hover:underline"
-                    >
-                      {t('resetFilters')}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -2385,7 +2251,29 @@ export default function Dashboard({
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button 
+                          onClick={() => setLanguage('en')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'en' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
+                              <div className="text-xs text-gray-400">English</div>
+                            </div>
+                          </div>
+                          {language === 'en' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
@@ -2502,12 +2390,12 @@ export default function Dashboard({
                       )}
 
                       {/* Pending Access Requests (Notifications) */}
-                      {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).length > 0 && (
+                      {notifications.filter(n => n.type === 'invitation_accepted' && !n.is_read).length > 0 && (
                         <div className="space-y-4">
                           <h4 className={`text-sm font-black text-[#F68D58] uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>
                             {lt('Pending Access Requests', 'Demandes d\'accès en attente', 'طلبات الوصول المعلقة')}
                           </h4>
-                          {notifications.filter(n => n.type === 'invitation_accepted' && !n.read).map((notif, i) => (
+                          {notifications.filter(n => n.type === 'invitation_accepted' && !n.is_read).map((notif, i) => (
                             <div key={i} className={`flex items-center justify-between p-6 bg-orange-50 border border-orange-100 rounded-3xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                               <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#F68D58] shadow-sm">
@@ -3982,17 +3870,16 @@ export default function Dashboard({
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
                   </button>
                   <button 
-                    onClick={() => downloadPDF(cvMakerRef, cvData.name || 'CV')}
-                    disabled={isGeneratingPDF}
-                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 disabled:opacity-50"
+                    onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
+                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
                   >
-                    <Download size={20} /> {isGeneratingPDF ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') : (language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF')}
+                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
                   </button>
                 </div>
               </div>
 
               {/* CV Design matching Candidate Modal */}
-              <div ref={cvMakerRef} className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
+              <div className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
                 {/* CV Header */}
                 <div className="bg-[#173E7D] p-12 text-white relative">
                   <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4543,7 +4430,29 @@ export default function Dashboard({
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button 
+                          onClick={() => setLanguage('en')}
+                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
+                            language === 'en' 
+                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
+                              : 'border-gray-100 hover:border-gray-200 bg-white'
+                          } ${isRTL ? 'flex-row-reverse' : ''}`}
+                        >
+                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
+                            <div className={isRTL ? 'text-right' : 'text-left'}>
+                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
+                              <div className="text-xs text-gray-400">English</div>
+                            </div>
+                          </div>
+                          {language === 'en' && (
+                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
+                              <CheckCircle2 size={14} />
+                            </div>
+                          )}
+                        </button>
+
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
@@ -4876,12 +4785,6 @@ export default function Dashboard({
                     onClick={() => { setActiveTab('manage-jobs'); setIsSidebarOpen(false); }} 
                   />
                   <SidebarItem 
-                    icon={Search} 
-                    label={t('candidatesDirectory')} 
-                    active={activeTab === 'candidates-directory'} 
-                    onClick={() => { setActiveTab('candidates-directory'); setIsSidebarOpen(false); }} 
-                  />
-                  <SidebarItem 
                     icon={UsersIcon} 
                     label={t('candidates')} 
                     active={activeTab === 'candidates'} 
@@ -5008,12 +4911,6 @@ export default function Dashboard({
                 label={t('manageJobs')} 
                 active={activeTab === 'manage-jobs'} 
                 onClick={() => setActiveTab('manage-jobs')} 
-              />
-              <SidebarItem 
-                icon={Search} 
-                label={t('candidatesDirectory')} 
-                active={activeTab === 'candidates-directory'} 
-                onClick={() => setActiveTab('candidates-directory')} 
               />
               <SidebarItem 
                 icon={UsersIcon} 
@@ -5191,7 +5088,6 @@ export default function Dashboard({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              ref={candidateCVRef}
               className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
               {/* CV Header */}
@@ -5304,12 +5200,8 @@ export default function Dashboard({
               {/* CV Footer / Actions */}
               <div className="p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <div className="flex gap-4">
-                  <button 
-                    onClick={() => downloadPDF(candidateCVRef, selectedCandidateCV.name)}
-                    disabled={isGeneratingPDF}
-                    className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-50"
-                  >
-                    <FileText size={20} /> {isGeneratingPDF ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') : (language === 'ar' ? 'Télécharger PDF' : 'Télécharger PDF')}
+                  <button className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3">
+                    <FileText size={20} /> Télécharger PDF
                   </button>
                   <button className="px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
                     Imprimer

@@ -1938,29 +1938,66 @@ export default function Dashboard({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
-                  { name: 'Gratuit', price: '0', features: ['3 offres actives', 'Filtres basiques', 'Support email'], color: 'gray' },
-                  { name: 'Pro', price: '4,900', features: ['Offres illimitées', 'AI Filter Premium', 'Support 24/7', 'Mise en avant'], color: 'orange', popular: true },
-                  { name: 'Entreprise', price: '12,900', features: ['Multi-comptes', 'API Access', 'Account Manager', 'Marque employeur'], color: 'blue' },
+                  { name: 'Gratuit', price: '0', features: ['3 offres actives', 'Filtres basiques', 'Support email'], color: 'gray', icon: <Zap size={32} /> },
+                  { name: 'Pro', price: '4,900', features: ['Offres illimitées', 'AI Filter Premium', 'Support 24/7', 'Mise en avant'], color: 'orange', popular: true, icon: <Briefcase size={32} /> },
+                  { name: 'Entreprise', price: '12,900', features: ['Multi-comptes', 'API Access', 'Account Manager', 'Marque employeur'], color: 'blue', icon: <Building2 size={32} /> },
                 ].map((plan, i) => (
-                  <div key={i} className={`bg-white p-10 rounded-[3rem] border-2 transition-all relative ${plan.popular ? 'border-[#F68D58] shadow-xl shadow-orange-500/10 scale-105 z-10' : 'border-gray-100 hover:border-gray-200'}`}>
+                  <motion.div 
+                    key={i}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    whileHover={{ y: -15, scale: 1.02 }}
+                    transition={{ duration: 0.5 }}
+                    className={`group relative bg-white p-12 rounded-[3.5rem] flex flex-col h-full border transition-all duration-500 overflow-hidden ${
+                      plan.popular 
+                        ? 'border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.2)] z-10' 
+                        : 'border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)]'
+                    }`}
+                  >
+                    {/* Decorative corner */}
+                    <div className={`absolute top-0 right-0 w-32 h-32 rounded-bl-[4rem] -z-0 ${plan.popular ? 'bg-[#F68D58]/5' : 'bg-gray-50'}`} />
+
                     {plan.popular && (
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                        Plus populaire
+                      <div className="absolute top-8 right-8 bg-[#F68D58] text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap z-20">
+                        {lt('Most Popular', 'Plus populaire', 'الأكثر شعبية')}
                       </div>
                     )}
-                    <h3 className="text-xl font-black text-[#173E7D] mb-2">{plan.name}</h3>
-                    <div className="flex items-baseline gap-1 mb-8">
-                      <span className="text-4xl font-black text-[#173E7D]">{plan.price}</span>
-                      <span className="text-gray-400 font-bold text-sm">DA/mois</span>
+
+                    <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-10 shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-all duration-700 relative z-10 ${
+                      plan.popular ? 'bg-orange-50 text-[#F68D58]' : 'bg-gray-50 text-gray-400'
+                    }`}>
+                      {plan.icon}
                     </div>
-                    <ul className="space-y-4 mb-10">
+
+                    <div className="relative z-10 mb-8">
+                      <h3 className="text-3xl font-black text-[#173E7D] mb-2 tracking-tight">{plan.name}</h3>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+                        {plan.name === 'Gratuit' ? 'Pour tester nos services' : plan.name === 'Pro' ? 'Packs flexibles' : 'Solution annuelle'}
+                      </p>
+                    </div>
+
+                    <div className="relative z-10 mb-12">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-6xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
+                        <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>
+                      </div>
+                    </div>
+
+                    <ul className="relative z-10 space-y-5 mb-16 flex-1">
+                      <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Ce qui est inclus</p>
                       {plan.features.map((f, j) => (
-                        <li key={j} className="flex items-center gap-3 text-sm text-gray-500 font-medium">
-                          <CheckCircle2 size={16} className="text-emerald-500" />
-                          {f}
+                        <li key={j} className="flex items-start gap-4 group/item">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-sm transition-transform group-hover/item:scale-110 ${
+                            plan.popular ? 'bg-orange-50 text-[#F68D58] border-orange-100' : 'bg-emerald-50 text-emerald-500 border-emerald-100'
+                          }`}>
+                            <Check size={12} strokeWidth={4} />
+                          </div>
+                          <span className="text-sm font-bold text-gray-600">{f}</span>
                         </li>
                       ))}
                     </ul>
+
                     <button 
                       onClick={() => {
                         setSelectedPlan(plan);
@@ -1968,12 +2005,15 @@ export default function Dashboard({
                         setBillingView('payment');
                         setActiveTab('settings');
                       }}
-                      className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
-                      plan.popular ? 'bg-[#F68D58] text-white shadow-lg shadow-orange-500/20 hover:bg-[#e57d47]' : 'bg-gray-50 text-[#173E7D] hover:bg-gray-100'
-                    }`}>
-                      Choisir ce plan
+                      className={`relative z-10 w-full py-6 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-500 ${
+                        plan.popular 
+                          ? 'bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47]' 
+                          : 'bg-white text-[#173E7D] border-2 border-[#173E7D] hover:bg-[#173E7D] hover:text-white'
+                      }`}
+                    >
+                      {lt('Choose this plan', 'Choisir ce plan', 'اختيار هذه الباقة')}
                     </button>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>

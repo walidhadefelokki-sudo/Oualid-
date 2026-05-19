@@ -277,6 +277,7 @@ export default function Dashboard({
 
       if (updateError) throw updateError;
 
+      setProfileData(prev => ({ ...prev, resumeUrl: publicUrl }));
       alert(lt('CV uploaded successfully!', 'CV téléchargé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
     } catch (error: any) {
       console.error('Error uploading file:', error);
@@ -790,7 +791,8 @@ export default function Dashboard({
     wilaya: 'Alger',
     bio: '',
     jobTitle: 'Développeur Full Stack',
-    location: 'Alger'
+    location: 'Alger',
+    resumeUrl: user?.resumeUrl || user?.resume_url || ''
   });
 
   // CV Maker State
@@ -3577,7 +3579,18 @@ export default function Dashboard({
               </div>
             </div>
 
-            <div className={`flex ${isRTL ? 'justify-start' : 'justify-end'} gap-4`}>
+            <div className={`flex flex-col sm:flex-row ${isRTL ? 'justify-start' : 'justify-end'} gap-4 items-center`}>
+              {profileData.resumeUrl && (
+                <a 
+                  href={profileData.resumeUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-6 py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-bold border border-emerald-100 hover:bg-emerald-100 transition-all group"
+                >
+                  <FileText size={20} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-sm">{lt('View current CV', 'Voir le CV actuel', 'عرض السيرة الذاتية')}</span>
+                </a>
+              )}
               <div className="relative">
                 <input 
                   type="file" 

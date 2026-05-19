@@ -24,6 +24,7 @@ import {
   Cpu,
   Gem,
   CheckCircle2,
+  Check,
   Clock,
   Camera,
   ChevronDown,
@@ -673,15 +674,20 @@ export default function Dashboard({
   };
 
   const JobCard: React.FC<JobCardProps> = ({ job, isSaved, onToggleSave }) => (
-    <div 
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5 }}
+      whileHover={{ y: -15, scale: 1.02 }}
       onClick={() => setSelectedJob(job)}
-      className="bg-white rounded-[2.5rem] border-2 border-[#173E7D] p-8 hover:shadow-2xl hover:shadow-blue-900/5 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full"
+      className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
       {/* Decorative background element */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
 
       {/* Header: Logo & Badges */}
-      <div className="relative z-10 flex justify-between items-start mb-8">
+      <div className="relative z-10 flex justify-between items-start mb-10">
         <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-50 overflow-hidden group-hover:scale-110 transition-transform duration-500">
           <img 
             src={job.logo} 
@@ -694,90 +700,86 @@ export default function Dashboard({
           />
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className="px-4 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-full uppercase tracking-widest border border-emerald-100/50">
+          <span className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100/50">
             {job.type}
           </span>
-          <span className="px-4 py-1.5 bg-blue-50 text-[#173E7D] text-[10px] font-black rounded-full uppercase tracking-widest border border-blue-100/50">
+          <span className="px-5 py-2 bg-blue-50 text-[#173E7D] rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100/50">
             {job.remote}
           </span>
         </div>
       </div>
 
       {/* Content */}
-      <div className="relative z-10 flex-1 space-y-4">
-        <div>
-          <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors leading-tight mb-2">
-            {job.title}
-          </h4>
-          <div className="flex items-center gap-2 text-gray-400 font-bold text-xs uppercase tracking-wider">
-            <Building2 size={14} className="text-[#F68D58]" />
-            {job.company}
-          </div>
+      <div className="relative z-10 flex-1 flex flex-col">
+        <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors leading-tight mb-3">
+          {job.title}
+        </h4>
+        <div className="flex items-center gap-2 text-gray-400 font-bold uppercase tracking-wider text-[10px] mb-6">
+          <Building2 size={14} className="text-[#F68D58]" />
+          {job.company}
         </div>
 
-        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium">
+        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
           {job.description}
         </p>
 
         {/* Requirements Tags */}
-        <div className="flex flex-wrap gap-2 pt-2">
-          {job.requirements.slice(0, 2).map((req, idx) => (
+        <div className="flex flex-wrap gap-2 pt-2 mb-8">
+          {job.requirements.slice(0, 3).map((req, idx) => (
             <span key={idx} className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
               {req}
             </span>
           ))}
-          {job.requirements.length > 2 && (
+          {job.requirements.length > 3 && (
             <span className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
-              +{job.requirements.length - 2}
+              +{job.requirements.length - 3}
             </span>
           )}
         </div>
 
         {/* Meta Info */}
-        <div className="flex items-center gap-6 pt-4">
-          <div className="flex items-center gap-2 text-gray-400 text-[10px] font-black uppercase tracking-widest">
-            <MapPin size={14} className="text-[#F68D58]" />
+        <div className="flex items-center gap-6 text-[10px] text-gray-400 mb-10 font-bold uppercase tracking-widest mt-auto">
+          <div className="flex items-center gap-2">
+            <MapPin size={16} className="text-[#F68D58]" />
             {job.location}
           </div>
-          <div className="flex items-center gap-2 text-gray-400 text-[10px] font-black uppercase tracking-widest">
-            <Clock size={14} className="text-[#F68D58]" />
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-[#F68D58]" />
             {lt('2 days ago', 'Il y a 2j', 'منذ يومين')}
           </div>
         </div>
-      </div>
 
-      {/* Footer: Salary & Action */}
-      <div className="relative z-10 flex items-center justify-between pt-8 mt-8 border-t border-gray-50">
-        <div className="space-y-1">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            {lt('Estimated Salary', 'Salaire Estimé', 'الراتب المتوقع')}
-          </p>
-          <div className="text-xl font-black text-[#173E7D]">
-            {job.salary}
+        {/* Footer: Salary & Action */}
+        <div className="relative z-10 flex items-center justify-between pt-8 mt-8 border-t border-gray-50">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+              {lt('Estimated Salary', 'Salaire Estimé', 'الراتب المتوقع')}
+            </p>
+            <p className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{job.salary}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSave(job.id);
+              }}
+              className={`p-4 rounded-2xl transition-all ${
+                isSaved 
+                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
+                  : 'bg-gray-50 text-gray-300 hover:text-[#F68D58] hover:bg-orange-50'
+              }`}
+            >
+              <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
+            </button>
+            <button 
+              className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-[#173E7D] group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-500 shadow-sm"
+            >
+              <ChevronRight size={28} className={isRTL ? 'rotate-180' : ''} />
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSave(job.id);
-            }}
-            className={`p-4 rounded-2xl transition-all ${
-              isSaved 
-                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                : 'bg-gray-50 text-gray-300 hover:text-[#F68D58] hover:bg-orange-50'
-            }`}
-          >
-            <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
-          </button>
-          <button 
-            className="w-14 h-14 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center hover:bg-[#F68D58] transition-all shadow-lg shadow-blue-900/10 group-hover:shadow-orange-500/20"
-          >
-            <ChevronRight size={28} className={isRTL ? 'rotate-180' : ''} />
-          </button>
-        </div>
       </div>
-    </div>
+    </motion.div>
   );
 
   // Profile State
@@ -1311,43 +1313,65 @@ export default function Dashboard({
                   {t('postJob')}
                 </button>
               </div>
-              <div className="bg-white rounded-[3rem] border border-gray-100 overflow-hidden shadow-sm">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-50/50 border-b border-gray-100">
-                    <tr className={isRTL ? 'flex-row-reverse' : ''}>
-                      <th className={`px-10 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{t('position')}</th>
-                      <th className={`px-10 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{t('applicationsTitle')}</th>
-                      <th className={`px-10 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{t('status')}</th>
-                      <th className={`px-10 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{t('date')}</th>
-                      <th className={`px-10 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {postedJobs.map((job, i) => (
-                      <tr key={i} className={`hover:bg-gray-50/50 transition-colors group ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <td className={`px-10 py-8 font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors ${isRTL ? 'text-right' : ''}`}>{job.title}</td>
-                        <td className={`px-10 py-8 text-gray-500 font-bold ${isRTL ? 'text-right' : ''}`}>{job.apps}</td>
-                        <td className={`px-10 py-8 ${isRTL ? 'text-right' : ''}`}>
-                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${job.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
-                            {job.status}
-                          </span>
-                        </td>
-                        <td className={`px-10 py-8 text-gray-400 text-sm font-medium ${isRTL ? 'text-right' : ''}`}>{job.date}</td>
-                        <td className={`px-10 py-8 ${isRTL ? 'text-right' : ''}`}>
-                          <div className="flex items-center gap-4">
-                            <button className="text-[#173E7D] font-black text-xs uppercase tracking-widest hover:text-[#F68D58] transition-colors">Modifier</button>
-                            <button 
-                              onClick={() => setPostedJobs(postedJobs.filter((_, idx) => idx !== i))}
-                              className="text-red-500 font-black text-xs uppercase tracking-widest hover:text-red-600 transition-colors"
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                {postedJobs.map((job, i) => (
+                  <motion.div 
+                    key={i} 
+                    whileHover={{ y: -10, scale: 1.02 }}
+                    className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden flex flex-col"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-bl-[3rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
+                    
+                    <div className="flex justify-between items-start mb-8 relative z-10">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-blue-50 text-[#173E7D] group-hover:bg-[#173E7D] group-hover:text-white transition-all duration-500 shadow-sm shadow-blue-100`}>
+                        <Briefcase size={22} />
+                      </div>
+                      <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${
+                        job.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-100 text-gray-400 border-gray-200'
+                      }`}>
+                        {job.status === 'Active' ? lt('Active', 'Active', 'نشط') : lt('Closed', 'Fermée', 'مغلقة')}
+                      </span>
+                    </div>
+
+                    <div className="relative z-10 mb-8 flex-1">
+                      <h3 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight line-clamp-2 min-h-[4rem]">{job.title}</h3>
+                      <div className="flex items-center gap-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">
+                        <Clock size={14} className="text-[#F68D58]" />
+                        {lt('Published on ', 'Publiée le ', 'نشرت في ')} {job.date}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-10 relative z-10">
+                      <div className="bg-gray-50/80 backdrop-blur-sm p-5 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1.5">{lt('Applications', 'Candidatures', 'التقديمات')}</p>
+                        <p className="text-2xl font-black text-[#173E7D]">{job.apps}</p>
+                      </div>
+                      <div className="bg-gray-50/80 backdrop-blur-sm p-5 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1.5">IA Match</p>
+                        <p className="text-2xl font-black text-[#F68D58]">84%</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 relative z-10">
+                      <button 
+                        onClick={() => {
+                          setSelectedJob(job);
+                          setActiveTab('candidates');
+                        }}
+                        className="flex-1 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10"
+                      >
+                        {lt('Manage', 'Gérer', 'عمليات')}
+                      </button>
+                      <button 
+                        className="w-14 h-14 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all"
+                        onClick={() => setPostedJobs(postedJobs.filter((_, idx) => idx !== i))}
+                        title={lt('Delete', 'Supprimer', 'حذف')}
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </div>
           );
@@ -1943,9 +1967,9 @@ export default function Dashboard({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
-                  { name: 'Gratuit', price: '0', features: ['3 offres actives', 'Filtres basiques', 'Support email'], color: 'gray', icon: <Zap size={32} /> },
-                  { name: 'Pro', price: '4,900', features: ['Offres illimitées', 'AI Filter Premium', 'Support 24/7', 'Mise en avant'], color: 'orange', popular: true, icon: <Briefcase size={32} /> },
-                  { name: 'Entreprise', price: '12,900', features: ['Multi-comptes', 'API Access', 'Account Manager', 'Marque employeur'], color: 'blue', icon: <Building2 size={32} /> },
+                  { name: 'Gratuit', price: '0', features: ["1 offre d'emploi gratuite"], color: 'gray', icon: <Zap size={32} /> },
+                  { name: 'Annonces', price: '5 900', features: ["Publication d'offres payantes", 'Multi-comptes (Gestionnaire)'], color: 'orange', popular: true, icon: <Briefcase size={32} /> },
+                  { name: 'Corporate', price: 'Sur mesure', features: ['Publication illimitée', 'Filtrage par IA Gemini', 'Répertoire CV & Support'], color: 'blue', icon: <Building2 size={32} /> },
                 ].map((plan, i) => (
                   <motion.div 
                     key={i}
@@ -1982,12 +2006,17 @@ export default function Dashboard({
                       </p>
                     </div>
 
-                    <div className="relative z-10 mb-12">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-6xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
-                        <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>
-                      </div>
-                    </div>
+                        <div className="relative z-10 mb-12">
+                          <div className="flex items-baseline gap-2">
+                            <span className={plan.price === 'Sur mesure' ? "text-4xl font-black text-[#173E7D] tracking-tighter uppercase" : "text-6xl font-black text-[#173E7D] tracking-tighter"}>{plan.price}</span>
+                            {plan.price !== 'Sur mesure' && <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>}
+                          </div>
+                          {plan.name === 'Annonces' && (
+                            <div className="mt-3 inline-flex px-4 py-1.5 bg-orange-100/50 text-[#F68D58] rounded-full text-[9px] font-black uppercase tracking-[0.2em] border border-orange-200/30">
+                              PAR OFFRE
+                            </div>
+                          )}
+                        </div>
 
                     <ul className="relative z-10 space-y-5 mb-16 flex-1">
                       <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Ce qui est inclus</p>
@@ -2680,9 +2709,9 @@ export default function Dashboard({
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {[
-                              { id: 'Gratuit', name: 'Gratuit', price: '0', features: ['3 annonces / mois', 'Filtrage basique', 'Support email'], icon: <Zap size={32} /> },
-                              { id: 'Pro', name: 'Pro', price: '4 900', features: ['15 annonces / mois', 'IA Matching Score 2026', 'WhatsApp Direct', 'Filtrage IA Avancé'], popular: true, icon: <Briefcase size={32} /> },
-                              { id: 'Entreprise', name: 'Entreprise', price: '12 900', features: ['Annonces illimitées', 'Video Pitch Access', 'Sourcing Prédictif IA', 'Analytics Wilayas'], icon: <Building2 size={32} /> }
+                              { id: 'Gratuit', name: 'Gratuit', price: '0', features: ["1 offre d'emploi gratuite"], icon: <Zap size={32} /> },
+                              { id: 'Annonces', name: 'Annonces', price: '5 900', features: ["Publication d'offres payantes", 'Multi-comptes (Gestionnaire)'], popular: true, icon: <Briefcase size={32} /> },
+                              { id: 'Corporate', name: 'Corporate', price: 'Sur mesure', features: ['Publication illimitée', 'Filtrage par IA Gemini', 'Répertoire CV & Support'], icon: <Building2 size={32} /> }
                             ].map((plan, i) => (
                               <motion.div 
                                 key={plan.id}
@@ -2714,9 +2743,14 @@ export default function Dashboard({
                                 <div className="relative z-10 mb-6">
                                   <h4 className="text-2xl font-black text-[#173E7D] mb-1 tracking-tight">{plan.name}</h4>
                                   <div className="flex items-baseline gap-1">
-                                    <span className="text-4xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
-                                    <span className="text-gray-400 font-bold text-sm uppercase tracking-widest">DA</span>
+                                    <span className={plan.price === 'Sur mesure' ? "text-2xl font-black text-[#173E7D] tracking-tighter uppercase" : "text-4xl font-black text-[#173E7D] tracking-tighter"}>{plan.price}</span>
+                                    {plan.price !== 'Sur mesure' && <span className="text-gray-400 font-bold text-sm uppercase tracking-widest">DA</span>}
                                   </div>
+                                  {plan.name === 'Annonces' && (
+                                    <div className="mt-2 inline-flex px-3 py-1 bg-orange-100/50 text-[#F68D58] rounded-full text-[8px] font-black uppercase tracking-[0.2em] border border-orange-200/30">
+                                      PAR OFFRE
+                                    </div>
+                                  )}
                                 </div>
 
                                 <ul className="relative z-10 space-y-4 mb-10 flex-1">

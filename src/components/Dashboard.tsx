@@ -1162,30 +1162,35 @@ export default function Dashboard({
                   { label: 'Filtrés par IA', value: '42', change: 'Top 30%', icon: Cpu, color: 'purple' },
                   { label: 'Recrutements', value: '6', change: '+2', icon: CheckCircle2, color: 'orange' },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all group">
-                    <div className="flex justify-between items-start mb-6">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
+                  <motion.div 
+                    key={i}
+                    whileHover={{ y: -5 }}
+                    className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.06)] transition-all duration-500 group relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-bl-[3rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
+                    <div className="relative z-10 flex justify-between items-start mb-8">
+                      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm ${
                         stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
                         stat.color === 'blue' ? 'bg-blue-50 text-[#173E7D] group-hover:bg-[#173E7D] group-hover:text-white' :
                         stat.color === 'purple' ? 'bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white' :
                         'bg-orange-50 text-[#F68D58] group-hover:bg-[#F68D58] group-hover:text-white'
                       }`}>
-                        <stat.icon size={28} />
+                        <stat.icon size={24} />
                       </div>
-                      <span className={`text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full ${
-                        stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
-                        stat.color === 'blue' ? 'bg-blue-50 text-blue-600' :
-                        stat.color === 'purple' ? 'bg-purple-50 text-purple-600' :
-                        'bg-orange-50 text-orange-600'
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-sm border ${
+                        stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                        stat.color === 'blue' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                        stat.color === 'purple' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                        'bg-orange-50 text-orange-600 border-orange-100'
                       }`}>
                         {stat.change}
                       </span>
                     </div>
-                    <div>
-                      <p className="text-5xl font-black text-[#173E7D] tracking-tighter">{stat.value}</p>
-                      <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-2">{stat.label}</p>
+                    <div className="relative z-10">
+                      <p className="text-5xl font-black text-[#173E7D] tracking-tighter group-hover:text-[#F68D58] transition-colors">{stat.value}</p>
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mt-3">{stat.label}</p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
 
@@ -2673,33 +2678,58 @@ export default function Dashboard({
                             <p className="text-gray-400">{lt('Select the package that fits your recruitment needs.', 'Sélectionnez le forfait qui correspond à vos besoins de recrutement.', 'اختر الباقة التي تناسب احتياجات توظيفك.')}</p>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {[
-                              { id: 'Gratuit', name: 'Gratuit', price: '0', features: ['3 annonces / mois', 'Filtrage basique', 'Support email'] },
-                              { id: 'Pro', name: 'Pro', price: '4900', features: ['15 annonces / mois', 'IA Matching Score 2026', 'WhatsApp Direct', 'Filtrage IA Avancé'], popular: true },
-                              { id: 'Entreprise', name: 'Entreprise', price: '12900', features: ['Annonces illimitées', 'Video Pitch Access', 'Sourcing Prédictif IA', 'Analytics Wilayas'] }
-                            ].map((plan) => (
-                              <div key={plan.id} className={`relative p-8 rounded-[2rem] border-2 transition-all flex flex-col ${plan.popular ? 'border-[#F68D58] bg-orange-50/20 shadow-xl shadow-orange-200/20' : 'border-gray-100 hover:border-gray-200 bg-white'}`}>
+                              { id: 'Gratuit', name: 'Gratuit', price: '0', features: ['3 annonces / mois', 'Filtrage basique', 'Support email'], icon: <Zap size={32} /> },
+                              { id: 'Pro', name: 'Pro', price: '4 900', features: ['15 annonces / mois', 'IA Matching Score 2026', 'WhatsApp Direct', 'Filtrage IA Avancé'], popular: true, icon: <Briefcase size={32} /> },
+                              { id: 'Entreprise', name: 'Entreprise', price: '12 900', features: ['Annonces illimitées', 'Video Pitch Access', 'Sourcing Prédictif IA', 'Analytics Wilayas'], icon: <Building2 size={32} /> }
+                            ].map((plan, i) => (
+                              <motion.div 
+                                key={plan.id}
+                                initial={{ opacity: 0, y: 30 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                                whileHover={{ y: -10 }}
+                                className={`group relative bg-white p-10 rounded-[3.5rem] flex flex-col h-full border transition-all duration-500 overflow-hidden ${
+                                  plan.popular 
+                                    ? 'border-[#F68D58] shadow-[0_30px_60px_-15px_rgba(246,141,88,0.15)] z-10' 
+                                    : 'border-gray-100 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.06)]'
+                                }`}
+                              >
+                                {/* Decorative corner */}
+                                <div className={`absolute top-0 right-0 w-24 h-24 rounded-bl-[3rem] -z-0 ${plan.popular ? 'bg-[#F68D58]/5' : 'bg-gray-50'}`} />
+
                                 {plan.popular && (
-                                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-[#F68D58] text-white text-[10px] font-black uppercase tracking-widest rounded-full">
-                                    Populaire
+                                  <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg z-20">
+                                    {lt('Most Popular', 'Populaire', 'الأكثر شعبية')}
                                   </div>
                                 )}
-                                <div className="mb-6">
-                                  <h4 className="text-xl font-bold text-[#173E7D] mb-2">{plan.name}</h4>
+
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-8 shadow-inner group-hover:scale-110 transition-transform duration-500 relative z-10 ${
+                                  plan.popular ? 'bg-orange-50 text-[#F68D58]' : 'bg-gray-50 text-gray-400'
+                                }`}>
+                                  {React.cloneElement(plan.icon as React.ReactElement, { size: 24 })}
+                                </div>
+
+                                <div className="relative z-10 mb-6">
+                                  <h4 className="text-2xl font-black text-[#173E7D] mb-1 tracking-tight">{plan.name}</h4>
                                   <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-black text-[#173E7D]">{plan.price}</span>
-                                    <span className="text-sm text-gray-400 font-bold">DA/mois</span>
+                                    <span className="text-4xl font-black text-[#173E7D] tracking-tighter">{plan.price}</span>
+                                    <span className="text-gray-400 font-bold text-sm uppercase tracking-widest">DA</span>
                                   </div>
                                 </div>
-                                <ul className="space-y-3 mb-8 flex-1">
+
+                                <ul className="relative z-10 space-y-4 mb-10 flex-1">
                                   {plan.features.map((f, i) => (
-                                    <li key={i} className={`flex items-center gap-2 text-sm text-gray-600 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                      <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
-                                      <span>{f}</span>
+                                    <li key={i} className={`flex items-start gap-3 group/item ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                      <div className={`p-1 rounded-full shrink-0 mt-0.5 ${plan.popular ? 'bg-orange-50 text-[#F68D58]' : 'bg-emerald-50 text-emerald-500'}`}>
+                                        <Check size={12} strokeWidth={4} />
+                                      </div>
+                                      <span className="text-xs font-bold text-gray-500">{f}</span>
                                     </li>
                                   ))}
                                 </ul>
+
                                 <button 
                                   onClick={() => {
                                     if (plan.id === 'Gratuit') {
@@ -2711,11 +2741,15 @@ export default function Dashboard({
                                       setBillingView('payment');
                                     }
                                   }}
-                                  className={`w-full py-4 rounded-xl font-bold text-sm transition-all ${plan.popular ? 'bg-[#F68D58] text-white hover:bg-[#e57d47]' : 'bg-[#173E7D] text-white hover:bg-blue-800'}`}
+                                  className={`relative z-10 w-full py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all duration-500 ${
+                                    plan.popular 
+                                      ? 'bg-[#F68D58] text-white shadow-lg shadow-orange-500/20 hover:bg-[#e57d47]' 
+                                      : 'bg-white text-[#173E7D] border-2 border-[#173E7D] hover:bg-[#173E7D] hover:text-white'
+                                  }`}
                                 >
                                   {plan.id === 'Gratuit' ? lt('Activate', 'Activer', 'تفعيل') : lt('Choose', 'Choisir', 'اختيار')}
                                 </button>
-                              </div>
+                              </motion.div>
                             ))}
                           </div>
                         </div>

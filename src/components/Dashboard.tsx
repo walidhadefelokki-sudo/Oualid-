@@ -3625,338 +3625,337 @@ export default function Dashboard({
                 </div>
 
                 <div className={`flex overflow-x-auto pb-4 gap-4 no-scrollbar ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  {[
-                    { id: 'info', label: t('cv.personalInfo'), icon: User },
-                    { id: 'exp', label: t('cv.experience'), icon: Briefcase },
-                    { id: 'edu', label: t('cv.education'), icon: FileText },
-                    { id: 'skills', label: t('cv.skills'), icon: BarChart3 },
-                    { id: 'lang', label: t('languages'), icon: Search }
-                  ].map((s) => (
-                    <button 
-                      key={s.id}
-                      onClick={() => setCvSection(s.id)}
-                      className={`px-8 py-4 rounded-[2rem] flex items-center gap-4 font-black text-sm transition-all shrink-0 uppercase tracking-widest ${cvSection === s.id ? 'bg-[#F68D58] text-white shadow-xl shadow-orange-500/20' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'} ${isRTL ? 'flex-row-reverse' : ''}`}
-                    >
-                      <s.icon size={20} />
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="pt-6">
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={cvSection}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="space-y-8"
-                    >
-                      {cvSection === 'info' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('fullName')}</label>
-                            <input 
-                              type="text" 
-                              value={cvData.name}
-                              onChange={(e) => setCvData({...cvData, name: e.target.value})}
-                              className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`}
-                            />
-                          </div>
-                          <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">Email</label>
-                            <input type="email" value={cvData.email} onChange={(e) => setCvData({...cvData, email: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
-                          </div>
-                          <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('phone')}</label>
-                            <input type="tel" value={cvData.phone} onChange={(e) => setCvData({...cvData, phone: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
-                          </div>
-                          <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('professionalSummary')}</label>
-                            <textarea rows={5} value={cvData.summary} onChange={(e) => setCvData({...cvData, summary: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold resize-none ${isRTL ? 'text-right' : ''}`} />
-                          </div>
-                        </div>
-                      )}
-
-                      {cvSection === 'exp' && (
-                        <div className="space-y-8">
-                          {cvData.experiences.map((exp, i) => (
-                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
-                              <button 
-                                onClick={() => {
-                                  const newExp = [...cvData.experiences];
-                                  newExp.splice(i, 1);
-                                  setCvData({...cvData, experiences: newExp});
-                                }}
-                                className={`absolute top-6 ${isRTL ? 'left-6' : 'right-6'} w-10 h-10 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm`}
-                              >
-                                <X size={20} />
-                              </button>
-                              <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('company')}</label>
-                                  <input 
-                                    placeholder={t('companyPlaceholder')} 
-                                    value={exp.company} 
-                                    onChange={(e) => {
-                                      const newExp = [...cvData.experiences];
-                                      newExp[i].company = e.target.value;
-                                      setCvData({...cvData, experiences: newExp});
-                                    }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Poste</label>
-                                  <input 
-                                    placeholder={t('rolePlaceholder')} 
-                                    value={exp.role} 
-                                    onChange={(e) => {
-                                      const newExp = [...cvData.experiences];
-                                      newExp[i].role = e.target.value;
-                                      setCvData({...cvData, experiences: newExp});
-                                    }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Période</label>
-                                <input 
-                                  placeholder={t('period')} 
-                                  value={exp.period} 
-                                  onChange={(e) => {
-                                    const newExp = [...cvData.experiences];
-                                    newExp[i].period = e.target.value;
-                                    setCvData({...cvData, experiences: newExp});
-                                  }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Missions</label>
-                                <textarea 
-                                  placeholder={language === 'ar' ? 'المهمات والمسؤوليات' : 'Missions et responsabilités'} 
-                                  value={exp.missions}
-                                  onChange={(e) => {
-                                    const newExp = [...cvData.experiences];
-                                    newExp[i].missions = e.target.value;
-                                    setCvData({...cvData, experiences: newExp});
-                                  }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  rows={3} 
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</label>
-                                <textarea 
-                                  placeholder={t('descriptionPlaceholder')} 
-                                  value={exp.desc}
-                                  onChange={(e) => {
-                                    const newExp = [...cvData.experiences];
-                                    newExp[i].desc = e.target.value;
-                                    setCvData({...cvData, experiences: newExp});
-                                  }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  rows={2} 
-                                />
-                              </div>
-                            </div>
-                          ))}
-                          <button 
-                            onClick={() => setCvData({
-                              ...cvData, 
-                              experiences: [...cvData.experiences, { company: '', role: '', period: '', desc: '', missions: '' }]
-                            })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
-                          >
-                            {t('addExperience')}
-                          </button>
-                        </div>
-                      )}
-
-                      {cvSection === 'edu' && (
-                        <div className="space-y-8">
-                          {cvData.education.map((edu, i) => (
-                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
-                              <button 
-                                onClick={() => {
-                                  const newEdu = [...cvData.education];
-                                  newEdu.splice(i, 1);
-                                  setCvData({...cvData, education: newEdu});
-                                }}
-                                className={`absolute top-6 ${isRTL ? 'left-6' : 'right-6'} w-10 h-10 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm`}
-                              >
-                                <X size={20} />
-                              </button>
-                              <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">École / Université</label>
-                                  <input 
-                                    placeholder={language === 'ar' ? 'المدرسة / الجامعة' : 'École / Université'} 
-                                    value={edu.school} 
-                                    onChange={(e) => {
-                                      const newEdu = [...cvData.education];
-                                      newEdu[i].school = e.target.value;
-                                      setCvData({...cvData, education: newEdu});
-                                    }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Diplôme</label>
-                                  <input 
-                                    placeholder={language === 'ar' ? 'الدبلوم' : 'Diplôme'} 
-                                    value={edu.degree} 
-                                    onChange={(e) => {
-                                      const newEdu = [...cvData.education];
-                                      newEdu[i].degree = e.target.value;
-                                      setCvData({...cvData, education: newEdu});
-                                    }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Année</label>
-                                  <input 
-                                    placeholder={language === 'ar' ? 'السنة' : 'Année'} 
-                                    value={edu.year} 
-                                    onChange={(e) => {
-                                      const newEdu = [...cvData.education];
-                                      newEdu[i].year = e.target.value;
-                                      setCvData({...cvData, education: newEdu});
-                                    }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          <button 
-                            onClick={() => setCvData({
-                              ...cvData, 
-                              education: [...cvData.education, { school: '', degree: '', year: '' }]
-                            })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
-                          >
-                            {language === 'ar' ? '+ إضافة تكوين' : '+ Ajouter une formation'}
-                          </button>
-                        </div>
-                      )}
-
-                      {cvSection === 'skills' && (
-                        <div className="space-y-8">
-                          <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            {cvData.skills.map((skill, i) => (
-                              <div key={i} className={`px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm flex items-center gap-3 border border-emerald-100 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                {skill} 
-                                <X 
-                                  size={16} 
-                                  className="cursor-pointer hover:text-red-500 transition-colors" 
-                                  onClick={() => {
-                                    const newSkills = cvData.skills.filter((_, idx) => idx !== i);
-                                    setCvData({...cvData, skills: newSkills});
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                          <form 
-                            className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              const input = e.currentTarget.elements.namedItem('skill') as HTMLInputElement;
-                              if (input.value.trim()) {
-                                setCvData({...cvData, skills: [...cvData.skills, input.value.trim()]});
-                                input.value = '';
-                              }
-                            }}
-                          >
-                            <input 
-                              name="skill"
-                              placeholder={language === 'ar' ? 'أضف مهارة (مثال: React)' : 'Ajouter une compétence (ex: React)'} 
-                              className={`flex-1 px-8 py-5 rounded-3xl border border-gray-100 outline-none bg-gray-50/50 focus:border-[#F68D58] font-bold text-lg ${isRTL ? 'text-right' : ''}`} 
-                            />
-                            <button type="submit" className="px-10 bg-[#F68D58] text-white rounded-3xl font-black uppercase tracking-widest shadow-lg shadow-orange-500/20">
-                              {language === 'ar' ? 'إضافة' : 'Ajouter'}
-                            </button>
-                          </form>
-                        </div>
-                      )}
-
-                      {cvSection === 'lang' && (
-                        <div className="space-y-8">
-                          {cvData.languages.map((lang, i) => (
-                            <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>
-                              <div className="flex-1 w-full space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Langue</label>
-                                <input 
-                                  value={lang.name} 
-                                  onChange={(e) => {
-                                    const newLang = [...cvData.languages];
-                                    newLang[i].name = e.target.value;
-                                    setCvData({...cvData, languages: newLang});
-                                  }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
-                                />
-                              </div>
-                              <div className="w-full md:w-64 space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Niveau</label>
-                                <select 
-                                  value={lang.level} 
-                                  onChange={(e) => {
-                                    const newLang = [...cvData.languages];
-                                    newLang[i].level = e.target.value;
-                                    setCvData({...cvData, languages: newLang});
-                                  }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`}
-                                >
-                                  {language === 'ar' ? (
-                                    <>
-                                      <option>أصلي</option>
-                                      <option>بطلاقة</option>
-                                      <option>متوسط</option>
-                                      <option>مبتدئ</option>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <option>Natif</option>
-                                      <option>Courant</option>
-                                      <option>Intermédiaire</option>
-                                      <option>Débutant</option>
-                                    </>
-                                  )}
-                                </select>
-                              </div>
-                              <button 
-                                onClick={() => {
-                                  const newLang = [...cvData.languages];
-                                  newLang.splice(i, 1);
-                                  setCvData({...cvData, languages: newLang});
-                                }}
-                                className="w-12 h-12 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm"
-                              >
-                                <X size={20} />
-                              </button>
-                            </div>
-                          ))}
-                          <button 
-                            onClick={() => setCvData({
-                              ...cvData, 
-                              languages: [...cvData.languages, { name: '', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }]
-                            })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
-                          >
-                            {language === 'ar' ? '+ إضافة لغة' : '+ Ajouter une langue'}
-                          </button>
-                        </div>
-                      )}
-                    </motion.div>
-                  </AnimatePresence>
-                </div>
-              </div>
+              {[
+                { id: 'info', label: t('cv.personalInfo'), icon: User },
+                { id: 'exp', label: t('cv.experience'), icon: Briefcase },
+                { id: 'edu', label: t('cv.education'), icon: FileText },
+                { id: 'skills', label: t('cv.skills'), icon: BarChart3 },
+                { id: 'lang', label: t('languages'), icon: Search }
+              ].map((s) => (
+                <button 
+                  key={s.id}
+                  onClick={() => setCvSection(s.id)}
+                  className={`px-8 py-4 rounded-[2rem] flex items-center gap-4 font-black text-sm transition-all shrink-0 uppercase tracking-widest ${cvSection === s.id ? 'bg-[#F68D58] text-white shadow-xl shadow-orange-500/20' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'} ${isRTL ? 'flex-row-reverse' : ''}`}
+                >
+                  <s.icon size={20} />
+                  {s.label}
+                </button>
+              ))}
             </div>
 
+            <div className="pt-6">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={cvSection}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="space-y-8"
+                >
+                  {cvSection === 'info' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('fullName')}</label>
+                        <input 
+                          type="text" 
+                          value={cvData.name}
+                          onChange={(e) => setCvData({...cvData, name: e.target.value})}
+                          className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                        />
+                      </div>
+                      <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">Email</label>
+                        <input type="email" value={cvData.email} onChange={(e) => setCvData({...cvData, email: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
+                      </div>
+                      <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('phone')}</label>
+                        <input type="tel" value={cvData.phone} onChange={(e) => setCvData({...cvData, phone: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
+                      </div>
+                      <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('professionalSummary')}</label>
+                        <textarea rows={5} value={cvData.summary} onChange={(e) => setCvData({...cvData, summary: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-bold resize-none ${isRTL ? 'text-right' : ''}`} />
+                      </div>
+                    </div>
+                  )}
+
+                  {cvSection === 'exp' && (
+                    <div className="space-y-8">
+                      {cvData.experiences.map((exp, i) => (
+                        <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
+                          <button 
+                            onClick={() => {
+                              const newExp = [...cvData.experiences];
+                              newExp.splice(i, 1);
+                              setCvData({...cvData, experiences: newExp});
+                            }}
+                            className={`absolute top-6 ${isRTL ? 'left-6' : 'right-6'} w-10 h-10 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm`}
+                          >
+                            <X size={20} />
+                          </button>
+                          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('company')}</label>
+                              <input 
+                                placeholder={t('companyPlaceholder')} 
+                                value={exp.company} 
+                                onChange={(e) => {
+                                  const newExp = [...cvData.experiences];
+                                  newExp[i].company = e.target.value;
+                                  setCvData({...cvData, experiences: newExp});
+                                }}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Poste</label>
+                              <input 
+                                placeholder={t('rolePlaceholder')} 
+                                value={exp.role} 
+                                onChange={(e) => {
+                                  const newExp = [...cvData.experiences];
+                                  newExp[i].role = e.target.value;
+                                  setCvData({...cvData, experiences: newExp});
+                                }}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Période</label>
+                            <input 
+                              placeholder={t('period')} 
+                              value={exp.period} 
+                              onChange={(e) => {
+                                const newExp = [...cvData.experiences];
+                                newExp[i].period = e.target.value;
+                                setCvData({...cvData, experiences: newExp});
+                              }}
+                              className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Missions</label>
+                            <textarea 
+                              placeholder={language === 'ar' ? 'المهمات والمسؤوليات' : 'Missions et responsabilités'} 
+                              value={exp.missions}
+                              onChange={(e) => {
+                                const newExp = [...cvData.experiences];
+                                newExp[i].missions = e.target.value;
+                                setCvData({...cvData, experiences: newExp});
+                              }}
+                              className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              rows={3} 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</label>
+                            <textarea 
+                              placeholder={t('descriptionPlaceholder')} 
+                              value={exp.desc}
+                              onChange={(e) => {
+                                const newExp = [...cvData.experiences];
+                                newExp[i].desc = e.target.value;
+                                setCvData({...cvData, experiences: newExp});
+                              }}
+                              className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              rows={2} 
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setCvData({
+                          ...cvData, 
+                          experiences: [...cvData.experiences, { company: '', role: '', period: '', desc: '', missions: '' }]
+                        })}
+                        className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
+                      >
+                        {t('addExperience')}
+                      </button>
+                    </div>
+                  )}
+
+                  {cvSection === 'edu' && (
+                    <div className="space-y-8">
+                      {cvData.education.map((edu, i) => (
+                        <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
+                          <button 
+                            onClick={() => {
+                              const newEdu = [...cvData.education];
+                              newEdu.splice(i, 1);
+                              setCvData({...cvData, education: newEdu});
+                            }}
+                            className={`absolute top-6 ${isRTL ? 'left-6' : 'right-6'} w-10 h-10 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm`}
+                          >
+                            <X size={20} />
+                          </button>
+                          <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">École / Université</label>
+                              <input 
+                                placeholder={language === 'ar' ? 'المدرسة / الجامعة' : 'École / Université'} 
+                                value={edu.school} 
+                                onChange={(e) => {
+                                  const newEdu = [...cvData.education];
+                                  newEdu[i].school = e.target.value;
+                                  setCvData({...cvData, education: newEdu});
+                                }}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Diplôme</label>
+                              <input 
+                                placeholder={language === 'ar' ? 'الدبلوم' : 'Diplôme'} 
+                                value={edu.degree} 
+                                onChange={(e) => {
+                                  const newEdu = [...cvData.education];
+                                  newEdu[i].degree = e.target.value;
+                                  setCvData({...cvData, education: newEdu});
+                                }}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Année</label>
+                              <input 
+                                placeholder={language === 'ar' ? 'السنة' : 'Année'} 
+                                value={edu.year} 
+                                onChange={(e) => {
+                                  const newEdu = [...cvData.education];
+                                  newEdu[i].year = e.target.value;
+                                  setCvData({...cvData, education: newEdu});
+                                }}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setCvData({
+                          ...cvData, 
+                          education: [...cvData.education, { school: '', degree: '', year: '' }]
+                        })}
+                        className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
+                      >
+                        {language === 'ar' ? '+ إضافة تكوين' : '+ Ajouter une formation'}
+                      </button>
+                    </div>
+                  )}
+
+                  {cvSection === 'skills' && (
+                    <div className="space-y-8">
+                      <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        {cvData.skills.map((skill, i) => (
+                          <div key={i} className={`px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm flex items-center gap-3 border border-emerald-100 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            {skill} 
+                            <X 
+                              size={16} 
+                              className="cursor-pointer hover:text-red-500 transition-colors" 
+                              onClick={() => {
+                                const newSkills = cvData.skills.filter((_, idx) => idx !== i);
+                                setCvData({...cvData, skills: newSkills});
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <form 
+                        className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.elements.namedItem('skill') as HTMLInputElement;
+                          if (input.value.trim()) {
+                            setCvData({...cvData, skills: [...cvData.skills, input.value.trim()]});
+                            input.value = '';
+                          }
+                        }}
+                      >
+                        <input 
+                          name="skill"
+                          placeholder={language === 'ar' ? 'أضف مهارة (مثال: React)' : 'Ajouter une compétence (ex: React)'} 
+                          className={`flex-1 px-8 py-5 rounded-3xl border border-gray-100 outline-none bg-gray-50/50 focus:border-[#F68D58] font-bold text-lg ${isRTL ? 'text-right' : ''}`} 
+                        />
+                        <button type="submit" className="px-10 bg-[#F68D58] text-white rounded-3xl font-black uppercase tracking-widest shadow-lg shadow-orange-500/20">
+                          {language === 'ar' ? 'إضافة' : 'Ajouter'}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  {cvSection === 'lang' && (
+                    <div className="space-y-8">
+                      {cvData.languages.map((lang, i) => (
+                        <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className="flex-1 w-full space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Langue</label>
+                            <input 
+                              value={lang.name} 
+                              onChange={(e) => {
+                                const newLang = [...cvData.languages];
+                                newLang[i].name = e.target.value;
+                                setCvData({...cvData, languages: newLang});
+                              }}
+                              className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`} 
+                            />
+                          </div>
+                          <div className="w-full md:w-64 space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Niveau</label>
+                            <select 
+                              value={lang.level} 
+                              onChange={(e) => {
+                                const newLang = [...cvData.languages];
+                                newLang[i].level = e.target.value;
+                                setCvData({...cvData, languages: newLang});
+                              }}
+                              className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#F68D58] font-bold ${isRTL ? 'text-right' : ''}`}
+                            >
+                              {language === 'ar' ? (
+                                <>
+                                  <option>أصلي</option>
+                                  <option>بطلاقة</option>
+                                  <option>متوسط</option>
+                                  <option>مبتدئ</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option>Natif</option>
+                                  <option>Courant</option>
+                                  <option>Intermédiaire</option>
+                                  <option>Débutant</option>
+                                </>
+                              )}
+                            </select>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              const newLang = [...cvData.languages];
+                              newLang.splice(i, 1);
+                              setCvData({...cvData, languages: newLang});
+                            }}
+                            className="w-12 h-12 bg-white text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:text-red-600 shadow-sm"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setCvData({
+                          ...cvData, 
+                          languages: [...cvData.languages, { name: '', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }]
+                        })}
+                        className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
+                      >
+                        {language === 'ar' ? '+ إضافة لغة' : '+ Ajouter une langue'}
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
             {/* Preview Side - Below Editor */}
             <div className="w-full space-y-8">
               <div className={`flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>

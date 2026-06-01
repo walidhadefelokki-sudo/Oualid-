@@ -3977,12 +3977,12 @@ export default function Dashboard({
                   <p className="text-gray-500 mt-1 font-medium">Voici à quoi ressemblera votre CV pour les recruteurs.</p>
                 </div>
                 <div className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <button 
+                  {/* <button 
                     onClick={handleSaveCV}
                     className="bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:bg-emerald-600 transition-all flex items-center gap-3"
                   >
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
-                  </button>
+                  </button> */}
                   <button 
                     onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
                     className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"

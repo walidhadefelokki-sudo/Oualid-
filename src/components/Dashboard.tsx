@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import CVBuilder from "./cv/CVBuilder";
 import { 
   BarChart3, 
   Briefcase, 
@@ -62,6 +63,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import { useRef } from "react";
 import { supabase } from '../supabase';
 import { WILAYAS } from '../constants';
 import { translations, Language } from '../translations';
@@ -921,7 +925,7 @@ export default function Dashboard({
     alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
     setActiveTab('manage-jobs');
   };
-
+  const cvPreviewRef = useRef<HTMLDivElement>(null);
   const handleApplyToJob = async (jobTitle: string) => {
     if (!user) {
       alert(language === 'ar' ? 'يرجى تسجيل الدخول للتقديم.' : 'Veuillez vous connecter pour postuler.');
@@ -1126,6 +1130,49 @@ export default function Dashboard({
       alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
     }
   };
+  const handleDownloadPDF = async () => {
+      if (!cvPreviewRef.current) {
+        console.error("CV preview not found");
+        return;
+      }
+
+      try {
+        const canvas = await html2canvas(
+          cvPreviewRef.current,
+          {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff"
+          }
+        );
+
+        const imgData = canvas.toDataURL("image/png");
+
+        const pdf = new jsPDF("p", "mm", "a4");
+
+        const pdfWidth = 210;
+
+        const pdfHeight =
+          (canvas.height * pdfWidth) /
+          canvas.width;
+
+        pdf.addImage(
+          imgData,
+          "PNG",
+          0,
+          0,
+          pdfWidth,
+          pdfHeight
+        );
+
+        pdf.save(
+          `${cvData.name || "CV"}.pdf`
+        );
+
+      } catch (error) {
+        console.error(error);
+      }
+    };
 
   const renderContent = () => {
     if (user?.role === 'employer') {
@@ -3984,7 +4031,7 @@ export default function Dashboard({
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
                   </button> */}
                   <button 
-                    onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
+                    onClick={handleDownloadPDF}
                     className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
                   >
                     <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
@@ -3993,7 +4040,10 @@ export default function Dashboard({
               </div>
 
               {/* CV Design matching Candidate Modal */}
-              <div className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
+              <div
+                ref={cvPreviewRef}
+                className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
+              >
                 {/* CV Header */}
                 <div className="bg-[#173E7D] p-12 text-white relative">
                   <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>

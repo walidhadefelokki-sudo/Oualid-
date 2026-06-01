@@ -3983,11 +3983,13 @@ export default function Dashboard({
                   >
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
                   </button> */}
+
                   <button 
-                    onClick={() => alert(language === 'ar' ? 'جاري إنشاء ملف PDF...' : 'Génération du PDF en cours...')}
-                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
+                    onClick={handleDownloadEmployerPDF}
+                    disabled={isGeneratingEmployerPDF}
+                    className={`px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 ${isGeneratingEmployerPDF ? 'opacity-75 cursor-not-allowed' : ''}`}
                   >
-                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
+                    <FileText size={20} /> {isGeneratingEmployerPDF ? 'Téléchargement...' : 'Télécharger PDF'}
                   </button>
                 </div>
               </div>

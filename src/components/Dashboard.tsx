@@ -3486,7 +3486,6 @@ export default function Dashboard({
                       <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('company')}</th>
                       <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('position')}</th>
                       <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('date')}</th>
-                      <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('status')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -3499,11 +3498,6 @@ export default function Dashboard({
                         <td className="px-8 py-6 font-bold text-[#173E7D]">{app.company}</td>
                         <td className="px-8 py-6 text-gray-600 font-medium">{app.role}</td>
                         <td className="px-8 py-6 text-gray-400 text-sm">{app.date}</td>
-                        <td className="px-8 py-6">
-                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${app.color}`}>
-                            {app.status}
-                          </span>
-                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -3622,7 +3622,7 @@ export default function Dashboard({
                     <h3 className="text-3xl font-display font-black text-[#173E7D] tracking-tight">{t('cvEditor')}</h3>
                     <p className="text-gray-500 mt-1 font-medium">Remplissez vos informations pour générer votre CV professionnel.</p>
                   </div>
-                  <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  {/* <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     {['moderne', 'classique', 'creatif'].map((m) => (
                       <button 
                         key={m}
@@ -3632,7 +3632,7 @@ export default function Dashboard({
                         {m}
                       </button>
                     ))}
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className={`flex overflow-x-auto pb-4 gap-4 no-scrollbar ${isRTL ? 'flex-row-reverse' : ''}`}>

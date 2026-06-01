@@ -745,48 +745,7 @@ export default function App() {
       <div className="h-32 w-full bg-gradient-to-b from-white to-gray-50/50" />
 
       {/* Stats Section */}
-      <section id="stats" className="bg-gray-50/50 py-32 px-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-16">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center group bg-white p-12 rounded-[3rem] shadow-xl border border-gray-100/50"
-          >
-            <div className="w-24 h-24 bg-blue-50 text-[#173E7D] rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 group-hover:bg-[#173E7D] group-hover:text-white transition-all duration-700 shadow-inner">
-              <Briefcase size={40} />
-            </div>
-            <h3 className="text-7xl font-black text-[#173E7D] mb-4 tracking-tighter">12,400+</h3>
-            <p className="text-gray-400 uppercase tracking-[0.4em] text-[11px] font-black">{language === 'fr' ? 'Postes Actifs' : 'وظائف نشطة'}</p>
-          </motion.div>
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2 }}
-            className="text-center group bg-white p-12 rounded-[3rem] shadow-xl border border-gray-100/50"
-          >
-            <div className="w-24 h-24 bg-orange-50 text-[#F68D58] rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-700 shadow-inner">
-              <Users size={40} />
-            </div>
-            <h3 className="text-7xl font-black text-[#173E7D] mb-4 tracking-tighter">85,000+</h3>
-            <p className="text-gray-400 uppercase tracking-[0.4em] text-[11px] font-black">{language === 'fr' ? 'Candidats' : 'مترشحين'}</p>
-          </motion.div>
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.4 }}
-            className="text-center group bg-white p-12 rounded-[3rem] shadow-xl border border-gray-100/50"
-          >
-            <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-700 shadow-inner">
-              <TrendingUp size={40} />
-            </div>
-            <h3 className="text-7xl font-black text-[#173E7D] mb-4 tracking-tighter">98%</h3>
-            <p className="text-gray-400 uppercase tracking-[0.4em] text-[11px] font-black">{language === 'fr' ? 'Taux de Réussite' : 'معدل النجاح'}</p>
-          </motion.div>
-        </div>
-      </section>
+      
 
       {/* Sectors Section */}
       <section id="sectors" className="py-32 px-6 bg-gray-50/50">
@@ -1233,50 +1192,6 @@ export default function App() {
 
       {/* Featured Jobs to Hiring Partners Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-gray-50/30 to-white" />
-
-      {/* Hiring Partners Section */}
-      <section className="bg-white py-40 overflow-hidden relative">
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="text-center mb-24">
-            <span className="text-[#F68D58] font-black text-sm tracking-[0.5em] uppercase mb-6 block">{language === 'fr' ? 'Confiance' : 'ثقة'}</span>
-            <h2 className="text-5xl md:text-6xl font-display font-bold text-[#173E7D] mb-6 tracking-tight">{language === 'fr' ? "Ils recrutent sur Dar L'emploi" : "يوظفون على دار التشغيل"}</h2>
-            <p className="text-2xl text-gray-400 font-light max-w-2xl mx-auto">{language === 'fr' ? 'Les plus grandes entreprises algériennes nous font confiance.' : 'أكبر الشركات الجزائرية تثق بنا.'}</p>
-          </div>
-          
-          <div className="relative flex overflow-hidden">
-            <motion.div 
-              animate={{ x: [0, -1000] }}
-              transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-              className="flex gap-16 items-center whitespace-nowrap"
-            >
-              {[
-                { name: "Sonatrach", color: "text-orange-600" },
-                { name: "Ooredoo", color: "text-red-600" },
-                { name: "Djezzy", color: "text-red-700" },
-                { name: "Condor", color: "text-blue-700" },
-                { name: "Cevital", color: "text-green-700" },
-                { name: "Air Algérie", color: "text-red-800" },
-                { name: "Sonatrach", color: "text-orange-600" },
-                { name: "Ooredoo", color: "text-red-600" },
-                { name: "Djezzy", color: "text-red-700" },
-                { name: "Condor", color: "text-blue-700" },
-                { name: "Cevital", color: "text-green-700" },
-                { name: "Air Algérie", color: "text-red-800" }
-              ].map((partner, i) => (
-                <div 
-                  key={i}
-                  className="bg-gray-50 px-12 py-8 rounded-3xl border border-gray-100 flex items-center gap-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer shadow-sm hover:shadow-2xl hover:bg-white"
-                >
-                  <div className={`w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-inner ${partner.color}`}>
-                    <Building2 size={32} />
-                  </div>
-                  <span className="font-display font-black text-2xl tracking-tighter text-gray-400 uppercase group-hover:text-[#173E7D]">{partner.name}</span>
-                </div>
-              ))}
-            </motion.div>
-          </div>
-        </div>
-      </section>
 
       {/* Pricing Section */}
       <section id="pricing" className="py-40 px-6 bg-gray-50/50 overflow-hidden relative">

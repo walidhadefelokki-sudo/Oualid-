@@ -3671,20 +3671,20 @@ export default function Dashboard({
                               type="text" 
                               value={cvData.name}
                               onChange={(e) => setCvData({...cvData, name: e.target.value})}
-                              className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                              className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`}
                             />
                           </div>
                           <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
                             <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">Email</label>
-                            <input type="email" value={cvData.email} onChange={(e) => setCvData({...cvData, email: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
+                            <input type="email" value={cvData.email} onChange={(e) => setCvData({...cvData, email: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
                           </div>
                           <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
                             <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('phone')}</label>
-                            <input type="tel" value={cvData.phone} onChange={(e) => setCvData({...cvData, phone: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 transition-all bg-gray-50/50 text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
+                            <input type="tel" value={cvData.phone} onChange={(e) => setCvData({...cvData, phone: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
                           </div>
                           <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
                             <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('professionalSummary')}</label>
-                            <textarea rows={5} value={cvData.summary} onChange={(e) => setCvData({...cvData, summary: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 transition-all bg-gray-50/50 text-lg font-bold resize-none ${isRTL ? 'text-right' : ''}`} />
+                            <textarea rows={5} value={cvData.summary} onChange={(e) => setCvData({...cvData, summary: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold resize-none ${isRTL ? 'text-right' : ''}`} />
                           </div>
                         </div>
                       )}
@@ -3692,7 +3692,7 @@ export default function Dashboard({
                       {cvSection === 'exp' && (
                         <div className="space-y-8">
                           {cvData.experiences.map((exp, i) => (
-                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
+                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-200/50 space-y-6 relative group">
                               <button 
                                 onClick={() => {
                                   const newExp = [...cvData.experiences];
@@ -3714,7 +3714,7 @@ export default function Dashboard({
                                       newExp[i].company = e.target.value;
                                       setCvData({...cvData, experiences: newExp});
                                     }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                    className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   />
                                 </div>
                                 <div className="space-y-2">
@@ -3727,7 +3727,7 @@ export default function Dashboard({
                                       newExp[i].role = e.target.value;
                                       setCvData({...cvData, experiences: newExp});
                                     }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                    className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   />
                                 </div>
                               </div>
@@ -3741,7 +3741,7 @@ export default function Dashboard({
                                     newExp[i].period = e.target.value;
                                     setCvData({...cvData, experiences: newExp});
                                   }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                  className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                 />
                               </div>
                               <div className="space-y-2">
@@ -3754,7 +3754,7 @@ export default function Dashboard({
                                     newExp[i].missions = e.target.value;
                                     setCvData({...cvData, experiences: newExp});
                                   }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                  className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white resize-none focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   rows={3} 
                                 />
                               </div>
@@ -3768,7 +3768,7 @@ export default function Dashboard({
                                     newExp[i].desc = e.target.value;
                                     setCvData({...cvData, experiences: newExp});
                                   }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white resize-none focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                  className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white resize-none focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   rows={2} 
                                 />
                               </div>
@@ -3779,7 +3779,7 @@ export default function Dashboard({
                               ...cvData, 
                               experiences: [...cvData.experiences, { company: '', role: '', period: '', desc: '', missions: '' }]
                             })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58]/30 hover:text-[#F68D58] transition-all bg-gray-50/30"
+                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
                           >
                             {t('addExperience')}
                           </button>
@@ -3789,7 +3789,7 @@ export default function Dashboard({
                       {cvSection === 'edu' && (
                         <div className="space-y-8">
                           {cvData.education.map((edu, i) => (
-                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-100 space-y-6 relative group">
+                            <div key={i} className="p-8 bg-gray-50/50 rounded-[2.5rem] border border-gray-200/50 space-y-6 relative group">
                               <button 
                                 onClick={() => {
                                   const newEdu = [...cvData.education];
@@ -3811,7 +3811,7 @@ export default function Dashboard({
                                       newEdu[i].school = e.target.value;
                                       setCvData({...cvData, education: newEdu});
                                     }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                    className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   />
                                 </div>
                                 <div className="space-y-2">
@@ -3824,7 +3824,7 @@ export default function Dashboard({
                                       newEdu[i].degree = e.target.value;
                                       setCvData({...cvData, education: newEdu});
                                     }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                    className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   />
                                 </div>
                                 <div className="space-y-2">
@@ -3837,7 +3837,7 @@ export default function Dashboard({
                                       newEdu[i].year = e.target.value;
                                       setCvData({...cvData, education: newEdu});
                                     }}
-                                    className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                    className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                   />
                                 </div>
                               </div>
@@ -3848,7 +3848,7 @@ export default function Dashboard({
                               ...cvData, 
                               education: [...cvData.education, { school: '', degree: '', year: '' }]
                             })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58]/30 hover:text-[#F68D58] transition-all bg-gray-50/30"
+                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
                           >
                             {language === 'ar' ? '+ إضافة تكوين' : '+ Ajouter une formation'}
                           </button>
@@ -3886,7 +3886,7 @@ export default function Dashboard({
                             <input 
                               name="skill"
                               placeholder={language === 'ar' ? 'أضف مهارة (مثال: React)' : 'Ajouter une compétence (ex: React)'} 
-                              className={`flex-1 px-8 py-5 rounded-3xl border border-gray-100 outline-none bg-gray-50/50 focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold text-lg ${isRTL ? 'text-right' : ''}`} 
+                              className={`flex-1 px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold text-lg ${isRTL ? 'text-right' : ''}`} 
                             />
                             <button type="submit" className="px-10 bg-[#F68D58] text-white rounded-3xl font-black uppercase tracking-widest shadow-lg shadow-orange-500/20">
                               {language === 'ar' ? 'إضافة' : 'Ajouter'}
@@ -3898,7 +3898,7 @@ export default function Dashboard({
                       {cvSection === 'lang' && (
                         <div className="space-y-8">
                           {cvData.languages.map((lang, i) => (
-                            <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-200/50 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>
                               <div className="flex-1 w-full space-y-2">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Langue</label>
                                 <input 
@@ -3908,7 +3908,7 @@ export default function Dashboard({
                                     newLang[i].name = e.target.value;
                                     setCvData({...cvData, languages: newLang});
                                   }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
+                                  className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`} 
                                 />
                               </div>
                               <div className="w-full md:w-64 space-y-2">
@@ -3920,7 +3920,7 @@ export default function Dashboard({
                                     newLang[i].level = e.target.value;
                                     setCvData({...cvData, languages: newLang});
                                   }}
-                                  className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none bg-white focus:border-[#173E7D] focus:ring-2 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`}
+                                  className={`w-full px-6 py-4 rounded-2xl border-2 border-[#173E7D] outline-none bg-white focus:ring-4 focus:ring-blue-100 font-bold ${isRTL ? 'text-right' : ''}`}
                                 >
                                   {language === 'ar' ? (
                                     <>
@@ -3956,7 +3956,7 @@ export default function Dashboard({
                               ...cvData, 
                               languages: [...cvData.languages, { name: '', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }]
                             })}
-                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58]/30 hover:text-[#F68D58] transition-all bg-gray-50/30"
+                            className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2rem] text-gray-400 font-black uppercase tracking-widest hover:border-[#F68D58] hover:text-[#F68D58] transition-all bg-gray-50/30"
                           >
                             {language === 'ar' ? '+ إضافة لغة' : '+ Ajouter une langue'}
                           </button>

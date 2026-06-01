@@ -3622,17 +3622,6 @@ export default function Dashboard({
                     <h3 className="text-3xl font-display font-black text-[#173E7D] tracking-tight">{t('cvEditor')}</h3>
                     <p className="text-gray-500 mt-1 font-medium">Remplissez vos informations pour générer votre CV professionnel.</p>
                   </div>
-                  <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    {['moderne', 'classique', 'creatif'].map((m) => (
-                      <button 
-                        key={m}
-                        onClick={() => setCvModel(m)}
-                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${cvModel === m ? 'bg-[#173E7D] text-white shadow-lg shadow-blue-900/20' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className={`flex overflow-x-auto pb-4 gap-4 no-scrollbar ${isRTL ? 'flex-row-reverse' : ''}`}>

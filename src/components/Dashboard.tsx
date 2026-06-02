@@ -1132,6 +1132,7 @@ export default function Dashboard({
   };
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingEmployerPDF, setIsGeneratingEmployerPDF] = useState(false);
+
   const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {
@@ -1211,6 +1212,10 @@ export default function Dashboard({
     try {
       // Brief timeout to let the browser request crossOrigin resources if needed
       await new Promise((resolve) => setTimeout(resolve, 400));
+
+      clone.querySelectorAll('img').forEach(img => {
+        img.remove();
+      });  
 
       const canvas = await html2canvas(clone, {
         scale: 2,

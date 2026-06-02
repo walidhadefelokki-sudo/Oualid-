@@ -1216,10 +1216,14 @@ export default function Dashboard({
         scale: 2,
         useCORS: true,
         allowTaint: true,
-        logging: false,
+        logging: true,
         backgroundColor: '#ffffff',
         windowWidth: 1024,
-        windowHeight: clone.scrollHeight || undefined
+        windowHeight: clone.scrollHeight || undefined,
+
+        onclone: (doc) => {
+          console.log("HTML2CANVAS CLONE", doc);
+        }
       });
 
       const imgData = canvas.toDataURL('image/png');

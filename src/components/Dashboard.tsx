@@ -85,6 +85,8 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface SidebarItemProps {
   icon: React.ElementType;

@@ -1133,7 +1133,7 @@ export default function Dashboard({
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingEmployerPDF, setIsGeneratingEmployerPDF] = useState(false);
 
-  const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
+async function generatePDFDirectly(elementId: string, filename: string): Promise<void> {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {
       alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
@@ -1141,28 +1141,31 @@ export default function Dashboard({
     }
 
     const tryBuildPDF = async (withImages: boolean): Promise<boolean> => {
-      // 1. Cloner l'élément pour effectuer les modifications sans perturber l'aperçu utilisateur
+      // 1. Clone the element to perform mutations without affecting the screen rendering
       const clone = originalElement.cloneNode(true) as HTMLElement;
       
-      // 2. Positionnement absolu hors de l'écran pour forcer l'évaluation correcte des feuilles de style
+      // 2. Wrap and paint with physical viewport coordinates to force stylesheet layout evaluation
       clone.style.position = 'fixed';
       clone.style.top = '0';
       clone.style.left = '0';
-      clone.style.width = '1024px'; // Largeur standardisée de précision pixel
+      clone.style.width = '1024px'; // Set standard fixed width for rendering pixel accuracy
       clone.style.height = 'auto';
       clone.style.maxHeight = 'none';
       clone.style.overflow = 'visible';
       clone.style.zIndex = '-9999';
-      clone.style.opacity = '0.99';
+      clone.style.opacity = '0.99'; // fully rendered by Chrome/Webkit paint engines
       clone.style.boxShadow = 'none';
       
+      // 3. Force multi-column styling using the override utilities
       clone.classList.add('pdf-export');
       
       const cleanConstraints = (el: HTMLElement) => {
+        // Inline styles
         el.style.maxHeight = 'none';
         el.style.overflow = 'visible';
         el.style.boxShadow = 'none';
         
+        // Remove interactive elements and scroll elements
         if (el.classList) {
           el.classList.remove('overflow-y-auto');
           el.classList.remove('max-h-[90vh]');
@@ -1171,7 +1174,7 @@ export default function Dashboard({
           el.classList.remove('shadow-2xl');
         }
 
-        // 💡 Correction : Rediriger dynamiquement les styles de couleur oklch invalides en hexadécimal
+        // Inline OKLCH styles or CSS variables override
         if (el.style) {
           if (el.style.color && el.style.color.includes('oklch')) {
             el.style.color = '#173E7D';
@@ -1184,19 +1187,20 @@ export default function Dashboard({
           }
         }
 
-        // 💡 Correction : Gérer l'image sous politique CORS
+        // Handle image removals or crossorigin
         if (el instanceof HTMLImageElement) {
           if (!withImages) {
-            // Remplacement de l'avatar bloquant par un placeholder CSS élégant (initiale)
+            // Replace the image element with a friendly fallback user initials container
             const placeholder = document.createElement('div');
             placeholder.className = "w-full h-full bg-blue-100 flex items-center justify-center text-blue-800 font-bold text-3xl rounded-[3rem]";
             placeholder.innerText = cvData.name ? cvData.name.charAt(0).toUpperCase() : 'CV';
             el.replaceWith(placeholder);
           } else {
             el.crossOrigin = 'anonymous';
+            // Force re-trigger request with CORS rules
             const src = el.src;
             el.src = '';
-            el.src = src; // Force un rechargement propre sous politique CORS
+            el.src = src;
           }
         }
         
@@ -1208,10 +1212,10 @@ export default function Dashboard({
       cleanConstraints(clone);
       document.body.appendChild(clone);
 
-      // 💡 Correction : Intercepter l'évaluation des propriétés OKLCH système
+      // Temporary monkey-patch for computed styles to handle OKLCH colors for html2canvas
       const originalGetComputedStyle = window.getComputedStyle;
       window.getComputedStyle = function(el, pseudoElt) {
-        const style = originalGetComputedStyle.call(window, el, pseudoElt);
+        const style = originalGetComputedStyle(el, pseudoElt);
         return new Proxy(style, {
           get(target, prop) {
             if (prop === 'getPropertyValue') {
@@ -1226,6 +1230,12 @@ export default function Dashboard({
               };
             }
             const value = Reflect.get(target, prop);
+            
+            // CRITICAL FIX: Bind functions to target to restore context and prevent Illegal invocation
+            if (typeof value === 'function') {
+              return value.bind(target);
+            }
+            
             if (typeof value === 'string' && value.includes('oklch')) {
               if (prop === 'backgroundColor') return '#ffffff';
               if (prop === 'borderColor') return '#e5e7eb';
@@ -1242,7 +1252,7 @@ export default function Dashboard({
         const canvas = await html2canvas(clone, {
           scale: 2,
           useCORS: true,
-          allowTaint: false, // Empêche le canvas d'être pollué si une ressource externe échoue
+          allowTaint: false,
           logging: false,
           backgroundColor: '#ffffff',
           windowWidth: 1024,
@@ -1279,28 +1289,21 @@ export default function Dashboard({
         console.error('Render attempt failed, withImages =', withImages, err);
         return false;
       } finally {
-        window.getComputedStyle = originalGetComputedStyle; // Restaurer les fonctions globales
+        window.getComputedStyle = originalGetComputedStyle;
         if (clone.parentNode) {
           clone.parentNode.removeChild(clone);
         }
       }
     };
 
-    // 🌟 ESSAI 1 : Tentative d'export optimal du PDF avec l'image sous règles CORS
     let success = await tryBuildPDF(true);
-    
-    // 🌟 REPLI 1 : Si les images bloquent le rendu, retente sans la photo (remplacée par vos initiales vectorisées)
     if (!success) {
-      console.log('Retrying PDF generation without profile photo to bypass CORS restrictions...');
       success = await tryBuildPDF(false);
     }
-
-    // 🌟 REPLI 2 : Si html2canvas échoue complètement, lance l'impression haute fidélité native (Enregistrer sous PDF)
     if (!success) {
-      console.log('PDF generation failed completely. Invoking iframe-based print fallback.');
       await handlePrintCVElement(elementId);
     }
-  };
+  }
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);
     try {
@@ -1322,6 +1325,112 @@ export default function Dashboard({
       setIsGeneratingEmployerPDF(false);
     }
   };
+  function handlePrintCVElement(id: string): Promise<void> {
+    return new Promise((resolve) => {
+      const printContent = document.getElementById(id);
+      if (!printContent) {
+        alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
+        resolve();
+        return;
+      }
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        
+        const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+          .map(el => {
+            const outer = el.outerHTML;
+            if (el.tagName.toLowerCase() === 'link') {
+              const href = el.getAttribute('href');
+              if (href && !href.startsWith('http')) {
+                try {
+                  const absUrl = new URL(href, window.location.href).href;
+                  return `<link rel="stylesheet" href="${absUrl}">`;
+                } catch (e) {
+                  return `<link rel="stylesheet" href="${window.location.origin}${href}">`;
+                }
+              }
+            }
+            return outer;
+          })
+          .join('\n');
+        
+        const isRtlLang = language === 'ar';
+        
+        doc.write(`
+          <!DOCTYPE html>
+          <html dir="${isRtlLang ? 'rtl' : 'ltr'}" lang="${language}">
+            <head>
+              <title>${language === 'ar' ? 'السيرة الذاتية' : 'Curriculum Vitae'}</title>
+              ${parentStyles}
+              <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+                * {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                body {
+                  font-family: 'Inter', sans-serif;
+                  background: white;
+                  color: black;
+                  padding: 10px;
+                  margin: 0;
+                  box-sizing: border-box;
+                }
+                .pdf-export {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 100% !important;
+                }
+                @media print {
+                  @page {
+                    size: A4;
+                    margin: 8mm;
+                  }
+                  body {
+                    background: white;
+                  }
+                  .no-print { display: none !important; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="${printContent.className} pdf-export" style="box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; margin: 0 !important;">
+                ${printContent.innerHTML}
+              </div>
+              <script>
+                const hideElements = () => {
+                  const items = document.querySelectorAll('button, .no-print');
+                  items.forEach(el => el.style.setProperty('display', 'none', 'important'));
+                };
+                
+                window.onload = function() {
+                  hideElements();
+                  setTimeout(() => {
+                    window.focus();
+                    window.print();
+                    setTimeout(() => {
+                      window.frameElement.remove();
+                    }, 1000);
+                  }, 500);
+                };
+              </script>
+            </body>
+          </html>
+        `);
+        doc.close();
+      }
+      resolve();
+    });
+  }
   const renderContent = () => {
     if (user?.role === 'employer') {
       switch (activeTab) {

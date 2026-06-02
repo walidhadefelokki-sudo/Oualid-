@@ -1135,101 +1135,133 @@ export default function Dashboard({
   const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {
-      alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
+      alert(language === 'ar' ? 'حدث خطأ: لم يتم العثor على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
       return;
     }
 
-    // 1. Clone the element to perform mutations without affecting the screen rendering
-    const clone = originalElement.cloneNode(true) as HTMLElement;
-    
-    // 2. Clear any scrolling/height constraints on the clone so html2canvas renders the full document
-    clone.style.position = 'absolute';
-    clone.style.top = '-9999px';
-    clone.style.left = '-9999px';
-    clone.style.width = '1024px'; // Set standard fixed width for rendering pixel accuracy
-    clone.style.height = 'auto';
-    clone.style.maxHeight = 'none';
-    clone.style.overflow = 'visible';
-    
-    const cleanConstraints = (el: HTMLElement) => {
-      // Inline styles
-      el.style.maxHeight = 'none';
-      el.style.overflow = 'visible';
-      el.style.boxShadow = 'none';
+    const tryBuildPDF = async (withImages: boolean): Promise<boolean> => {
+      // 1. Clone the element to perform mutations without affecting the screen rendering
+      const clone = originalElement.cloneNode(true) as HTMLElement;
       
-      // Tailwind classes
-      if (el.classList) {
-        el.classList.remove('overflow-y-auto');
-        el.classList.remove('max-h-[90vh]');
-        el.classList.remove('max-h-[85vh]');
-        el.classList.remove('max-h-[80vh]');
-        el.classList.remove('shadow-2xl');
-      }
-
-      // Explicitly set anonymous crossOrigin for any nested images to permit safe canvas export
-      if (el instanceof HTMLImageElement) {
-        el.crossOrigin = 'anonymous';
-      }
+      // 2. Wrap and paint with physical viewport coordinates to force stylesheet layout evaluation
+      clone.style.position = 'fixed';
+      clone.style.top = '0';
+      clone.style.left = '0';
+      clone.style.width = '1024px'; // Set standard fixed width for rendering pixel accuracy
+      clone.style.height = 'auto';
+      clone.style.maxHeight = 'none';
+      clone.style.overflow = 'visible';
+      clone.style.zIndex = '-9999';
+      clone.style.opacity = '0.99'; // fully rendered by Chrome/Webkit paint engines
+      clone.style.boxShadow = 'none';
       
-      for (const child of Array.from(el.children)) {
-        cleanConstraints(child as HTMLElement);
-      }
-    };
-    
-    cleanConstraints(clone);
-    document.body.appendChild(clone);
+      // 3. Force multi-column styling using the override utilities
+      clone.classList.add('pdf-export');
+      
+      const cleanConstraints = (el: HTMLElement) => {
+        // Inline styles
+        el.style.maxHeight = 'none';
+        el.style.overflow = 'visible';
+        el.style.boxShadow = 'none';
+        
+        // Remove interactive elements and scroll elements
+        if (el.classList) {
+          el.classList.remove('overflow-y-auto');
+          el.classList.remove('max-h-[90vh]');
+          el.classList.remove('max-h-[85vh]');
+          el.classList.remove('max-h-[80vh]');
+          el.classList.remove('shadow-2xl');
+        }
 
-    try {
-      // Brief timeout to let the browser request crossOrigin resources if needed
-      await new Promise((resolve) => setTimeout(resolve, 400));
+        // Handle image removals or crossorigin
+        if (el instanceof HTMLImageElement) {
+          if (!withImages) {
+            // Replace the image element with a friendly fallback user initials container
+            const placeholder = document.createElement('div');
+            placeholder.className = "w-full h-full bg-blue-100 flex items-center justify-center text-blue-800 font-bold text-3xl rounded-[3rem]";
+            placeholder.innerText = cvData.name ? cvData.name.charAt(0).toUpperCase() : 'CV';
+            el.replaceWith(placeholder);
+          } else {
+            el.crossOrigin = 'anonymous';
+          }
+        }
+        
+        for (const child of Array.from(el.children)) {
+          cleanConstraints(child as HTMLElement);
+        }
+      };
+      
+      cleanConstraints(clone);
+      document.body.appendChild(clone);
 
-      const canvas = await html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 1024,
-        windowHeight: clone.scrollHeight || undefined
-      });
+      try {
+        // Allow the browser layout engine to paint and structure the DOM block
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false, // MANDATORY: set to false to allow server-to-image CORS rules and fallback smoothly
+          logging: false,
+          backgroundColor: '#ffffff',
+          windowWidth: 1024,
+          windowHeight: clone.scrollHeight || undefined
+        });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'p',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+          orientation: 'p',
+          unit: 'mm',
+          format: 'a4',
+          compress: true
+        });
 
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+        const imgWidth = 210;
+        const pageHeight = 297;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
 
-      // First Page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
-
-      // Multi-Page Fallback loop
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
+        // First Page
         pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
         heightLeft -= pageHeight;
-      }
 
-      pdf.save(`${filename}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF directly:', error);
-      alert(language === 'ar' ? 'حدث خطأ أثناء تحميل ملف PDF. يرجى المحاولة مرة أخرى.' : 'Une erreur est survenue lors du téléchargement du PDF. Veuillez réessayer.');
-    } finally {
-      // Clean up the DOM element clone
-      if (clone.parentNode) {
-        clone.parentNode.removeChild(clone);
+        // Multi-Page Fallback loop
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+          heightLeft -= pageHeight;
+        }
+
+        pdf.save(`${filename}.pdf`);
+        return true;
+      } catch (err) {
+        console.error('Render attempt failed, withImages =', withImages, err);
+        return false;
+      } finally {
+        if (clone.parentNode) {
+          clone.parentNode.removeChild(clone);
+        }
       }
+    };
+
+    // First try with images under standard CORS policies
+    let success = await tryBuildPDF(true);
+    
+    // Fallback 1: If images caused canvas taint / CORS error, retry with vector placeholders
+    if (!success) {
+      console.log('Retrying PDF generation without profile photo to bypass CORS restrictions...');
+      success = await tryBuildPDF(false);
+    }
+
+    // Fallback 2: Finally, fallback to native iframe print to generate/save system PDF
+    if (!success) {
+      console.log('PDF generation failed completely. Invoking iframe-based print fallback.');
+      await handlePrintCVElement(elementId);
     }
   };
+
 
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);

@@ -4108,9 +4108,13 @@ export default function Dashboard({
                   </button> */}
                   <button 
                     onClick={handleDownloadPDF}
-                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
+                    disabled={isGeneratingPDF}
+                    className={`bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 ${isGeneratingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
-                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
+                    <Download size={20} />{' '}
+                    {isGeneratingPDF 
+                      ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') 
+                      : (language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF')}
                   </button>
                 </div>
               </div>

@@ -1132,50 +1132,126 @@ export default function Dashboard({
       alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
     }
   };
-  const handleDownloadPDF = async () => {
-      if (!cvPreviewRef.current) {
-        console.error("CV preview not found");
-        return;
+  const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
+    const originalElement = document.getElementById(elementId);
+    if (!originalElement) {
+      alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
+      return;
+    }
+
+    // 1. Clone the element to perform mutations without affecting the screen rendering
+    const clone = originalElement.cloneNode(true) as HTMLElement;
+    
+    // 2. Clear any scrolling/height constraints on the clone so html2canvas renders the full document
+    clone.style.position = 'absolute';
+    clone.style.top = '-9999px';
+    clone.style.left = '-9999px';
+    clone.style.width = '1024px'; // Set standard fixed width for rendering pixel accuracy
+    clone.style.height = 'auto';
+    clone.style.maxHeight = 'none';
+    clone.style.overflow = 'visible';
+    
+    const cleanConstraints = (el: HTMLElement) => {
+      // Inline styles
+      el.style.maxHeight = 'none';
+      el.style.overflow = 'visible';
+      el.style.boxShadow = 'none';
+      
+      // Tailwind classes
+      if (el.classList) {
+        el.classList.remove('overflow-y-auto');
+        el.classList.remove('max-h-[90vh]');
+        el.classList.remove('max-h-[85vh]');
+        el.classList.remove('max-h-[80vh]');
+        el.classList.remove('shadow-2xl');
       }
 
-      try {
-        const canvas = await html2canvas(
-          cvPreviewRef.current,
-          {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff"
-          }
-        );
-
-        const imgData = canvas.toDataURL("image/png");
-
-        const pdf = new jsPDF("p", "mm", "a4");
-
-        const pdfWidth = 210;
-
-        const pdfHeight =
-          (canvas.height * pdfWidth) /
-          canvas.width;
-
-        pdf.addImage(
-          imgData,
-          "PNG",
-          0,
-          0,
-          pdfWidth,
-          pdfHeight
-        );
-
-        pdf.save(
-          `${cvData.name || "CV"}.pdf`
-        );
-
-      } catch (error) {
-        console.error(error);
+      // Explicitly set anonymous crossOrigin for any nested images to permit safe canvas export
+      if (el instanceof HTMLImageElement) {
+        el.crossOrigin = 'anonymous';
+      }
+      
+      for (const child of Array.from(el.children)) {
+        cleanConstraints(child as HTMLElement);
       }
     };
+    
+    cleanConstraints(clone);
+    document.body.appendChild(clone);
 
+    try {
+      // Brief timeout to let the browser request crossOrigin resources if needed
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      const canvas = await html2canvas(clone, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 1024,
+        windowHeight: clone.scrollHeight || undefined
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // First Page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+      heightLeft -= pageHeight;
+
+      // Multi-Page Fallback loop
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`${filename}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF directly:', error);
+      alert(language === 'ar' ? 'حدث خطأ أثناء تحميل ملف PDF. يرجى المحاولة مرة أخرى.' : 'Une erreur est survenue lors du téléchargement du PDF. Veuillez réessayer.');
+    } finally {
+      // Clean up the DOM element clone
+      if (clone.parentNode) {
+        clone.parentNode.removeChild(clone);
+      }
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      await generatePDFDirectly('cv-preview-container', cvData.name || 'CV');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleDownloadEmployerPDF = async () => {
+    setIsGeneratingEmployerPDF(true);
+    try {
+      await generatePDFDirectly('employer-cv-view-container', selectedCandidateCV?.name || 'CV_Candidat');
+    } catch (error) {
+      console.error('Error generating Employer PDF:', error);
+    } finally {
+      setIsGeneratingEmployerPDF(false);
+    }
+  };
   const renderContent = () => {
     if (user?.role === 'employer') {
       switch (activeTab) {
@@ -4034,9 +4110,13 @@ export default function Dashboard({
                   </button> */}
                   <button 
                     onClick={handleDownloadPDF}
-                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
+                    disabled={isGeneratingPDF}
+                    className={`bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 ${isGeneratingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
-                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
+                    <Download size={20} />{' '}
+                    {isGeneratingPDF 
+                      ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') 
+                      : (language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF')}
                   </button>
                 </div>
               </div>

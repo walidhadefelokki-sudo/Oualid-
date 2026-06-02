@@ -85,8 +85,6 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -3747,7 +3745,17 @@ export default function Dashboard({
                     <h3 className="text-3xl font-display font-black text-[#173E7D] tracking-tight">{t('cvEditor')}</h3>
                     <p className="text-gray-500 mt-1 font-medium">Remplissez vos informations pour générer votre CV professionnel.</p>
                   </div>
-                  
+                  {/* <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    {['moderne', 'classique', 'creatif'].map((m) => (
+                      <button 
+                        key={m}
+                        onClick={() => setCvModel(m)}
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${cvModel === m ? 'bg-[#173E7D] text-white shadow-lg shadow-blue-900/20' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div> */}
                 </div>
 
                 <div className={`flex overflow-x-auto pb-4 gap-4 no-scrollbar ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4082,7 +4090,6 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
-
             {/* Preview Side - Below Editor */}
             <div className="w-full space-y-8">
               <div className={`flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4093,28 +4100,24 @@ export default function Dashboard({
                   <p className="text-gray-500 mt-1 font-medium">Voici à quoi ressemblera votre CV pour les recruteurs.</p>
                 </div>
                 <div className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <button 
+                  {/* <button 
                     onClick={handleSaveCV}
                     className="bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:bg-emerald-600 transition-all flex items-center gap-3"
                   >
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
-                  </button>
+                  </button> */}
                   <button 
                     onClick={handleDownloadPDF}
-                    disabled={isGeneratingPDF}
-                    className={`bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 ${isGeneratingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    className="bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3"
                   >
-                    <Download size={20} />{' '}
-                    {isGeneratingPDF 
-                      ? (language === 'ar' ? 'جاري التحميل...' : 'Téléchargement...') 
-                      : (language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF')}
+                    <Download size={20} /> {language === 'ar' ? 'تحميل PDF' : 'Télécharger PDF'}
                   </button>
                 </div>
               </div>
 
-              {/* CV Preview Section */}
-              <div 
-                id="cv-preview-container" 
+              {/* CV Design matching Candidate Modal */}
+              <div
+                ref={cvPreviewRef}
                 className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
               >
                 {/* CV Header */}
@@ -4137,10 +4140,7 @@ export default function Dashboard({
                     </div>
                   </div>
                 </div>
-                
-                {/* ... remaining sections for CV summary, experience, education, skills, languages, and contact */}
-              </div>
-            </div>
+
                 {/* CV Content */}
                 <div className={`p-16 space-y-16 ${isRTL ? 'text-right' : ''}`}>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
@@ -4249,7 +4249,6 @@ export default function Dashboard({
             </div>
           </div>
         );
-
       case 'saved':
         const savedJobsList = MOCK_JOBS.filter(job => savedJobs.includes(job.id));
         return (

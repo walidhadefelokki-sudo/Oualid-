@@ -1133,6 +1133,113 @@ export default function Dashboard({
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingEmployerPDF, setIsGeneratingEmployerPDF] = useState(false);
 
+function handlePrintCVElement(id: string): Promise<void> {
+    return new Promise((resolve) => {
+      const printContent = document.getElementById(id);
+      if (!printContent) {
+        alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
+        resolve();
+        return;
+      }
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        
+        // Clone all style elements and stylesheet links on the main page with absolute URLs to ensure style fidelity
+        const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+          .map(el => {
+            const outer = el.outerHTML;
+            if (el.tagName.toLowerCase() === 'link') {
+              const href = el.getAttribute('href');
+              if (href && !href.startsWith('http')) {
+                try {
+                  const absUrl = new URL(href, window.location.href).href;
+                  return `<link rel="stylesheet" href="${absUrl}">`;
+                } catch (e) {
+                  return `<link rel="stylesheet" href="${window.location.origin}${href}">`;
+                }
+              }
+            }
+            return outer;
+          })
+          .join('\n');
+        
+        const isRtlLang = language === 'ar';
+        
+        doc.write(`
+          <!DOCTYPE html>
+          <html dir="${isRtlLang ? 'rtl' : 'ltr'}" lang="${language}">
+            <head>
+              <title>${language === 'ar' ? 'السيرة الذاتية' : 'Curriculum Vitae'}</title>
+              ${parentStyles}
+              <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+                * {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                body {
+                  font-family: 'Inter', sans-serif;
+                  background: white;
+                  color: black;
+                  padding: 10px;
+                  margin: 0;
+                  box-sizing: border-box;
+                }
+                .pdf-export {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-width: 100% !important;
+                }
+                @media print {
+                  @page {
+                    size: A4;
+                    margin: 8mm;
+                  }
+                  body {
+                    background: white;
+                  }
+                  .no-print { display: none !important; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="${printContent.className} pdf-export" style="box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; margin: 0 !important;">
+                ${printContent.innerHTML}
+              </div>
+              <script>
+                const hideElements = () => {
+                  const items = document.querySelectorAll('button, .no-print');
+                  items.forEach(el => el.style.setProperty('display', 'none', 'important'));
+                };
+                
+                window.onload = function() {
+                  hideElements();
+                  setTimeout(() => {
+                    window.focus();
+                    window.print();
+                    setTimeout(() => {
+                      window.frameElement.remove();
+                    }, 1000);
+                  }, 500);
+                };
+              </script>
+            </body>
+          </html>
+        `);
+        doc.close();
+      }
+      resolve();
+    });
+  }  
 async function generatePDFDirectly(elementId: string, filename: string): Promise<void> {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {
@@ -1325,112 +1432,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       setIsGeneratingEmployerPDF(false);
     }
   };
-  function handlePrintCVElement(id: string): Promise<void> {
-    return new Promise((resolve) => {
-      const printContent = document.getElementById(id);
-      if (!printContent) {
-        alert(language === 'ar' ? 'حدث خطأ: لم يتم العثور على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
-        resolve();
-        return;
-      }
-      
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0px';
-      iframe.style.height = '0px';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-      
-      const doc = iframe.contentWindow?.document;
-      if (doc) {
-        doc.open();
-        
-        const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-          .map(el => {
-            const outer = el.outerHTML;
-            if (el.tagName.toLowerCase() === 'link') {
-              const href = el.getAttribute('href');
-              if (href && !href.startsWith('http')) {
-                try {
-                  const absUrl = new URL(href, window.location.href).href;
-                  return `<link rel="stylesheet" href="${absUrl}">`;
-                } catch (e) {
-                  return `<link rel="stylesheet" href="${window.location.origin}${href}">`;
-                }
-              }
-            }
-            return outer;
-          })
-          .join('\n');
-        
-        const isRtlLang = language === 'ar';
-        
-        doc.write(`
-          <!DOCTYPE html>
-          <html dir="${isRtlLang ? 'rtl' : 'ltr'}" lang="${language}">
-            <head>
-              <title>${language === 'ar' ? 'السيرة الذاتية' : 'Curriculum Vitae'}</title>
-              ${parentStyles}
-              <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
-                * {
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                }
-                body {
-                  font-family: 'Inter', sans-serif;
-                  background: white;
-                  color: black;
-                  padding: 10px;
-                  margin: 0;
-                  box-sizing: border-box;
-                }
-                .pdf-export {
-                  width: 100% !important;
-                  max-width: 100% !important;
-                  min-width: 100% !important;
-                }
-                @media print {
-                  @page {
-                    size: A4;
-                    margin: 8mm;
-                  }
-                  body {
-                    background: white;
-                  }
-                  .no-print { display: none !important; }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="${printContent.className} pdf-export" style="box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; margin: 0 !important;">
-                ${printContent.innerHTML}
-              </div>
-              <script>
-                const hideElements = () => {
-                  const items = document.querySelectorAll('button, .no-print');
-                  items.forEach(el => el.style.setProperty('display', 'none', 'important'));
-                };
-                
-                window.onload = function() {
-                  hideElements();
-                  setTimeout(() => {
-                    window.focus();
-                    window.print();
-                    setTimeout(() => {
-                      window.frameElement.remove();
-                    }, 1000);
-                  }, 500);
-                };
-              </script>
-            </body>
-          </html>
-        `);
-        doc.close();
-      }
-      resolve();
-    });
-  }
+  
   const renderContent = () => {
     if (user?.role === 'employer') {
       switch (activeTab) {

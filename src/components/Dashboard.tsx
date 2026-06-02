@@ -1140,135 +1140,167 @@ export default function Dashboard({
       return;
     }
 
-    // 1. Clone the element to perform mutations without affecting the screen rendering
-    const clone = originalElement.cloneNode(true) as HTMLElement;
-    
-    // 2. Clear any scrolling/height constraints on the clone so html2canvas renders the full document
-    clone.style.position = 'absolute';
-    clone.style.top = '-9999px';
-    clone.style.left = '-9999px';
-    clone.style.width = '1024px'; // Set standard fixed width for rendering pixel accuracy
-    clone.style.height = 'auto';
-    clone.style.maxHeight = 'none';
-    clone.style.overflow = 'visible';
-
-    const sanitizeForPDF = (element: HTMLElement) => {
-      const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-
-      allElements.forEach((el) => {
-        const style = window.getComputedStyle(el);
-
-        // Replace unsupported OKLCH colors
-        if (
-          style.color.includes('oklch') ||
-          style.backgroundColor.includes('oklch') ||
-          style.borderColor.includes('oklch')
-        ) {
-          el.style.color = '#173E7D';
-          el.style.backgroundColor = '#ffffff';
-          el.style.borderColor = '#173E7D';
-        }
-
-        // Remove problematic avatar images
-        if (
-          el instanceof HTMLImageElement &&
-          el.src.includes('pravatar.cc')
-        ) {
-          el.remove();
-        }
-      });
-    };
-
-    sanitizeForPDF(clone);
-    
-    const cleanConstraints = (el: HTMLElement) => {
-      // Inline styles
-      el.style.maxHeight = 'none';
-      el.style.overflow = 'visible';
-      el.style.boxShadow = 'none';
+    const tryBuildPDF = async (withImages: boolean): Promise<boolean> => {
+      // 1. Cloner l'élément pour effectuer les modifications sans perturber l'aperçu utilisateur
+      const clone = originalElement.cloneNode(true) as HTMLElement;
       
-      // Tailwind classes
-      if (el.classList) {
-        el.classList.remove('overflow-y-auto');
-        el.classList.remove('max-h-[90vh]');
-        el.classList.remove('max-h-[85vh]');
-        el.classList.remove('max-h-[80vh]');
-        el.classList.remove('shadow-2xl');
-      }
-
-      // Explicitly set anonymous crossOrigin for any nested images to permit safe canvas export
-      if (el instanceof HTMLImageElement) {
-        el.crossOrigin = 'anonymous';
-      }
+      // 2. Positionnement absolu hors de l'écran pour forcer l'évaluation correcte des feuilles de style
+      clone.style.position = 'fixed';
+      clone.style.top = '0';
+      clone.style.left = '0';
+      clone.style.width = '1024px'; // Largeur standardisée de précision pixel
+      clone.style.height = 'auto';
+      clone.style.maxHeight = 'none';
+      clone.style.overflow = 'visible';
+      clone.style.zIndex = '-9999';
+      clone.style.opacity = '0.99';
+      clone.style.boxShadow = 'none';
       
-      for (const child of Array.from(el.children)) {
-        cleanConstraints(child as HTMLElement);
-      }
-    };
-    
-    cleanConstraints(clone);
-    document.body.appendChild(clone);
-
-    try {
-      // Brief timeout to let the browser request crossOrigin resources if needed
-      await new Promise((resolve) => setTimeout(resolve, 400));
-
-      clone.querySelectorAll('img').forEach(img => {
-        img.remove();
-      });  
-
-      const canvas = await html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: true,
-        backgroundColor: '#ffffff',
-        windowWidth: 1024,
-        windowHeight: clone.scrollHeight || undefined,
-
-        onclone: (doc) => {
-          console.log("HTML2CANVAS CLONE", doc);
+      clone.classList.add('pdf-export');
+      
+      const cleanConstraints = (el: HTMLElement) => {
+        el.style.maxHeight = 'none';
+        el.style.overflow = 'visible';
+        el.style.boxShadow = 'none';
+        
+        if (el.classList) {
+          el.classList.remove('overflow-y-auto');
+          el.classList.remove('max-h-[90vh]');
+          el.classList.remove('max-h-[85vh]');
+          el.classList.remove('max-h-[80vh]');
+          el.classList.remove('shadow-2xl');
         }
-      });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'p',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
+        // 💡 Correction : Rediriger dynamiquement les styles de couleur oklch invalides en hexadécimal
+        if (el.style) {
+          if (el.style.color && el.style.color.includes('oklch')) {
+            el.style.color = '#173E7D';
+          }
+          if (el.style.backgroundColor && el.style.backgroundColor.includes('oklch')) {
+            el.style.backgroundColor = '#ffffff';
+          }
+          if (el.style.borderColor && el.style.borderColor.includes('oklch')) {
+            el.style.borderColor = '#e5e7eb';
+          }
+        }
 
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+        // 💡 Correction : Gérer l'image sous politique CORS
+        if (el instanceof HTMLImageElement) {
+          if (!withImages) {
+            // Remplacement de l'avatar bloquant par un placeholder CSS élégant (initiale)
+            const placeholder = document.createElement('div');
+            placeholder.className = "w-full h-full bg-blue-100 flex items-center justify-center text-blue-800 font-bold text-3xl rounded-[3rem]";
+            placeholder.innerText = cvData.name ? cvData.name.charAt(0).toUpperCase() : 'CV';
+            el.replaceWith(placeholder);
+          } else {
+            el.crossOrigin = 'anonymous';
+            const src = el.src;
+            el.src = '';
+            el.src = src; // Force un rechargement propre sous politique CORS
+          }
+        }
+        
+        for (const child of Array.from(el.children)) {
+          cleanConstraints(child as HTMLElement);
+        }
+      };
+      
+      cleanConstraints(clone);
+      document.body.appendChild(clone);
 
-      // First Page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+      // 💡 Correction : Intercepter l'évaluation des propriétés OKLCH système
+      const originalGetComputedStyle = window.getComputedStyle;
+      window.getComputedStyle = function(el, pseudoElt) {
+        const style = originalGetComputedStyle.call(window, el, pseudoElt);
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'getPropertyValue') {
+              return (name: string) => {
+                const value = target.getPropertyValue(name);
+                if (typeof value === 'string' && value.includes('oklch')) {
+                  if (name.includes('background')) return '#ffffff';
+                  if (name.includes('border')) return '#e5e7eb';
+                  return '#173E7D';
+                }
+                return value;
+              };
+            }
+            const value = Reflect.get(target, prop);
+            if (typeof value === 'string' && value.includes('oklch')) {
+              if (prop === 'backgroundColor') return '#ffffff';
+              if (prop === 'borderColor') return '#e5e7eb';
+              return '#173E7D';
+            }
+            return value;
+          }
+        });
+      };
 
-      // Multi-Page Fallback loop
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false, // Empêche le canvas d'être pollué si une ressource externe échoue
+          logging: false,
+          backgroundColor: '#ffffff',
+          windowWidth: 1024,
+          windowHeight: clone.scrollHeight || undefined
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+          orientation: 'p',
+          unit: 'mm',
+          format: 'a4',
+          compress: true
+        });
+
+        const imgWidth = 210;
+        const pageHeight = 297;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
         pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
         heightLeft -= pageHeight;
-      }
 
-      pdf.save(`${filename}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF directly:', error);
-      alert(language === 'ar' ? 'حدث خطأ أثناء تحميل ملف PDF. يرجى المحاولة مرة أخرى.' : 'Une erreur est survenue lors du téléchargement du PDF. Veuillez réessayer.');
-    } finally {
-      // Clean up the DOM element clone
-      if (clone.parentNode) {
-        clone.parentNode.removeChild(clone);
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+          heightLeft -= pageHeight;
+        }
+
+        pdf.save(`${filename}.pdf`);
+        return true;
+      } catch (err) {
+        console.error('Render attempt failed, withImages =', withImages, err);
+        return false;
+      } finally {
+        window.getComputedStyle = originalGetComputedStyle; // Restaurer les fonctions globales
+        if (clone.parentNode) {
+          clone.parentNode.removeChild(clone);
+        }
       }
+    };
+
+    // 🌟 ESSAI 1 : Tentative d'export optimal du PDF avec l'image sous règles CORS
+    let success = await tryBuildPDF(true);
+    
+    // 🌟 REPLI 1 : Si les images bloquent le rendu, retente sans la photo (remplacée par vos initiales vectorisées)
+    if (!success) {
+      console.log('Retrying PDF generation without profile photo to bypass CORS restrictions...');
+      success = await tryBuildPDF(false);
+    }
+
+    // 🌟 REPLI 2 : Si html2canvas échoue complètement, lance l'impression haute fidélité native (Enregistrer sous PDF)
+    if (!success) {
+      console.log('PDF generation failed completely. Invoking iframe-based print fallback.');
+      await handlePrintCVElement(elementId);
     }
   };
-
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);
     try {

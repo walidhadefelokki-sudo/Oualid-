@@ -4093,12 +4093,12 @@ export default function Dashboard({
                   <p className="text-gray-500 mt-1 font-medium">Voici à quoi ressemblera votre CV pour les recruteurs.</p>
                 </div>
                 <div className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  {/* <button 
+                  <button 
                     onClick={handleSaveCV}
                     className="bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:bg-emerald-600 transition-all flex items-center gap-3"
                   >
                     <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
-                  </button> */}
+                  </button>
                   <button 
                     onClick={handleDownloadPDF}
                     disabled={isGeneratingPDF}
@@ -4112,8 +4112,11 @@ export default function Dashboard({
                 </div>
               </div>
 
-              {/* CV Design matching Candidate Modal */}
-              <div id="cv-preview-container" className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto">
+              {/* CV Preview Section */}
+              <div 
+                id="cv-preview-container" 
+                className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
+              >
                 {/* CV Header */}
                 <div className="bg-[#173E7D] p-12 text-white relative">
                   <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4134,7 +4137,10 @@ export default function Dashboard({
                     </div>
                   </div>
                 </div>
-
+                
+                {/* ... remaining sections for CV summary, experience, education, skills, languages, and contact */}
+              </div>
+            </div>
                 {/* CV Content */}
                 <div className={`p-16 space-y-16 ${isRTL ? 'text-right' : ''}`}>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">

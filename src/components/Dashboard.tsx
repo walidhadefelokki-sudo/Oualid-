@@ -1130,6 +1130,8 @@ export default function Dashboard({
       alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
     }
   };
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingEmployerPDF, setIsGeneratingEmployerPDF] = useState(false);
   const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {

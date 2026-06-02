@@ -1150,6 +1150,35 @@ export default function Dashboard({
     clone.style.height = 'auto';
     clone.style.maxHeight = 'none';
     clone.style.overflow = 'visible';
+
+    const sanitizeForPDF = (element: HTMLElement) => {
+      const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
+
+      allElements.forEach((el) => {
+        const style = window.getComputedStyle(el);
+
+        // Replace unsupported OKLCH colors
+        if (
+          style.color.includes('oklch') ||
+          style.backgroundColor.includes('oklch') ||
+          style.borderColor.includes('oklch')
+        ) {
+          el.style.color = '#173E7D';
+          el.style.backgroundColor = '#ffffff';
+          el.style.borderColor = '#173E7D';
+        }
+
+        // Remove problematic avatar images
+        if (
+          el instanceof HTMLImageElement &&
+          el.src.includes('pravatar.cc')
+        ) {
+          el.remove();
+        }
+      });
+    };
+
+    sanitizeForPDF(clone);
     
     const cleanConstraints = (el: HTMLElement) => {
       // Inline styles

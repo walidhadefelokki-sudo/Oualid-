@@ -4123,6 +4123,7 @@ export default function Dashboard({
 
               {/* CV Design matching Candidate Modal */}
               <div
+                id="cv-preview-container"
                 ref={cvPreviewRef}
                 className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
               >

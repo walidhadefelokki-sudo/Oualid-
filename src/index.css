@@ -28,36 +28,3 @@
   }
 }
 
-/* PDF Layout overrides to force multi-column layout on all viewports */
-/* .pdf-export {
-  width: 1024px !important;
-  max-width: 1024px !important;
-  min-width: 1024px !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  transform: none !important;
-}
-
-.pdf-export .lg\:grid-cols-3 {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-}
-
-.pdf-export .lg\:col-span-2 {
-  grid-column: span 2 / span 2 !important;
-}
-
-.pdf-export .md\:grid-cols-3 {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-}
-
-.pdf-export .md\:col-span-2 {
-  grid-column: span 2 / span 2 !important;
-}
-
-
-.pdf-export * {
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-} */

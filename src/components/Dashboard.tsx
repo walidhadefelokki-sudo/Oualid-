@@ -1132,7 +1132,7 @@ export default function Dashboard({
       alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
     }
   };
-  const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
+const generatePDFDirectly = async (elementId: string, filename: string): Promise<void> => {
     const originalElement = document.getElementById(elementId);
     if (!originalElement) {
       alert(language === 'ar' ? 'حدث خطأ: لم يتم العثor على نموذج السيرة الذاتية.' : 'Erreur: Conteneur de CV non trouvé.');
@@ -1261,7 +1261,6 @@ export default function Dashboard({
       await handlePrintCVElement(elementId);
     }
   };
-
 
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);

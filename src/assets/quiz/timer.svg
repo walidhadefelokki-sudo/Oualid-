@@ -1,0 +1,53 @@
+<!--?xml version="1.0" encoding="UTF-8"?-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+
+    <!-- Outer Ring -->
+    <circle cx="256" cy="256" r="220" fill="#173E7D"></circle>
+
+    <!-- Inner Circle -->
+    <circle cx="256" cy="256" r="185" fill="#FFFFFF"></circle>
+
+    <!-- Decorative Ring -->
+    <circle cx="256" cy="256" r="205" stroke="#2154A6" stroke-width="10" fill="none" opacity="0.25"></circle>
+
+    <!-- Clock Border -->
+    <circle cx="256" cy="256" r="135" stroke="#173E7D" stroke-width="16" fill="none"></circle>
+
+    <!-- Hour Hand -->
+    <line x1="256" y1="256" x2="256" y2="185" stroke="#173E7D" stroke-width="18" stroke-linecap="round"></line>
+
+    <!-- Minute Hand -->
+    <line x1="256" y1="256" x2="330" y2="295" stroke="#173E7D" stroke-width="14" stroke-linecap="round"></line>
+
+    <!-- Center Dot -->
+    <circle cx="256" cy="256" r="14" fill="#173E7D"></circle>
+
+    <!-- Top Button -->
+    <rect x="226" y="28" width="60" height="36" rx="10" fill="#173E7D"></rect>
+
+    <!-- Left Bell -->
+    <path d="M170 72
+           L145 48
+           L128 65
+           L152 90" stroke="#173E7D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"></path>
+
+    <!-- Right Bell -->
+    <path d="M342 72
+           L367 48
+           L384 65
+           L360 90" stroke="#173E7D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"></path>
+
+    <!-- Hour Marks -->
+
+    <line x1="256" y1="105" x2="256" y2="125" stroke="#173E7D" stroke-width="8" stroke-linecap="round"></line>
+
+    <line x1="256" y1="387" x2="256" y2="407" stroke="#173E7D" stroke-width="8" stroke-linecap="round"></line>
+
+    <line x1="105" y1="256" x2="125" y2="256" stroke="#173E7D" stroke-width="8" stroke-linecap="round"></line>
+
+    <line x1="387" y1="256" x2="407" y2="256" stroke="#173E7D" stroke-width="8" stroke-linecap="round"></line>
+
+    <!-- Highlight -->
+    <ellipse cx="210" cy="170" rx="90" ry="55" fill="#D6E6FF" opacity="0.5"></ellipse>
+
+</svg>

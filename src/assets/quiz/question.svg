@@ -1,0 +1,43 @@
+<!--?xml version="1.0" encoding="UTF-8"?-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+
+    <!-- Background Circle -->
+    <circle cx="256" cy="256" r="220" fill="#173E7D"></circle>
+
+    <!-- Inner Circle -->
+    <circle cx="256" cy="256" r="185" fill="#FFFFFF"></circle>
+
+    <!-- Decorative Ring -->
+    <circle cx="256" cy="256" r="205" stroke="#2154A6" stroke-width="10" opacity="0.20" fill="none"></circle>
+
+    <!-- Highlight -->
+    <ellipse cx="205" cy="170" rx="95" ry="55" fill="#D6E6FF" opacity="0.45"></ellipse>
+
+    <!-- Question Mark -->
+
+    <path d="
+            M195 175
+            C195 135 225 108 270 108
+            C314 108 345 136 345 176
+            C345 205 329 225 302 241
+            C281 253 270 266 270 290
+        " stroke="#173E7D" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+
+    <!-- Dot -->
+    <circle cx="270" cy="345" r="18" fill="#173E7D"></circle>
+
+    <!-- Small Decorative Circles -->
+
+    <circle cx="120" cy="180" r="10" fill="#4F8EF7" opacity="0.45"></circle>
+
+    <circle cx="380" cy="170" r="8" fill="#4F8EF7" opacity="0.35"></circle>
+
+    <circle cx="150" cy="340" r="7" fill="#4F8EF7" opacity="0.30"></circle>
+
+    <circle cx="365" cy="330" r="11" fill="#4F8EF7" opacity="0.30"></circle>
+
+    <!-- Outer Border -->
+
+    <circle cx="256" cy="256" r="220" stroke="#0E2F63" stroke-width="10" opacity="0.25" fill="none"></circle>
+
+</svg>

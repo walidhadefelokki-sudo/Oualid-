@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import CVBuilder from "./cv/CVBuilder";
+import CVDirectory from "./recruiter/CVDirectory";
+import QuizResults from "./recruiter/QuizResults";
+import OralPresentationResults from "./recruiter/OralPresentationResults";
+import PreselectedCandidates from "./recruiter/PreselectedCandidates";
+import AIFilterResults from "./recruiter/AIFilterResults";
+import OralPresentationCard from "./candidate/OralPresentationCard";
+import OralPresentationViewer from "./recruiter/OralPresentationViewer";
+import AIQuiz from "./candidate/AIQuiz";
+import CandidatesSection from './recruiter/CandidatesSection.tsx';
 import { 
   BarChart3, 
   Briefcase, 
@@ -59,7 +68,13 @@ import {
   Activity,
   Sparkles,
   Send,
-  UserPlus
+  UserPlus,
+  Play,
+  Pause,
+  Award,
+  Star,
+  Volume2,
+  Brain,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
@@ -92,6 +107,13 @@ interface SidebarItemProps {
   active?: boolean;
   onClick: () => void;
 }
+
+type RecruiterTier =
+  | 'free'
+  | 'paid'
+  | 'corporate';
+
+
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) => (
   <button 
@@ -169,7 +191,8 @@ export default function Dashboard({
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-
+  const [selectedPresentationCandidate, setSelectedPresentationCandidate] =
+    useState<any>(null);
   const t = (key: string, variables?: Record<string, any>) => {
     const keys = key.split('.');
     let result: any = translations[language] || translations['fr'] || translations['en'];
@@ -193,11 +216,53 @@ export default function Dashboard({
 
   const isRTL = language === 'ar';
 
+  const [recruiterTier, setRecruiterTier] =
+  useState<'free' | 'paid' | 'corporate'>('corporate');
+
   const handleWhatsAppContact = (phoneNumber: string, candidateName: string) => {
     const message = encodeURIComponent(`Bonjour ${candidateName}, nous avons bien reçu votre candidature sur Algeria Jobs. Souhaitez-vous fixer un entretien ?`);
     window.open(`https://wa.me/${phoneNumber.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
   };
+  const [candidateQuizAnswers, setCandidateQuizAnswers] =
+  useState<Record<string, number[]>>({});
 
+  const [candidateQuizFinished, setCandidateQuizFinished] =
+    useState<Record<string, boolean>>({});
+
+  const [candidateQuizScores, setCandidateQuizScores] =
+    useState<Record<string, number>>({});
+    const [activeOralRecording, setActiveOralRecording] =
+  useState<boolean>(false);
+
+  const [candidateList, setCandidateList] = useState([]);
+  const [quizResults, setQuizResults] = useState([]);
+  const [oralPresentationResults, setOralPresentationResults] = useState([]);
+  const [preselectedCandidates, setPreselectedCandidates] = useState([]);
+  const [aiCandidates, setAiCandidates] = useState([]);
+
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [loadingQuiz, setLoadingQuiz] = useState(false);
+  const [loadingPresentations, setLoadingPresentations] = useState(false);
+  const [loadingPreselected, setLoadingPreselected] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
+
+  const loadCandidates = () => {};
+  const loadQuizResults = () => {};
+  const loadPresentations = () => {};
+  const loadPreselectedCandidates = () => {};
+  const loadAICandidates = () => {};
+
+  const handleOpenCV = () => {};
+  const handleInterview = () => {};
+  const handleHire = () => {};
+  const handleReject = () => {};
+  const handleOpenCandidate = () => {};
+  const handleViewPresentation = () => {};
+
+  const [oralRecordingUrl, setOralRecordingUrl] =
+    useState<string | null>(null);
+  const [cvSearchQuery, setCvSearchQuery] = useState('');
+  const [cvExperienceFilter, setCvExperienceFilter] = useState('All');  
   const PremiumBadge = () => (
     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-md text-[8px] font-black uppercase tracking-wider shadow-sm">
       <Gem size={10} />
@@ -206,6 +271,11 @@ export default function Dashboard({
   );
 
   useEffect(() => {
+    loadCandidates();
+    loadQuizResults();
+    loadPresentations();
+    loadPreselectedCandidates();
+    loadAICandidates();
     if (!user || isDemo) return;
 
     // Fetch initial notifications
@@ -504,7 +574,7 @@ export default function Dashboard({
     }
   };
 
-  const aiCandidates = [
+  const mockaiCandidates = [
     {
       id: 1,
       name: 'Ahmed Benali',
@@ -589,54 +659,178 @@ export default function Dashboard({
 
   const renderSidebar = () => {
     if (user?.role === 'employer') {
-      return (
-        <div className="flex flex-col h-full">
-          <div className="p-8">
-            <Logo size="md" onClick={onGoHome} />
-            <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-[#173E7D] rounded-lg text-[10px] font-black tracking-wider uppercase mt-2">
-              Recruteur
-            </div>
-          </div>
-
-          <div className="flex-1 px-4 space-y-2 overflow-y-auto no-scrollbar">
-            <SectionLabel>Principal</SectionLabel>
-            <SidebarItem icon={LayoutDashboard} label="Tableau de bord" active={activeTab === 'employer-dashboard'} onClick={() => setActiveTab('employer-dashboard')} />
-            <SidebarItem icon={PlusCircle} label="Publier une offre" active={activeTab === 'post-job'} onClick={() => setActiveTab('post-job')} />
-            <SidebarItem icon={Briefcase} label="Mes offres" active={activeTab === 'manage-jobs'} onClick={() => setActiveTab('manage-jobs')} />
-            <SidebarItem icon={UsersIcon} label="Candidatures" active={activeTab === 'candidates'} onClick={() => setActiveTab('candidates')} />
-
-            <SectionLabel>IA & Innovation 2026</SectionLabel>
-            <SidebarItem icon={Cpu} label="Sourcing IA" active={activeTab === 'sourcing-ia'} onClick={() => setActiveTab('sourcing-ia')} />
-            <SidebarItem icon={BarChart3} label="Analytics Wilayas" active={activeTab === 'analytics-wilaya'} onClick={() => setActiveTab('analytics-wilaya')} />
-            <SidebarItem icon={Zap} label="Filtrage IA" active={activeTab === 'ai-filter'} onClick={() => setActiveTab('ai-filter')} />
-            <SidebarItem icon={Building2} label="Mon entreprise" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
-
-            <SectionLabel>Compte</SectionLabel>
-            <SidebarItem icon={Gem} label={t('subscription')} active={activeTab === 'subscription'} onClick={() => setActiveTab('subscription')} />
-            <div className="relative">
-              <SidebarItem icon={Bell} label="Notifications" active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} />
-              {notifications.filter(n => !n.is_read).length > 0 && (
-                <span className="absolute top-3 right-4 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-              )}
-            </div>
-            <SidebarItem icon={Settings} label="Paramètres" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
-          </div>
-
-          <div className="p-6 border-t border-gray-100">
-            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-              <img src={user.photoURL || 'https://i.pravatar.cc/150?u=oualid'} alt={user.displayName} className="w-10 h-10 rounded-xl object-cover" referrerPolicy="no-referrer" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-[#173E7D] truncate">{user.displayName}</p>
-                <p className="text-[10px] text-gray-400 truncate">{user.email}</p>
-              </div>
-              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors">
-                <LogOut size={18} />
-              </button>
-            </div>
+    return (
+      <div className="flex flex-col h-full">
+        <div className="p-8">
+          <Logo size="md" onClick={onGoHome} />
+          <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-[#173E7D] rounded-lg text-[10px] font-black tracking-wider uppercase mt-2">
+            Recruteur
           </div>
         </div>
-      );
-    }
+
+        <div className="flex-1 px-4 space-y-2 overflow-y-auto no-scrollbar">
+
+          {/* ====================== */}
+          {/* PRINCIPAL */}
+          {/* ====================== */}
+
+          <SectionLabel>Principal</SectionLabel>
+
+          <SidebarItem
+            icon={LayoutDashboard}
+            label="Tableau de bord"
+            active={activeTab === 'employer-dashboard'}
+            onClick={() => setActiveTab('employer-dashboard')}
+          />
+
+          <SidebarItem
+            icon={PlusCircle}
+            label="Publier une offre"
+            active={activeTab === 'post-job'}
+            onClick={() => setActiveTab('post-job')}
+          />
+
+          <SidebarItem
+            icon={Briefcase}
+            label="Mes offres"
+            active={activeTab === 'manage-jobs'}
+            onClick={() => setActiveTab('manage-jobs')}
+          />
+
+          <SidebarItem
+            icon={UsersIcon}
+            label="Candidatures"
+            active={activeTab === 'candidates'}
+            onClick={() => setActiveTab('candidates')}
+          />
+
+          {/* ====================== */}
+          {/* PREMIUM + CORPORATE */}
+          {/* ====================== */}
+
+          {(recruiterTier === 'paid' ||
+            recruiterTier === 'corporate') && (
+            <>
+              <SectionLabel>IA & Innovation</SectionLabel>
+
+              <SidebarItem
+                icon={Zap}
+                label="Filtrage IA"
+                active={activeTab === 'ai-filter'}
+                onClick={() => setActiveTab('ai-filter')}
+              />
+
+              <SidebarItem
+                icon={BookOpen}
+                label="Répertoire CV"
+                active={activeTab === 'repertoire-cv'}
+                onClick={() => setActiveTab('repertoire-cv')}
+              />
+            </>
+          )}
+
+          {/* ====================== */}
+          {/* CORPORATE ONLY */}
+          {/* ====================== */}
+
+          {recruiterTier === 'corporate' && (
+            <>
+              <SectionLabel>Corporate</SectionLabel>
+
+              <SidebarItem
+                icon={Volume2}
+                label="Présentations orales"
+                active={activeTab === 'oral-results'}
+                onClick={() => setActiveTab('oral-results')}
+              />
+
+              <SidebarItem
+                icon={Award}
+                label="Résultats Quiz"
+                active={activeTab === 'quiz-results'}
+                onClick={() => setActiveTab('quiz-results')}
+              />
+
+              <SidebarItem
+                icon={Star}
+                label="Préselection"
+                active={activeTab === 'preselected'}
+                onClick={() => setActiveTab('preselected')}
+              />
+
+              <SidebarItem
+                icon={Building2}
+                label="Mon entreprise"
+                active={activeTab === 'profile'}
+                onClick={() => setActiveTab('profile')}
+              />
+            </>
+          )}
+
+          {/* ====================== */}
+          {/* COMPTE */}
+          {/* ====================== */}
+
+          <SectionLabel>Compte</SectionLabel>
+
+          <SidebarItem
+            icon={Gem}
+            label={t('subscription')}
+            active={activeTab === 'subscription'}
+            onClick={() => setActiveTab('subscription')}
+          />
+
+          <div className="relative">
+            <SidebarItem
+              icon={Bell}
+              label="Notifications"
+              active={activeTab === 'notifications'}
+              onClick={() => setActiveTab('notifications')}
+            />
+
+            {notifications.filter(n => !n.is_read).length > 0 && (
+              <span className="absolute top-3 right-4 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            )}
+          </div>
+
+          <SidebarItem
+            icon={Settings}
+            label="Paramètres"
+            active={activeTab === 'settings'}
+            onClick={() => setActiveTab('settings')}
+          />
+        </div>
+
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
+            <img
+              src={user.photoURL || 'https://i.pravatar.cc/150?u=oualid'}
+              alt={user.displayName}
+              className="w-10 h-10 rounded-xl object-cover"
+              referrerPolicy="no-referrer"
+            />
+
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-[#173E7D] truncate">
+                {user.displayName}
+              </p>
+
+              <p className="text-[10px] text-gray-400 truncate">
+                {user.email}
+              </p>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
     return (
       <div className="flex flex-col h-full">
@@ -1436,6 +1630,63 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
   const renderContent = () => {
     if (user?.role === 'employer') {
       switch (activeTab) {
+        case "repertoire-cv":
+          return (
+            <CVDirectory
+              candidates={candidateList}
+              recruiterPlan={recruiterTier}
+              loading={loadingCandidates}
+              onRefresh={loadCandidates}
+              onOpenCV={handleOpenCV}
+            />
+          );
+
+        case "quiz-results":
+          return (
+            <QuizResults
+              candidates={quizResults}
+              recruiterPlan={recruiterTier}
+              loading={loadingQuiz}
+              onRefresh={loadQuizResults}
+              onOpenCandidate={handleOpenCandidate}
+            />
+          );
+
+        case "oral-results":
+          return (
+            <OralPresentationResults
+              candidates={oralPresentationResults}
+              recruiterPlan={recruiterTier}
+              loading={loadingPresentations}
+              onRefresh={loadPresentations}
+              onViewPresentation={handleViewPresentation}
+            />
+          );
+
+        case "preselected":
+          return (
+            <PreselectedCandidates
+              candidates={preselectedCandidates}
+              recruiterPlan={recruiterTier}
+              loading={loadingPreselected}
+              onRefresh={loadPreselectedCandidates}
+              onOpenCV={handleOpenCV}
+              onInterview={handleInterview}
+              onHire={handleHire}
+              onReject={handleReject}
+            />
+          );
+
+        case "ai-filter":
+          return (
+            <AIFilterResults
+              candidates={aiCandidates}
+              recruiterPlan={recruiterTier}
+              loading={loadingAI}
+              onRefresh={loadAICandidates}
+              onOpenCandidate={handleOpenCandidate}
+            />
+          );
         case 'employer-dashboard':
           return (
             <div className="space-y-10">
@@ -1683,142 +1934,195 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
             </div>
           );
-        case 'candidates':
-          return (
-            <div className="space-y-16">
-              <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 ${isRTL ? 'text-right' : ''}`}>
-                <div>
-                  <h2 className="text-5xl font-display font-black text-[#173E7D] tracking-tighter">{t('candidates')}</h2>
-                  <p className="text-gray-500 mt-2 text-lg font-medium">Gérez vos talents par offre d'emploi avec une analyse prédictive par IA.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="bg-white px-6 py-3 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-black text-[#173E7D] uppercase tracking-widest">12 Nouveaux aujourd'hui</span>
-                  </div>
-                </div>
-              </div>
+          case 'candidates':
+  return (
+    <CandidatesSection
+      candidatesByJob={candidatesByJob}
+      isRTL={isRTL}
+      t={t}
+      setSelectedCandidateCV={setSelectedCandidateCV}
+      selectedPresentationCandidate={selectedPresentationCandidate}
+      setSelectedPresentationCandidate={setSelectedPresentationCandidate}
+      OralPresentationViewer={OralPresentationViewer}
+      handleWhatsAppContact={handleWhatsAppContact}
+      handleInterview={handleInterview}
+      handleHire={handleHire}
+      handleReject={handleReject}
+      // handleEmail, handleShortlist, handleViewQuiz omitted — not defined yet
+    />
+  );
+        // case 'candidates':
+        //   return (
+        //     <>
+        //     <div className="space-y-16">
+        //       <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 ${isRTL ? 'text-right' : ''}`}>
+        //         <div>
+        //           <h2 className="text-5xl font-display font-black text-[#173E7D] tracking-tighter">{t('candidates')}</h2>
+        //           <p className="text-gray-500 mt-2 text-lg font-medium">Gérez vos talents par offre d'emploi avec une analyse prédictive par IA.</p>
+        //         </div>
+        //         <div className="flex items-center gap-3">
+        //           <div className="bg-white px-6 py-3 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
+        //             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+        //             <span className="text-xs font-black text-[#173E7D] uppercase tracking-widest">12 Nouveaux aujourd'hui</span>
+        //           </div>
+        //         </div>
+        //       </div>
               
-              <div className="space-y-24">
-                {candidatesByJob.map((group, groupIdx) => (
-                  <motion.div 
-                    key={groupIdx} 
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: groupIdx * 0.15, duration: 0.8, ease: "easeOut" }}
-                    className="relative"
-                  >
-                    {/* Job Header Section */}
-                    <div className="flex flex-col items-center mb-12">
-                      <div className="relative z-10 bg-white px-10 py-6 rounded-[3rem] border border-gray-100 shadow-xl shadow-blue-900/5 flex flex-col items-center gap-2 group hover:scale-105 transition-transform duration-500">
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#173E7D] text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.3em]">
-                          Offre Active
-                        </div>
-                        <h3 className="text-2xl font-black text-[#173E7D] uppercase tracking-[0.15em] flex items-center gap-4">
-                          <div className="w-10 h-10 bg-orange-50 text-[#F68D58] rounded-xl flex items-center justify-center shadow-inner">
-                            <Briefcase size={20} />
-                          </div>
-                          {group.jobTitle}
-                          <div className="bg-blue-50 text-[#173E7D] w-10 h-10 rounded-full flex items-center justify-center text-sm border border-blue-100 font-black">
-                            {group.candidates.length}
-                          </div>
-                        </h3>
-                        <div className="flex items-center gap-3 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">
-                          <Clock size={14} className="text-[#F68D58]" />
-                          Publiée le <span className="text-[#173E7D]">{group.publishedAt}</span>
-                        </div>
-                      </div>
-                      <div className="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-100 to-transparent -z-0"></div>
-                    </div>
+        //       <div className="space-y-24">
+        //         {candidatesByJob.map((group, groupIdx) => (
+        //           <motion.div 
+        //             key={groupIdx} 
+        //             initial={{ opacity: 0, y: 30 }}
+        //             animate={{ opacity: 1, y: 0 }}
+        //             transition={{ delay: groupIdx * 0.15, duration: 0.8, ease: "easeOut" }}
+        //             className="relative"
+        //           >
+        //             {/* Job Header Section */}
+        //             <div className="flex flex-col items-center mb-12">
+        //               <div className="relative z-10 bg-white px-10 py-6 rounded-[3rem] border border-gray-100 shadow-xl shadow-blue-900/5 flex flex-col items-center gap-2 group hover:scale-105 transition-transform duration-500">
+        //                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#173E7D] text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.3em]">
+        //                   Offre Active
+        //                 </div>
+        //                 <h3 className="text-2xl font-black text-[#173E7D] uppercase tracking-[0.15em] flex items-center gap-4">
+        //                   <div className="w-10 h-10 bg-orange-50 text-[#F68D58] rounded-xl flex items-center justify-center shadow-inner">
+        //                     <Briefcase size={20} />
+        //                   </div>
+        //                   {group.jobTitle}
+        //                   <div className="bg-blue-50 text-[#173E7D] w-10 h-10 rounded-full flex items-center justify-center text-sm border border-blue-100 font-black">
+        //                     {group.candidates.length}
+        //                   </div>
+        //                 </h3>
+        //                 <div className="flex items-center gap-3 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1">
+        //                   <Clock size={14} className="text-[#F68D58]" />
+        //                   Publiée le <span className="text-[#173E7D]">{group.publishedAt}</span>
+        //                 </div>
+        //               </div>
+        //               <div className="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-100 to-transparent -z-0"></div>
+        //             </div>
 
-                    {/* Candidates Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10">
-                      {group.candidates.map((candidate: any, i) => (
-                        <motion.div 
-                          key={i} 
-                          whileHover={{ y: -10, scale: 1.02 }}
-                          className={`bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden ${isRTL ? 'text-right' : ''}`}
-                        >
-                          {/* Decorative Background Element */}
-                          <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-3xl"></div>
+        //             {/* Candidates Grid */}
+        //             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10">
+        //               {group.candidates.map((candidate: any, i) => (
+        //                 <motion.div 
+        //                   key={i} 
+        //                   whileHover={{ y: -10, scale: 1.02 }}
+        //                   className={`bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden ${isRTL ? 'text-right' : ''}`}
+        //                 >
+        //                   {/* Decorative Background Element */}
+        //                   <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-3xl"></div>
                           
-                          {/* Status & Match Header */}
-                          <div className="flex justify-between items-start mb-8 relative z-10">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
-                              candidate.status === 'Nouveau' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                              candidate.status === 'En cours' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                              candidate.status === 'Refusé' ? 'bg-red-50 text-red-600 border-red-100' :
-                              'bg-gray-50 text-gray-600 border-gray-100'
-                            }`}>
-                              {candidate.status}
-                            </span>
-                            <div className="flex flex-col items-end">
-                              <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest mb-1">Score IA</span>
-                              <span className="text-2xl font-black text-[#173E7D] tracking-tighter">{candidate.match}%</span>
-                            </div>
-                          </div>
+        //                   {/* Status & Match Header */}
+        //                   <div className="flex justify-between items-start mb-8 relative z-10">
+        //                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
+        //                       candidate.status === 'Nouveau' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+        //                       candidate.status === 'En cours' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+        //                       candidate.status === 'Refusé' ? 'bg-red-50 text-red-600 border-red-100' :
+        //                       'bg-gray-50 text-gray-600 border-gray-100'
+        //                     }`}>
+        //                       {candidate.status}
+        //                     </span>
+        //                     <div className="flex flex-col items-end">
+        //                       <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest mb-1">Score IA</span>
+        //                       <span className="text-2xl font-black text-[#173E7D] tracking-tighter">{candidate.match}%</span>
+        //                     </div>
+        //                   </div>
 
-                          {/* Profile Info */}
-                          <div className="flex flex-col items-center text-center space-y-6 relative z-10">
-                            <div className="relative">
-                              <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-8 border-gray-50 shadow-2xl group-hover:rotate-3 transition-all duration-500">
-                                <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              </div>
-                              <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg border-4 border-white">
-                                <CheckCircle2 size={18} />
-                              </div>
-                            </div>
+        //                   {/* Profile Info */}
+        //                   <div className="flex flex-col items-center text-center space-y-6 relative z-10">
+        //                     <div className="relative">
+        //                       <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-8 border-gray-50 shadow-2xl group-hover:rotate-3 transition-all duration-500">
+        //                         <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        //                       </div>
+        //                       <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg border-4 border-white">
+        //                         <CheckCircle2 size={18} />
+        //                       </div>
+        //                     </div>
 
-                            <div className="space-y-1">
-                              <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight">{candidate.name}</h4>
-                              <p className="text-gray-400 font-bold uppercase tracking-[0.2em] text-[10px]">{candidate.role}</p>
-                            </div>
+        //                     <div className="space-y-1">
+        //                       <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight">{candidate.name}</h4>
+        //                       <p className="text-gray-400 font-bold uppercase tracking-[0.2em] text-[10px]">{candidate.role}</p>
+        //                     </div>
 
-                            {/* Stats Bento */}
-                            <div className="grid grid-cols-2 gap-3 w-full">
-                              <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
-                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
-                                <p className="text-sm font-black text-[#173E7D]">{candidate.exp}</p>
-                              </div>
-                              <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
-                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Localisation</p>
-                                <p className="text-sm font-black text-[#173E7D]">Alger</p>
-                              </div>
-                            </div>
+        //                     {/* Stats Bento */}
+        //                     <div className="grid grid-cols-2 gap-3 w-full">
+        //                       <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+        //                         <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
+        //                         <p className="text-sm font-black text-[#173E7D]">{candidate.exp}</p>
+        //                       </div>
+        //                       <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
+        //                         <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Localisation</p>
+        //                         <p className="text-sm font-black text-[#173E7D]">Alger</p>
+        //                       </div>
+        //                     </div>
 
-                            {/* Action Button */}
-                            <div className="grid grid-cols-5 gap-3 w-full">
-                              <button 
-                                onClick={() => setSelectedCandidateCV(candidate)}
-                                className="col-span-3 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10 flex items-center justify-center gap-2 group/btn"
-                              >
-                                <span>Voir Profil</span>
-                                <ChevronRight size={14} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
-                              </button>
-                              <button 
-                                onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
-                                className="col-span-1 bg-[#25D366] text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-green-500/10 flex items-center justify-center"
-                                title="Contact WhatsApp"
-                              >
-                                <MessageCircle size={20} />
-                              </button>
-                              <button 
-                                onClick={() => alert('Lecture du Pitch Vidéo (Fonctionnalité 2026)')}
-                                className="col-span-1 bg-gradient-to-br from-purple-500 to-pink-500 text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-purple-500/10 flex items-center justify-center"
-                                title="Voir Video Pitch"
-                              >
-                                <Camera size={20} />
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          );
+        //                     {/* Action Button */}
+        //                     <div className="grid grid-cols-5 gap-3 w-full">
+        //                       <button 
+        //                         onClick={() => setSelectedCandidateCV(candidate)}
+        //                         className="col-span-3 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10 flex items-center justify-center gap-2 group/btn"
+        //                       >
+        //                         <span>Voir Profil</span>
+        //                         <ChevronRight size={14} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
+        //                       </button>
+        //                       <button 
+        //                         onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
+        //                         className="col-span-1 bg-[#25D366] text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-green-500/10 flex items-center justify-center"
+        //                         title="Contact WhatsApp"
+        //                       >
+        //                         <MessageCircle size={20} />
+        //                       </button>
+        //                       <button
+        //                         onClick={() => setSelectedPresentationCandidate(candidate)}
+        //                         className="col-span-1 bg-gradient-to-br from-purple-500 to-pink-500 text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-purple-500/10 flex items-center justify-center"
+        //                         title="View Oral Presentation"
+        //                       >
+        //                         <Camera size={20} />
+        //                       </button>
+        //                     </div>
+        //                   </div>
+        //                 </motion.div>
+        //               ))}
+        //             </div>
+        //           </motion.div>
+        //         ))}
+        //       </div>
+        //     </div>
+        //     <AnimatePresence>
+        //       {selectedPresentationCandidate && (
+        //         <motion.div
+        //           className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8"
+        //           initial={{ opacity: 0 }}
+        //           animate={{ opacity: 1 }}
+        //           exit={{ opacity: 0 }}
+        //         >
+        //           <motion.div
+        //             initial={{ scale: .9, opacity: 0 }}
+        //             animate={{ scale: 1, opacity: 1 }}
+        //             exit={{ scale: .9, opacity: 0 }}
+        //             className="bg-white rounded-[2rem] w-full max-w-4xl p-8 relative"
+        //           >
+
+        //             <button
+        //               onClick={() => setSelectedPresentationCandidate(null)}
+        //               className="absolute right-6 top-6"
+        //             >
+        //               <X size={24} />
+        //             </button>
+
+        //             <h2 className="text-3xl font-black text-[#173E7D] mb-8">
+        //               Oral Presentation
+        //             </h2>
+
+        //             <OralPresentationViewer
+        //               candidateId={selectedPresentationCandidate.id}
+        //             />
+
+        //           </motion.div>
+        //         </motion.div>
+        //       )}
+        //     </AnimatePresence>
+        //     </>
+        //   );
         case 'sourcing-ia':
           return (
             <div className="space-y-12">
@@ -2123,7 +2427,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                     {/* Initial List */}
                     <div className="space-y-6">
-                      {aiCandidates.map((candidate) => (
+                      {mockaiCandidates.map((candidate) => (
                         <div key={candidate.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
                           <div className="flex items-center gap-6">
                             <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
@@ -2158,7 +2462,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                     {/* Results List */}
                     <div className="space-y-6">
-                      {aiCandidates.map((candidate) => (
+                      {mockaiCandidates.map((candidate) => (
                         <div key={candidate.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
                           <div 
                             className="p-8 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 transition-colors"
@@ -2791,6 +3095,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                   </div>
                                 </div>
                               )}
+                            
 
                               {ghostSimStatus === 'playing' && (
                                 <div className="space-y-3 text-center w-full">
@@ -4484,6 +4789,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   {isUploading ? (language === 'ar' ? 'جاري الرفع...' : 'Téléchargement...') : (language === 'ar' ? 'رفع CV' : 'Uploader CV')}
                 </label>
               </div>
+              <OralPresentationCard/>
               <button 
                 onClick={handleSaveProfile}
                 className="px-12 py-4 bg-[#0A1118] text-white rounded-full font-bold hover:bg-[#173E7D] transition-all shadow-xl"
@@ -5013,6 +5319,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
           </div>
         );
+      case 'ai-quiz':
+        return <AIQuiz />;  
       case 'saved':
         const savedJobsList = MOCK_JOBS.filter(job => savedJobs.includes(job.id));
         return (
@@ -5855,6 +6163,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     onClick={() => { setActiveTab('cv-maker'); setIsSidebarOpen(false); }} 
                   />
                   <SidebarItem 
+                    icon={Brain} 
+                    label="AI Quiz" 
+                    active={activeTab === 'ai-quiz'} 
+                    onClick={() => { 
+                      setActiveTab('ai-quiz'); 
+                      setIsSidebarOpen(false); 
+                    }} 
+                  />
+                  <SidebarItem 
                     icon={User} 
                     label={t('myProfile')} 
                     active={activeTab === 'profile'} 
@@ -5981,6 +6298,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 label={t('cvMaker')} 
                 active={activeTab === 'cv-maker'} 
                 onClick={() => setActiveTab('cv-maker')} 
+              />
+              <SidebarItem 
+                icon={Brain} 
+                label="AI Quiz" 
+                active={activeTab === 'ai-quiz'} 
+                onClick={() => { 
+                  setActiveTab('ai-quiz'); 
+                  setIsSidebarOpen(false); 
+                }} 
               />
               <SidebarItem 
                 icon={User} 

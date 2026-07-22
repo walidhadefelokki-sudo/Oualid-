@@ -1,5 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// ======================================================
+// Dar L'Emploi
+// Production Prisma Schema
+// PART 1 - Core Identity
+// ======================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -16,119 +19,955 @@ enum Role {
   ADMIN
 }
 
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
 enum RecruiterPlan {
-  BASIC
-  PRO
-  ENTERPRISE
+  FREE
+  PREMIUM
+  CORPORATE
+}
+
+enum CompanyMemberRole {
+  OWNER
+  ADMIN
+  HR_MANAGER
+  RECRUITER
+}
+
+enum Language {
+  FR
+  EN
+  AR
+}
+
+// ======================================================
+// Dar L'Emploi
+// Production Prisma Schema
+// PART 2 - Recruitment Module
+// Append this after Part1_Core_Identity.prisma
+// ======================================================
+
+//////////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////////
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  INTERNSHIP
+  TEMPORARY
+}
+
+enum ExperienceLevel {
+  INTERN
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  MANAGER
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
 }
 
 enum ApplicationStatus {
   PENDING
-  REVIEWED
-  ACCEPTED
+  REVIEWING
+  SHORTLISTED
+  INTERVIEW
+  HIRED
   REJECTED
 }
 
-model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String
-  role          Role      @default(CANDIDATE)
-  firstName     String?
-  lastName      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// ======================================================
+// Dar L'Emploi
+// Production Prisma Schema
+// PART 3 - AI Recruitment Module
+// Append after Part2_Recruitment.prisma
+// ======================================================
 
-  // Profiles
-  candidateProfile CandidateProfile?
-  recruiterProfile RecruiterProfile?
+//////////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////////
 
-  // Notifications
-  notifications Notification[]
+enum AIAnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
-model CandidateProfile {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phone        String?
-  bio          String?
-  resumeUrl    String?
-  skills       String[]
-  wilaya       String?
-  jobMatchNotifications Boolean @default(true)
-  
-  applications Application[]
-  savedJobs    SavedJob[]
+enum QuizStatus {
+
+  PENDING
+
+  GENERATED
+
+  IN_PROGRESS
+
+  SUBMITTED
+
+  REVIEWED
 }
 
-model RecruiterProfile {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  companyName  String
-  industry     String?
-  website      String?
-  description  String?
-  logoUrl      String?
-  plan         RecruiterPlan @default(BASIC)
+enum QuizDifficulty {
 
-  jobs         Job[]
+  EASY
+
+  MEDIUM
+
+  HARD
 }
 
-model Job {
-  id              String   @id @default(uuid())
-  title           String
-  description     String
-  location        String
-  type            String   // Full-time, Part-time, etc.
-  salary          String?
-  category        String?
-  requirements    String[]
-  responsibilities String[]
-  featured        Boolean  @default(false)
-  expiresAt       DateTime?
+enum OralPresentationStatus {
+  PENDING
+  UPLOADED
+  REVIEWED
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// ======================================================
+// Dar L'Emploi
+// Production Prisma Schema
+// PART 4 - Business Platform
+// Append after Part3_AI_Recruitment.prisma
+// ======================================================
+
+//////////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////////
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD 
+  BANK_TRANSFER
+  CCP
+  CASH
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+//////////////////////////////////////////////////////////
+// SUBSCRIPTION
+//////////////////////////////////////////////////////////
+
+model Subscription {
+  id String @id @default(uuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  plan RecruiterPlan
+
+  status SubscriptionStatus @default(ACTIVE)
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  autoRenew Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([companyId])
+}
+
+//////////////////////////////////////////////////////////
+// PAYMENT
+//////////////////////////////////////////////////////////
+
+model Payment {
+  id String @id @default(uuid())
+
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  amount   Float
+  currency String @default("DZD")
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDING)
+
+  transactionId String?
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+}
+
+//////////////////////////////////////////////////////////
+// NOTIFICATION
+//////////////////////////////////////////////////////////
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title   String
+  message String
+
+  type NotificationType @default(INFO)
+
+  read Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////
+// AUDIT LOG
+//////////////////////////////////////////////////////////
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action   String
+  entity   String
+  entityId String?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////
+// SUPPORT TICKET
+//////////////////////////////////////////////////////////
+
+model SupportTicket {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject     String
+  description String
+
+  status TicketStatus @default(OPEN)
+
+  priority String @default("NORMAL")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////
+// PLATFORM SETTINGS
+//////////////////////////////////////////////////////////
+
+model PlatformSetting {
+  id String @id @default(uuid())
+
+  key String @unique
+
+  value Json
+
+  description String?
+
+  updatedAt DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////////
+// DEVICE TOKEN
+//////////////////////////////////////////////////////////
+
+model DeviceToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token String @unique
+
+  platform String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////
+// AI ANALYSIS
+//////////////////////////////////////////////////////////
+
+model AIAnalysis {
+  id String @id @default(uuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  status AIAnalysisStatus @default(PENDING)
+
+  overallScore    Float?
+  skillsScore     Float?
+  experienceScore Float?
+  educationScore  Float?
+  languageScore   Float?
+
+  extractedSkills    String[]
+  extractedLanguages String[]
+  strengths          String[]
+  weaknesses         String[]
+  recommendations    String[]
+
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([candidateId])
+}
+
+//////////////////////////////////////////////////////////
+// QUIZ
+//////////////////////////////////////////////////////////
+
+model Quiz {
+  id            String   @id @default(cuid())
+
+  candidateId   String   @unique
+  candidate     User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  status        QuizStatus @default(PENDING)
+
+  generatedAt   DateTime @default(now())
+  submittedAt   DateTime?
+
+  aiModel       String?
+
+  questions     QuizQuestion[]
+
+  attempt       QuizAttempt?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////////
+// QUIZ QUESTION
+//////////////////////////////////////////////////////////
+
+model QuizQuestion {
+
+  id          String @id @default(cuid())
+
+  quizId      String
+  quiz        Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  order       Int
+
+  question    String @db.Text
+
+  skill       String?
+
+  difficulty  QuizDifficulty @default(MEDIUM)
+
+  createdAt   DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////////
+// QUIZ ATTEMPT
+//////////////////////////////////////////////////////////
+
+model QuizAttempt {
+
+  id          String @id @default(cuid())
+
+  quizId      String @unique
+  quiz        Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  candidateId String
+  candidate   User @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  aiScore         Float?
+  recruiterScore  Float?
+
+  feedback        String? @db.Text
+
+  submittedAt     DateTime?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  recruiterId     String
-  recruiter       RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
-
-  applications    Application[]
-  savedBy         SavedJob[]
+  answers QuizAnswer[]
 }
 
-model Application {
-  id          String            @id @default(uuid())
-  jobId       String
-  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  candidateId String
-  candidate   CandidateProfile  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  
-  resumeUrl   String?           // Snapshot of resume at time of application
-  coverLetter String?
-  status      ApplicationStatus @default(PENDING)
-  appliedAt   DateTime          @default(now())
+enum QuizAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
 }
 
-model SavedJob {
-  id          String   @id @default(uuid())
-  jobId       String
-  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+model QuizAnswer {
+
+  id          String @id @default(cuid())
+
+  attemptId   String
+  attempt     QuizAttempt
+               @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  questionId  String
+  question    QuizQuestion
+               @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  answer      String @db.Text
+
+  aiScore     Float?
+
+  recruiterScore Float?
+
+  aiFeedback String? @db.Text
+
+  createdAt DateTime @default(now())
+}
+
+
+
+//////////////////////////////////////////////////////////
+// ORAL PRESENTATION
+//////////////////////////////////////////////////////////
+
+model OralPresentation {
+  id            String   @id @default(uuid())
+
+  candidateId   String   @unique
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id])
+
+  videoId       String?
+  video         FileAsset? @relation(fields: [videoId], references: [id])
+
+  recruiterScore Float?
+
+  status        OralPresentationStatus
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////////
+// INTERVIEW
+//////////////////////////////////////////////////////////
+
+model Interview {
+  id String @id @default(uuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  scheduledAt DateTime
+
+  durationMinutes Int?
+
+  interviewer String?
+
+  meetingUrl String?
+
+  notes String?
+
+  score Float?
+
+  status InterviewStatus @default(SCHEDULED)
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////////
+// CANDIDATE SCORE
+//////////////////////////////////////////////////////////
+
+model CandidateScore {
+  id String @id @default(uuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
   candidateId String
   candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
 
-  @@unique([jobId, candidateId])
+  aiScore               Float?
+  quizScore             Float?
+  oralPresentationScore Float?
+  interviewScore        Float?
+  recruiterScore        Float?
+
+  finalScore Float?
+
+  rank Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([candidateId])
 }
 
-model Notification {
+//////////////////////////////////////////////////////////
+// JOB CATEGORY
+//////////////////////////////////////////////////////////
+
+model JobCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  icon        String?
+
+  jobs Job[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////////
+// SKILL
+//////////////////////////////////////////////////////////
+
+model Skill {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  category    String?
+  description String?
+
+  jobs JobSkill[]
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////////
+// JOB
+//////////////////////////////////////////////////////////
+
+model Job {
+  id String @id @default(uuid())
+
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  categoryId String?
+  category   JobCategory? @relation(fields: [categoryId], references: [id])
+
+  title       String
+  slug        String @unique
+  description String
+
+  location String
+  wilaya   String?
+  country  String?
+
+  remote Boolean @default(false)
+
+  type            JobType
+  experienceLevel ExperienceLevel
+
+  vacancies Int @default(1)
+
+  salaryMin Int?
+  salaryMax Int?
+  currency  String @default("DZD")
+
+  featured Boolean @default(false)
+  urgent   Boolean @default(false)
+
+  status JobStatus @default(PUBLISHED)
+
+  publishedAt DateTime?
+  expiresAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skills       JobSkill[]
+  applications Application[]
+  savedBy      SavedJob[]
+
+  @@index([companyId])
+  @@index([recruiterId])
+  @@index([status])
+}
+
+//////////////////////////////////////////////////////////
+// JOB SKILL
+//////////////////////////////////////////////////////////
+
+model JobSkill {
+  jobId   String
+  skillId String
+
+  required Boolean @default(true)
+
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, skillId])
+}
+
+//////////////////////////////////////////////////////////
+// APPLICATION
+//////////////////////////////////////////////////////////
+
+model Application {
+  id String @id @default(uuid())
+
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  cvId String?
+  cv   FileAsset? @relation(fields: [cvId], references: [id])
+
+  coverLetter String?
+
+  status ApplicationStatus @default(PENDING)
+
+  aiScore               Float?
+  quizScore             Float?
+  oralPresentationScore Float?
+  recruiterScore        Float?
+  finalScore            Float?
+
+  preselectionStatus PreselectionStatus @default(PENDING)
+
+  isPreselected Boolean @default(false)
+
+  preselectionScore Float?
+
+  preselectionComment String?
+
+  preselections Preselection[]
+
+  appliedAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  aianalysis       AIAnalysis?
+  quiz             Quiz?
+  oralPresentation OralPresentation?
+  interviews       Interview[]
+  candidateScore   CandidateScore?
+  quizAttempts     QuizAttempt[]
+
+  @@index([candidateId])
+  @@index([recruiterId])
+  @@index([jobId])
+}
+
+//////////////////////////////////////////////////////////
+// SAVED JOB
+//////////////////////////////////////////////////////////
+
+model SavedJob {
+  id String @id @default(uuid())
+
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([candidateId, jobId])
+}
+
+//////////////////////////////////////////////////////////
+// FAVORITE COMPANY
+//////////////////////////////////////////////////////////
+
+model FavoriteCompany {
+  id String @id @default(uuid())
+
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([candidateId, companyId])
+}
+
+model FileAsset {
+  id        String   @id @default(uuid())
+  url       String
+  provider  String
+  publicId  String?
+  mimeType  String?
+  extension String?
+  size      Int?
+  createdAt DateTime @default(now())
+
+  avatars           User[]             @relation("UserAvatar")
+  resumes           CandidateProfile[] @relation("CandidateResume")
+  logos             Company[]          @relation("CompanyLogo")
+  oralPresentations OralPresentation[]
+  applications      Application[]
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  password      String
+  role          Role          @default(CANDIDATE)
+  status        AccountStatus @default(PENDING)
+  emailVerified Boolean       @default(false)
+
+  firstName         String?
+  lastName          String?
+  phone             String?
+  preferredLanguage Language @default(FR)
+
+  avatarId String?
+  avatar   FileAsset? @relation("UserAvatar", fields: [avatarId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  candidateProfile CandidateProfile?
+  recruiterProfile RecruiterProfile?
+
+  refreshTokens  RefreshToken[]
+  sessions       UserSession[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  supportTickets SupportTicket[]
+  deviceTokens   DeviceToken[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model UserSession {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  message   String
-  read      Boolean  @default(false)
-  type      String   @default("info")
+  ip        String?
+  browser   String?
+  os        String?
+  device    String?
+  lastSeen  DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model CandidateProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  headline  String?
+  bio       String?
+  phone     String?
+  city      String?
+  wilaya    String?
+  country   String?
+  birthDate DateTime?
+
+  resumeId String?
+  resume   FileAsset? @relation("CandidateResume", fields: [resumeId], references: [id])
+
+  skills               String[]
+  yearsExperience      Int?
+  currentJobTitle      String?
+  desiredSalary        Int?
+  availableImmediately Boolean  @default(true)
+
+  linkedinUrl  String?
+  githubUrl    String?
+  portfolioUrl String?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  aianalyses        AIAnalysis[]
+  candidateScores   CandidateScore[]
+  applications      Application[]
+  savedJobs         SavedJob[]
+  favoriteCompanies FavoriteCompany[]
+  oralPresentation OralPresentation?
+
+  @@index([userId])
+}
+
+model RecruiterProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  phone    String?
+  jobTitle String?
+  verified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies     CompanyMember[]
+  jobs          Job[]
+  applications  Application[]
+  preselections Preselection[]
+
+  @@index([userId])
+}
+
+model Company {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String?
+  website     String?
+  industry    String?
+  size        String?
+  foundedYear Int?
+  country     String?
+  city        String?
+  address     String?
+
+  logoId String?
+  logo   FileAsset? @relation("CompanyLogo", fields: [logoId], references: [id])
+
+  plan     RecruiterPlan @default(FREE)
+  verified Boolean       @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members           CompanyMember[]
+  subscriptions     Subscription[]
+  jobs              Job[]
+  favoriteCompanies FavoriteCompany[]
+
+  @@index([slug])
+}
+
+model CompanyMember {
+  id          String            @id @default(uuid())
+  companyId   String
+  recruiterId String
+  role        CompanyMemberRole
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recruiter RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, recruiterId])
+  @@index([companyId])
+  @@index([recruiterId])
+}
+
+//////////////////////////////////////////////////////////
+// PRESELECTION
+//////////////////////////////////////////////////////////
+
+model Preselection {
+  id String @id @default(uuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  status PreselectionStatus @default(PENDING)
+
+  aiScore Float?
+
+  recruiterScore Float?
+
+  finalScore Float?
+
+  comment String?
+
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([recruiterId])
+  @@index([status])
+}
+
+enum PreselectionStatus {
+  PENDING
+  SHORTLISTED
+  REJECTED
 }

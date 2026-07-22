@@ -1,0 +1,423 @@
+To get **exactly the platform you described**, don't start with Oral Presentation or Quiz first.
+
+Build it in this order:
+
+# PHASE 1 — Recruiter Plans (Mandatory First)
+
+## File
+
+```text
+src/components/Dashboard.tsx
+```
+
+## Add recruiter plans
+
+Create:
+
+```ts
+type RecruiterTier =
+  | 'free'
+  | 'paid'
+  | 'corporate';
+```
+
+Store it:
+
+```tsx
+const [recruiterTier, setRecruiterTier] =
+  useState<RecruiterTier>('free');
+```
+
+Later it will come from database.
+
+---
+
+# PHASE 2 — Restrict Menu By Plan
+
+## FREE
+
+Show:
+
+```text
+Dashboard
+Publier une offre
+Mes offres
+Candidatures
+```
+
+Hide:
+
+```text
+AI Filter
+Répertoire CV
+Quiz
+Présentation orale
+```
+
+---
+
+## PAID
+
+Show:
+
+```text
+Dashboard
+Publier une offre
+Mes offres
+Candidatures
+AI Filter
+Répertoire CV
+```
+
+Hide:
+
+```text
+Quiz
+Présentation orale
+Préselection
+```
+
+---
+
+## CORPORATE
+
+Show everything.
+
+Example:
+
+```tsx
+{recruiterTier !== 'free' && (
+  <SidebarItem
+    icon={Zap}
+    label="Filtrage IA"
+    ...
+  />
+)}
+```
+
+---
+
+# PHASE 3 — Applications Database Structure
+
+Create new model.
+
+Future PostgreSQL:
+
+```ts
+Application
+```
+
+Fields:
+
+```ts
+id
+candidateId
+jobId
+
+cvUrl
+
+oralPresentationUrl
+
+quizScore
+
+aiScore
+
+isPreselected
+
+preselectionScore
+
+createdAt
+```
+
+This model powers everything.
+
+---
+
+# PHASE 4 — Candidate Oral Presentation
+
+## New Candidate Step
+
+Current:
+
+```text
+Upload CV
+Apply
+```
+
+New:
+
+```text
+Upload CV
+Record Presentation
+Apply
+```
+
+Create:
+
+```text
+src/components/candidate/OralPresentation.tsx
+```
+
+Features:
+
+```text
+Start recording
+Stop recording
+Preview
+Upload
+```
+
+Store:
+
+```ts
+oralPresentationUrl
+```
+
+Cloudinary recommended.
+
+---
+
+# PHASE 5 — AI Quiz
+
+## New File
+
+```text
+src/components/candidate/CandidateQuiz.tsx
+```
+
+Flow:
+
+```text
+Upload CV
+↓
+AI reads CV
+↓
+Generate questions
+↓
+Candidate answers
+↓
+Save score
+```
+
+Example:
+
+Developer CV:
+
+```text
+What is React?
+
+What is REST API?
+
+Difference between SQL and NoSQL?
+```
+
+Store:
+
+```ts
+quizScore
+quizAnswers
+```
+
+---
+
+# PHASE 6 — Corporate Candidate Ranking
+
+Create:
+
+```ts
+aiScore
+```
+
+Example:
+
+```text
+Ahmed = 95
+
+Sara = 92
+
+Youcef = 78
+```
+
+Sort:
+
+```ts
+applications.sort(
+ (a,b)=>b.aiScore-a.aiScore
+)
+```
+
+---
+
+# PHASE 7 — Preselection Team
+
+Create:
+
+```ts
+isPreselected
+```
+
+and
+
+```ts
+preselectionComment
+```
+
+Example:
+
+```text
+Preselected by Dar L'emploi
+```
+
+---
+
+# PHASE 8 — Golden Badge
+
+In candidate cards:
+
+```tsx
+{candidate.isPreselected && (
+  <span
+    className="
+      bg-yellow-400
+      text-yellow-900
+      px-3
+      py-1
+      rounded-full
+      font-bold
+    "
+  >
+    ⭐ Préselectionné
+  </span>
+)}
+```
+
+Only Corporate sees this.
+
+---
+
+# PHASE 9 — Corporate Candidate List
+
+Sort:
+
+```ts
+applications.sort((a,b)=>{
+
+ if(a.isPreselected && !b.isPreselected)
+   return -1;
+
+ if(!a.isPreselected && b.isPreselected)
+   return 1;
+
+ return b.aiScore-a.aiScore;
+});
+```
+
+Result:
+
+```text
+⭐ Ahmed
+⭐ Sara
+⭐ Karim
+
+Fatima
+Youcef
+Amine
+```
+
+---
+
+# PHASE 10 — New Recruiter Tabs
+
+## Free
+
+```text
+Dashboard
+Mes offres
+Candidatures
+```
+
+---
+
+## Paid
+
+```text
+Dashboard
+Mes offres
+Candidatures
+Filtrage IA
+Répertoire CV
+```
+
+---
+
+## Corporate
+
+```text
+Dashboard
+Mes offres
+Candidatures
+Filtrage IA
+Répertoire CV
+Présentation orale
+Résultats Quiz
+Préselection
+```
+
+---
+
+# PHASE 11 — Backend (Future Node.js + PostgreSQL)
+
+Tables:
+
+```text
+users
+jobs
+applications
+candidate_presentations
+candidate_quizzes
+preselections
+```
+
+---
+
+# Files You Will Need
+
+### Modify
+
+```text
+src/components/Dashboard.tsx
+```
+
+---
+
+### Create
+
+```text
+src/components/candidate/OralPresentation.tsx
+
+src/components/candidate/CandidateQuiz.tsx
+
+src/components/recruiter/CVDirectory.tsx
+
+src/components/recruiter/QuizResults.tsx
+
+src/components/recruiter/OralPresentationResults.tsx
+
+src/components/recruiter/PreselectedCandidates.tsx
+```
+
+---
+
+I would implement them in this order:
+
+1. Recruiter plans
+2. Menu permissions
+3. CV Directory
+4. AI Filter permissions
+5. Oral Presentation
+6. Quiz
+7. Preselection
+8. Golden Badge
+9. Backend API
+
+This avoids rebuilding the same code multiple times when you switch to Node.js + Express + PostgreSQL.

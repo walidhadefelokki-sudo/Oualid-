@@ -1,0 +1,149 @@
+I looked at the beginning of your `Dashboard.tsx`, and I think I understand why you're feeling lost. 
+
+### The good news
+
+**You should NOT start modifying `Dashboard.tsx` yet.**
+
+Your current `Dashboard.tsx` is already **very large** (well over a thousand lines). It currently contains:
+
+* Sidebar
+* Job cards
+* Employer dashboard
+* Candidate dashboard
+* CV Builder
+* AI Filter
+* Settings
+* Notifications
+* Profile
+* Subscription
+* Billing
+* CV generation
+* Job posting
+* Candidate management
+* ...and much more. 
+
+If we start editing it now, it will become even harder to maintain.
+
+---
+
+# What I recommend instead
+
+I think there are **three phases left**, and they are different from the original roadmap.
+
+---
+
+# Phase A — Finish Component Extraction (before touching Dashboard)
+
+We already extracted:
+
+✅ Recruiter Navigation
+
+✅ Recruiter Tabs
+
+✅ Preselection
+
+✅ Candidate Ranking
+
+✅ Golden Badge
+
+But we still need to create (or finish) these reusable recruiter pages:
+
+```text
+CVDirectory.tsx
+
+QuizResults.tsx
+
+OralPresentationResults.tsx
+
+PreselectedCandidates.tsx
+```
+
+These should live in:
+
+```text
+src/components/recruiter/
+```
+
+Once these exist, the dashboard simply imports them.
+
+---
+
+# Phase B — API Connection
+
+Replace mock data with API calls.
+
+For example:
+
+Instead of:
+
+```ts
+const aiCandidates = [...]
+```
+
+use
+
+```ts
+const candidates = await api.getCandidates();
+```
+
+Instead of local state for preselection, use your backend endpoints.
+
+This phase connects the UI to the backend but **still doesn't require restructuring `Dashboard.tsx`**.
+
+---
+
+# Phase C — Dashboard Refactor (last step)
+
+Only after everything above is ready do we update `Dashboard.tsx`.
+
+The goal is to simplify it from something like:
+
+```text
+Dashboard.tsx
+├── Sidebar
+├── AI Filter
+├── Quiz
+├── Oral Presentation
+├── Candidate List
+├── Billing
+├── Settings
+├── ...
+```
+
+to:
+
+```text
+Dashboard.tsx
+├── RecruiterNavigation
+├── DashboardHome
+├── CandidateList
+├── CVDirectory
+├── QuizResults
+├── OralPresentationResults
+├── PreselectedCandidates
+├── Settings
+├── Billing
+└── ...
+```
+
+Notice the difference:
+
+* **Today:** `Dashboard.tsx` contains all the logic.
+* **Target:** `Dashboard.tsx` only decides **which component to render** based on `activeTab`.
+
+---
+
+# My assessment of your current state
+
+I'd say you're approximately:
+
+* **90–95% done** with the feature implementation.
+* The remaining work is mostly **integration and cleanup**, not building new features.
+
+---
+
+# I would not touch `Dashboard.tsx` until we finish the remaining recruiter components.
+
+That way, the final dashboard refactor becomes a clean exercise of importing components and routing between them, instead of mixing feature development with refactoring.
+
+I think that's the safest path and the one least likely to introduce regressions into your existing application.

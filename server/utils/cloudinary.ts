@@ -18,4 +18,19 @@ const storage = new CloudinaryStorage({
 });
 
 export const upload = multer({ storage: storage });
+
+
+const videoStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "job-portal-presentations",
+    resource_type: "video",
+    allowed_formats: ["mp4", "mov", "avi", "webm", "mkv"],
+  } as any,
+});
+
+export const presentationUpload = multer({
+  storage: videoStorage,
+});
+
 export { cloudinary };

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
+import aiAnalysisService from "../services/aiAnalysis.service";
 
 export const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -33,6 +34,16 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
         resumeUrl: req.file?.path || user.candidateProfile.resumeUrl,
       },
     });
+
+    // Run AI analysis in the background
+      aiAnalysisService
+        .analyzeApplication(application.id)
+        .catch((error) => {
+          console.error(
+            "AI Analysis Error:",
+            error
+          );
+        });
 
     res.status(201).json({
       status: "success",

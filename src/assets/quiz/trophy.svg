@@ -1,0 +1,77 @@
+<!--?xml version="1.0" encoding="UTF-8"?-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+
+    <!-- Background Circle -->
+    <circle cx="256" cy="256" r="220" fill="#173E7D"></circle>
+
+    <!-- Inner Circle -->
+    <circle cx="256" cy="256" r="185" fill="#FFFFFF"></circle>
+
+    <!-- Decorative Ring -->
+    <circle cx="256" cy="256" r="205" stroke="#2154A6" stroke-width="10" opacity="0.20" fill="none"></circle>
+
+    <!-- Highlight -->
+    <ellipse cx="205" cy="170" rx="95" ry="55" fill="#D6E6FF" opacity="0.45"></ellipse>
+
+    <!-- Trophy Cup -->
+
+    <path d="
+            M180 120
+            H332
+            V170
+            C332 225 300 265 256 285
+            C212 265 180 225 180 170
+            Z" fill="#FBBF24" stroke="#D97706" stroke-width="8" stroke-linejoin="round"></path>
+
+    <!-- Left Handle -->
+
+    <path d="
+            M180 140
+            C145 140 135 160 135 185
+            C135 215 155 230 180 230" fill="none" stroke="#D97706" stroke-width="10" stroke-linecap="round"></path>
+
+    <!-- Right Handle -->
+
+    <path d="
+            M332 140
+            C367 140 377 160 377 185
+            C377 215 357 230 332 230" fill="none" stroke="#D97706" stroke-width="10" stroke-linecap="round"></path>
+
+    <!-- Stem -->
+
+    <rect x="236" y="285" width="40" height="55" rx="6" fill="#FBBF24" stroke="#D97706" stroke-width="6"></rect>
+
+    <!-- Base -->
+
+    <rect x="195" y="340" width="122" height="24" rx="8" fill="#D97706"></rect>
+
+    <rect x="175" y="364" width="162" height="28" rx="10" fill="#B45309"></rect>
+
+    <!-- Star -->
+
+    <path d="
+            M256 155
+            L266 182
+            L295 182
+            L272 198
+            L281 225
+            L256 208
+            L231 225
+            L240 198
+            L217 182
+            L246 182
+            Z" fill="#FFFFFF"></path>
+
+    <!-- Decorative Sparkles -->
+
+    <path d="M140 120 L145 135 L160 140 L145 145 L140 160 L135 145 L120 140 L135 135 Z" fill="#FBBF24"></path>
+
+    <path d="M372 150 L376 162 L388 166 L376 170 L372 182 L368 170 L356 166 L368 162 Z" fill="#FBBF24"></path>
+
+    <path d="M340 90 L344 100 L354 104 L344 108 L340 118 L336 108 L326 104 L336 100 Z" fill="#FBBF24"></path>
+
+    <!-- Outer Border -->
+
+    <circle cx="256" cy="256" r="220" stroke="#0E2F63" stroke-width="10" opacity="0.25" fill="none"></circle>
+
+</svg>

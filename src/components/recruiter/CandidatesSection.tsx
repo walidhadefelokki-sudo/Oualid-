@@ -4,64 +4,8 @@ import {
   Briefcase, Clock, CheckCircle2, ChevronRight, ChevronLeft, MessageCircle,
   Camera, X, Search, ArrowUpDown, Mail, CalendarClock, Star, XCircle,
   MapPin, Languages as LanguagesIcon, GraduationCap, Wallet, Sparkles,
-  TrendingUp, TrendingDown, ShieldCheck, Activity,
+  TrendingUp, TrendingDown, ShieldCheck, Activity, Lock,
 } from 'lucide-react';
-
-/**
- * ─────────────────────────────────────────────────────────────────────────
- * INTEGRATION NOTES (read before wiring in)
- * ─────────────────────────────────────────────────────────────────────────
- * 1. This file replaces ONLY the visual content of `case 'candidates':`.
- *    In Dashboard.tsx:
- *
- *      import CandidatesSection from './CandidatesSection';
- *      ...
- *      case 'candidates':
- *        return (
- *          <CandidatesSection
- *            candidatesByJob={candidatesByJob}
- *            isRTL={isRTL}
- *            t={t}
- *            setSelectedCandidateCV={setSelectedCandidateCV}
- *            selectedPresentationCandidate={selectedPresentationCandidate}
- *            setSelectedPresentationCandidate={setSelectedPresentationCandidate}
- *            OralPresentationViewer={OralPresentationViewer}
- *            handleWhatsAppContact={handleWhatsAppContact}
- *            handleInterview={handleInterview}
- *            handleHire={handleHire}
- *            handleReject={handleReject}
- *            handleEmail={handleEmail}         // optional, see fallback below
- *            handleShortlist={handleShortlist} // optional, see fallback below
- *            handleViewQuiz={handleViewQuiz}   // optional, see fallback below
- *          />
- *        );
- *
- * 2. Nothing about `selectedPresentationCandidate` / `setSelectedPresentationCandidate`
- *    or the `OralPresentationViewer` render is changed — same props, same modal,
- *    same trigger call (`setSelectedPresentationCandidate(candidate)`).
- *
- * 3. The CV modal is untouched too — "View CV" still just calls
- *    `setSelectedCandidateCV(candidate)`, exactly like your original code.
- *
- * 4. Handlers I couldn't see in the snippet you shared (handleEmail,
- *    handleShortlist, handleViewQuiz, handleInterview, handleHire,
- *    handleReject) are called with optional chaining (`?.()`) so this won't
- *    crash if a prop isn't passed yet — but wire the real ones in for the
- *    buttons to actually do anything. If your existing names differ, just
- *    rename the props below to match.
- *
- * 5. Candidate fields this design surfaces (skills, aiSummary, availability,
- *    salaryExpectation, languages, education, lastActivity, quizScore,
- *    strengths, weaknesses, recommendation, confidence) are all read with
- *    fallbacks, so nothing breaks if your candidate objects don't have them
- *    yet — they'll just render as "Non précisé". Fill them in on your data
- *    layer whenever you're ready and the cards light up automatically.
- *
- * 6. Search / status filter / sort are new local UI state, scoped inside
- *    this component (not the switch case), so they don't affect hooks in
- *    any other tab.
- * ─────────────────────────────────────────────────────────────────────────
- */
 
 const NAVY = '#173E7D';
 const ORANGE = '#F68D58';
@@ -111,6 +55,9 @@ interface CandidatesSectionProps {
   handleEmail?: (c: Candidate) => void;
   handleShortlist?: (c: Candidate) => void;
   handleViewQuiz?: (c: Candidate) => void;
+  canViewOralPresentation: boolean;
+  canViewPreselection: boolean;
+  onRequestUpgrade: () => void;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -231,6 +178,7 @@ function CandidateCard({
   candidate, isRTL, setSelectedCandidateCV, setSelectedPresentationCandidate,
   handleWhatsAppContact, handleInterview, handleHire, handleReject, handleEmail,
   handleShortlist, handleViewQuiz, index,
+  canViewOralPresentation, canViewPreselection, onRequestUpgrade,
 }: {
   candidate: Candidate; isRTL?: boolean; index: number;
   setSelectedCandidateCV: (c: Candidate) => void;
@@ -242,6 +190,9 @@ function CandidateCard({
   handleEmail?: (c: Candidate) => void;
   handleShortlist?: (c: Candidate) => void;
   handleViewQuiz?: (c: Candidate) => void;
+  canViewOralPresentation: boolean;
+  canViewPreselection: boolean;
+  onRequestUpgrade: () => void;
 }) {
   const skills = candidate.skills ?? [];
   const languages = candidate.languages ?? [];
@@ -255,7 +206,6 @@ function CandidateCard({
       transition={{ delay: Math.min(index, 8) * 0.05, duration: 0.5 }}
       className={`bg-white rounded-[2.75rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-shadow duration-500 p-8 ${isRTL ? 'text-right' : ''}`}
     >
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 pb-6 border-b border-gray-50">
         <div className="relative shrink-0">
           <div className="w-20 h-20 rounded-[1.75rem] overflow-hidden border-4 border-gray-50 shadow-lg">
@@ -279,7 +229,6 @@ function CandidateCard({
         <MatchRing value={candidate.match ?? 0} />
       </div>
 
-      {/* Info grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-6">
         <InfoChip icon={<Activity size={13} />} label="Expérience" value={candidate.exp} />
         <InfoChip icon={<MapPin size={13} />} label="Localisation" value={candidate.location} />
@@ -289,7 +238,6 @@ function CandidateCard({
         <InfoChip icon={<LanguagesIcon size={13} />} label="Langues" value={languages.length ? languages.join(', ') : undefined} />
       </div>
 
-      {/* Skills */}
       {skills.length > 0 && (
         <div className="flex flex-wrap gap-2 pb-6">
           {skills.map((s, i) => (
@@ -300,7 +248,6 @@ function CandidateCard({
         </div>
       )}
 
-      {/* AI section */}
       <div className="rounded-[2rem] p-6 mb-6 border" style={{ background: 'linear-gradient(135deg, #F5F8FF 0%, #FFF7F2 100%)', borderColor: '#EEF2FF' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -370,7 +317,6 @@ function CandidateCard({
         )}
       </div>
 
-      {/* Actions */}
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setSelectedCandidateCV(candidate)}
@@ -379,19 +325,43 @@ function CandidateCard({
         >
           Voir le CV
         </button>
-        <button
-          onClick={() => setSelectedPresentationCandidate(candidate)}
-          className="flex-1 min-w-[130px] text-white py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-purple-500/10 bg-gradient-to-br from-purple-500 to-pink-500"
-        >
-          Présentation
-        </button>
-        <button
-          onClick={() => handleViewQuiz?.(candidate)}
-          className="flex-1 min-w-[130px] py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all border"
-          style={{ color: NAVY, borderColor: '#E2E8F0' }}
-        >
+
+        {canViewOralPresentation ? (
+          <button
+            onClick={() => setSelectedPresentationCandidate(candidate)}
+            className="col-span-1 bg-gradient-to-br from-purple-500 to-pink-500 text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-purple-500/10 flex items-center justify-center"
+            title="View Oral Presentation"
+          >
+            <Camera size={20} />
+          </button>
+        ) : (
+          <button
+            onClick={onRequestUpgrade}
+            className="col-span-1 bg-gray-100 text-gray-400 py-5 rounded-[1.5rem] font-black flex items-center justify-center relative"
+            title="Corporate requis"
+          >
+            <Camera size={20} />
+            <Lock size={11} className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 text-gray-400 shadow-sm" />
+          </button>
+        )}
+
+        {canViewPreselection ? (
+            <button
+              onClick={() => handleViewQuiz?.(candidate)}
+              className="flex-1 min-w-[130px] py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all border"
+              style={{ color: NAVY, borderColor: '#E2E8F0' }}
+            >
           Résultats quiz
         </button>
+          ) : (
+            <button
+              onClick={onRequestUpgrade}
+              className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest"
+            >
+              <Lock size={11} />
+              Corporate requis
+            </button>
+          )}
         <button
           onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
           title="WhatsApp"
@@ -445,6 +415,7 @@ export default function CandidatesSection({
   candidatesByJob, isRTL, t, setSelectedCandidateCV, selectedPresentationCandidate,
   setSelectedPresentationCandidate, OralPresentationViewer, handleWhatsAppContact,
   handleInterview, handleHire, handleReject, handleEmail, handleShortlist, handleViewQuiz,
+  canViewOralPresentation, canViewPreselection, onRequestUpgrade,
 }: CandidatesSectionProps) {
   const [selectedJob, setSelectedJob] = useState<JobGroup | null>(null);
   const [search, setSearch] = useState('');
@@ -477,7 +448,6 @@ export default function CandidatesSection({
       <div className="space-y-10">
         <AnimatePresence mode="wait">
           {!selectedJob ? (
-            /* ── SCREEN 1: Job cards grid ─────────────────────────────── */
             <motion.div key="jobs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-10">
               <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 ${isRTL ? 'text-right' : ''}`}>
                 <div>
@@ -497,7 +467,6 @@ export default function CandidatesSection({
               </div>
             </motion.div>
           ) : (
-            /* ── SCREEN 2: Candidates for selected job ────────────────── */
             <motion.div key="candidates" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
               <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6 sm:p-8 space-y-6">
                 <div className="flex flex-wrap items-center gap-4 justify-between">
@@ -565,6 +534,9 @@ export default function CandidatesSection({
                     handleEmail={handleEmail}
                     handleShortlist={handleShortlist}
                     handleViewQuiz={handleViewQuiz}
+                    canViewOralPresentation={canViewOralPresentation}
+                    canViewPreselection={canViewPreselection}
+                    onRequestUpgrade={onRequestUpgrade}
                   />
                 ))}
                 {filteredCandidates.length === 0 && (
@@ -578,7 +550,6 @@ export default function CandidatesSection({
         </AnimatePresence>
       </div>
 
-      {/* ── OralPresentationViewer modal — UNCHANGED from your original code ── */}
       <AnimatePresence>
         {selectedPresentationCandidate && (
           <motion.div

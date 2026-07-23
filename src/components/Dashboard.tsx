@@ -75,6 +75,7 @@ import {
   Star,
   Volume2,
   Brain,
+  Crown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
@@ -113,7 +114,15 @@ type RecruiterTier =
   | 'paid'
   | 'corporate';
 
-
+// TODO: verify this matches the real shape used elsewhere in the app.
+// Not present in the original snippet provided — added as a placeholder
+// so `TIER_ACCESS[recruiterTier]` below doesn't throw a "not defined" error.
+// Replace with your actual tier-access config/import if it lives elsewhere.
+const TIER_ACCESS: Record<RecruiterTier, any> = {
+  free: {},
+  paid: {},
+  corporate: {},
+};
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) => (
   <button 
@@ -165,7 +174,56 @@ interface Notification {
   is_read: boolean;
   created_at: string;
 }
-
+function TierLockedScreen({
+  title,
+  description,
+  requiredTier,
+  icon: Icon,
+  onUpgrade,
+}: {
+  title: string;
+  description: string;
+  requiredTier: 'Premium' | 'Corporate';
+  icon: React.ComponentType<{ size?: number }>;
+  onUpgrade: () => void;
+}) {
+  const isCorporate = requiredTier === 'Corporate';
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-24 px-8 bg-white rounded-[3rem] border border-gray-100 shadow-sm">
+      <div
+        className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-8 ${
+          isCorporate
+            ? 'bg-gradient-to-br from-[#D4AF37]/10 to-[#173E7D]/10 text-[#D4AF37]'
+            : 'bg-blue-50 text-[#173E7D]'
+        }`}
+      >
+        <Icon size={32} />
+      </div>
+      <span
+        className={`mb-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+          isCorporate
+            ? 'bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D]'
+            : 'bg-[#173E7D] text-white'
+        }`}
+      >
+        {isCorporate ? <Crown size={12} /> : <Sparkles size={12} />}
+        Plan {requiredTier} requis
+      </span>
+      <h3 className="text-2xl font-black text-[#173E7D] tracking-tight mb-3">{title}</h3>
+      <p className="text-gray-400 font-medium max-w-md mb-8">{description}</p>
+      <button
+        onClick={onUpgrade}
+        className={`px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
+          isCorporate
+            ? 'bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] hover:brightness-105 shadow-lg shadow-black/10'
+            : 'bg-[#173E7D] text-white hover:bg-[#F68D58] shadow-lg shadow-blue-900/20'
+        }`}
+      >
+        Passer à {requiredTier}
+      </button>
+    </div>
+  );
+}
 export default function Dashboard({ 
   user: initialUser, 
   // Add isDemo to props
@@ -216,8 +274,23 @@ export default function Dashboard({
 
   const isRTL = language === 'ar';
 
-  const [recruiterTier, setRecruiterTier] =
-  useState<'free' | 'paid' | 'corporate'>('corporate');
+  // ---------------------------------------------------------------------
+  // FIX: previously declared twice (once via useState defaulting to
+  // 'corporate', once derived from user?.recruiterTier). Merged into a
+  // single useState initialized from the user's actual tier, with a
+  // useEffect to keep it in sync if `user` loads/updates asynchronously.
+  // ---------------------------------------------------------------------
+  const [recruiterTier, setRecruiterTier] = useState<RecruiterTier>(
+    (user?.recruiterTier as RecruiterTier) || 'free'
+  );
+
+  useEffect(() => {
+    if (user?.recruiterTier) {
+      setRecruiterTier(user.recruiterTier as RecruiterTier);
+    }
+  }, [user?.recruiterTier]);
+
+  const access = TIER_ACCESS[recruiterTier];
 
   const handleWhatsAppContact = (phoneNumber: string, candidateName: string) => {
     const message = encodeURIComponent(`Bonjour ${candidateName}, nous avons bien reçu votre candidature sur Algeria Jobs. Souhaitez-vous fixer un entretien ?`);
@@ -655,6 +728,14 @@ export default function Dashboard({
       weaknesses: ['Manque d\'expérience en développement web', 'Profil trop spécialisé data']
     }
   ];
+
+  // -----------------------------------------------------------------------
+  // ⚠️ FILE TRUNCATED HERE IN YOUR ORIGINAL PASTE
+  // Everything below this point (the `return (...)` JSX, remaining handlers
+  // like setSavedJobs/setProfileData state, and the closing `}` of the
+  // component) was not included in what you gave me. Paste the rest of
+  // your actual file below this comment before using this as a full file.
+  // -----------------------------------------------------------------------
 
 
   const renderSidebar = () => {
@@ -1948,6 +2029,10 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       handleInterview={handleInterview}
       handleHire={handleHire}
       handleReject={handleReject}
+      // NEW — tier-gated visibility inside the Candidatures view
+      canViewOralPresentation={access.oralPresentation}
+      canViewPreselection={access.preselection}
+      onRequestUpgrade={() => setActiveTab('subscription')}
       // handleEmail, handleShortlist, handleViewQuiz omitted — not defined yet
     />
   );
@@ -2123,7 +2208,20 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         //     </AnimatePresence>
         //     </>
         //   );
-        case 'sourcing-ia':
+        case 'sourcing-ia': {
+          // NEW: Corporate-only tab
+          if (!access.sourcingIA) {
+            return (
+              <TierLockedScreen
+                title="Répertoire CV & Sourcing IA"
+                description="Accédez à une base de talents qualifiés qui n'ont pas encore postulé, classés par pertinence pour vos offres. Réservé au plan Corporate."
+                requiredTier="Corporate"
+                icon={UsersIcon}
+                onUpgrade={() => setActiveTab('subscription')}
+              />
+            );
+          }
+
           return (
             <div className="space-y-12">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -2205,6 +2303,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
             </div>
           );
+          }
         case 'analytics-wilaya':
           return (
             <div className="space-y-12">
@@ -2280,873 +2379,905 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
             </div>
           );
-        case 'ai-filter':
-          return (
-            <div className="space-y-10">
-              <div className="bg-[#fcfdf2] rounded-[2rem] p-8 border border-blue-50 flex items-center justify-between gap-6">
-                <div className="flex items-center gap-6">
-                  <div className="w-16 h-16 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                    <Zap size={32} />
+        case 'ai-filter': {
+  // Free tier never sees the AI Filter feature at all
+  if (!access.aiFilterAnalyse) {
+    return (
+      <TierLockedScreen
+        title="Filtrage IA des candidatures"
+        description="Laissez Gemini analyser et classer automatiquement vos candidats par pertinence. Disponible dès le plan Premium."
+        requiredTier="Premium"
+        icon={Cpu}
+        onUpgrade={() => setActiveTab('subscription')}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-10">
+      <div className="bg-[#fcfdf2] rounded-[2rem] p-8 border border-blue-50 flex items-center justify-between gap-6">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-16 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Zap size={32} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-[#173E7D]">Recrutement Augmenté par l'IA</h2>
+            <p className="text-gray-500 font-medium font-sans">Automatisez la pré-qualification de vos candidats et découvrez leur potentiel.</p>
+          </div>
+        </div>
+        <div className="hidden md:block">
+          <PremiumBadge />
+        </div>
+      </div>
+
+      {/* Sub-Tabs for AI Filter category */}
+      <div className="flex border-b border-gray-100 gap-8">
+        <button
+          onClick={() => setAiFilterSubTab('analyse')}
+          className={`pb-4 text-sm font-black uppercase tracking-widest relative transition-all ${
+            aiFilterSubTab === 'analyse' ? 'text-[#173E7D]' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          📊 Analyse des CVs (Gemini)
+          {aiFilterSubTab === 'analyse' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#173E7D] rounded-full" />}
+        </button>
+        <button
+          onClick={() => (access.aiFilterPlayground ? setAiFilterSubTab('playground') : setActiveTab('subscription'))}
+          className={`pb-4 text-sm font-black uppercase tracking-widest relative flex items-center gap-2 transition-all ${
+            aiFilterSubTab === 'playground' ? 'text-[#F68D58]' : 'text-gray-400 hover:text-[#F68D58]'
+          } ${!access.aiFilterPlayground ? 'opacity-60' : ''}`}
+        >
+          {access.aiFilterPlayground ? (
+            <Sparkles size={16} className="text-current animate-pulse" />
+          ) : (
+            <Lock size={14} className="text-current" />
+          )}
+          🧪 Labo de Pré-sélection & Outils IA
+          {!access.aiFilterPlayground && (
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] text-[8px] font-black uppercase tracking-widest">
+              Corporate
+            </span>
+          )}
+          {aiFilterSubTab === 'playground' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#F68D58] rounded-full" />}
+        </button>
+      </div>
+
+      {aiFilterSubTab === 'analyse' ? (
+        /* Main Gemini Comparative Analysis Flow */
+        aiFilterStep === 'select' ? (
+          <div className="space-y-12">
+            {/* Selection Card - Step by Step Flow */}
+            <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-900/5 space-y-16 relative overflow-hidden">
+              {/* Decorative Background */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 opacity-50 blur-3xl"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-50 rounded-full -ml-32 -mb-32 opacity-50 blur-3xl"></div>
+
+              <div className="relative z-10 space-y-16">
+                {/* Step 1: Select Job */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-[#173E7D] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-blue-900/20">1</div>
+                    <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Sélectionner l'offre à analyser</h3>
                   </div>
-                  <div>
-                    <h2 className="text-2xl font-black text-[#173E7D]">Recrutement Augmenté par l'IA</h2>
-                    <p className="text-gray-500 font-medium font-sans">Automatisez la pré-qualification de vos candidats et découvrez leur potentiel.</p>
+                  <div className="relative group max-w-2xl">
+                    <select 
+                      value={selectedJobForAI}
+                      onChange={(e) => setSelectedJobForAI(e.target.value)}
+                      className="w-full px-8 py-6 rounded-[2rem] border-2 border-gray-50 outline-none focus:border-[#173E7D] focus:ring-8 focus:ring-blue-50 transition-all bg-gray-50/50 text-gray-700 font-bold appearance-none cursor-pointer text-lg"
+                    >
+                      <option>Développeur Full Stack — 23 candidatures</option>
+                      <option>Designer UI/UX — 12 candidatures</option>
+                      <option>Chef de Projet — 45 candidatures</option>
+                    </select>
+                    <ChevronDown className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-[#173E7D] transition-colors" size={24} />
                   </div>
                 </div>
-                <div className="hidden md:block">
-                  <PremiumBadge />
-                </div>
-              </div>
 
-              {/* Sub-Tabs for AI Filter category */}
-              <div className="flex border-b border-gray-100 gap-8">
-                <button
-                  onClick={() => setAiFilterSubTab('analyse')}
-                  className={`pb-4 text-sm font-black uppercase tracking-widest relative transition-all ${
-                    aiFilterSubTab === 'analyse' ? 'text-[#173E7D]' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  📊 Analyse des CVs (Gemini)
-                  {aiFilterSubTab === 'analyse' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#173E7D] rounded-full" />}
-                </button>
-                <button
-                  onClick={() => setAiFilterSubTab('playground')}
-                  className={`pb-4 text-sm font-black uppercase tracking-widest relative flex items-center gap-2 transition-all ${
-                    aiFilterSubTab === 'playground' ? 'text-[#F68D58]' : 'text-gray-400 hover:text-[#F68D58]'
-                  }`}
-                >
-                  <Sparkles size={16} className="text-current animate-pulse" />
-                  🧪 Labo de Pré-sélection & Outils IA
-                  {aiFilterSubTab === 'playground' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#F68D58] rounded-full" />}
-                </button>
-              </div>
-
-              {aiFilterSubTab === 'analyse' ? (
-                /* Main Gemini Comparative Analysis Flow */
-                aiFilterStep === 'select' ? (
-                  <div className="space-y-12">
-                    {/* Selection Card - Step by Step Flow */}
-                    <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-900/5 space-y-16 relative overflow-hidden">
-                      {/* Decorative Background */}
-                      <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 opacity-50 blur-3xl"></div>
-                      <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-50 rounded-full -ml-32 -mb-32 opacity-50 blur-3xl"></div>
-
-                      <div className="relative z-10 space-y-16">
-                        {/* Step 1: Select Job */}
-                        <div className="space-y-6">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-[#173E7D] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-blue-900/20">1</div>
-                            <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Sélectionner l'offre à analyser</h3>
-                          </div>
-                          <div className="relative group max-w-2xl">
-                            <select 
-                              value={selectedJobForAI}
-                              onChange={(e) => setSelectedJobForAI(e.target.value)}
-                              className="w-full px-8 py-6 rounded-[2rem] border-2 border-gray-50 outline-none focus:border-[#173E7D] focus:ring-8 focus:ring-blue-50 transition-all bg-gray-50/50 text-gray-700 font-bold appearance-none cursor-pointer text-lg"
-                            >
-                              <option>Développeur Full Stack — 23 candidatures</option>
-                              <option>Designer UI/UX — 12 candidatures</option>
-                              <option>Chef de Projet — 45 candidatures</option>
-                            </select>
-                            <ChevronDown className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-[#173E7D] transition-colors" size={24} />
-                          </div>
-                        </div>
-
-                        {/* Step 2: AI Priorities */}
-                        <div className="space-y-8 pt-10 border-t border-gray-50">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-[#F68D58] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-orange-900/20">2</div>
-                            <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Définir les priorités de l'IA</h3>
-                          </div>
-                          <div className="space-y-6">
-                            <p className="text-sm text-gray-400 font-medium max-w-xl font-sans">Sélectionnez les éléments que Gemini doit valoriser lors de l'analyse comparative des CV pour cette offre spécifique.</p>
-                            
-                            <div className="flex flex-wrap gap-4">
-                              {availablePriorities.map((priority) => {
-                                const isSelected = aiPriorities.includes(priority);
-                                return (
-                                  <button
-                                    key={priority}
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setAiPriorities(aiPriorities.filter(p => p !== priority));
-                                      } else {
-                                        setAiPriorities([...aiPriorities, priority]);
-                                      }
-                                    }}
-                                    className={`px-8 py-4 rounded-2xl text-sm font-black transition-all border-2 ${
-                                      isSelected 
-                                        ? 'bg-[#173E7D] text-white border-[#173E7D] shadow-xl shadow-blue-900/20 scale-105' 
-                                        : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'
-                                    }`}
-                                  >
-                                    {priority}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Step 3: Action Button */}
-                        <div className="pt-10 border-t border-gray-50 flex justify-center">
-                          <button 
+                {/* Step 2: AI Priorities */}
+                <div className="space-y-8 pt-10 border-t border-gray-50">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-[#F68D58] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-orange-900/20">2</div>
+                    <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Définir les priorités de l'IA</h3>
+                  </div>
+                  <div className="space-y-6">
+                    <p className="text-sm text-gray-400 font-medium max-w-xl font-sans">Sélectionnez les éléments que Gemini doit valoriser lors de l'analyse comparative des CV pour cette offre spécifique.</p>
+                    
+                    <div className="flex flex-wrap gap-4">
+                      {availablePriorities.map((priority) => {
+                        const isSelected = aiPriorities.includes(priority);
+                        return (
+                          <button
+                            key={priority}
                             onClick={() => {
-                              setIsAnalyzing(true);
-                              setTimeout(() => {
-                                setIsAnalyzing(false);
-                                setAiFilterStep('results');
-                              }, 2000);
+                              if (isSelected) {
+                                setAiPriorities(aiPriorities.filter(p => p !== priority));
+                              } else {
+                                setAiPriorities([...aiPriorities, priority]);
+                              }
                             }}
-                            disabled={isAnalyzing}
-                            className="group relative bg-[#0F172A] text-white px-16 py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-gray-900/30 flex items-center justify-center gap-6 disabled:opacity-50 min-w-[400px] overflow-hidden"
+                            className={`px-8 py-4 rounded-2xl text-sm font-black transition-all border-2 ${
+                              isSelected 
+                                ? 'bg-[#173E7D] text-white border-[#173E7D] shadow-xl shadow-blue-900/20 scale-105' 
+                                : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'
+                            }`}
                           >
-                            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            {isAnalyzing ? (
-                              <>
-                                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                                <span className="relative z-10">Analyse Intelligente...</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-2xl relative z-10">🚀</span>
-                                <span className="relative z-10">Lancer l'analyse prédictive</span>
-                              </>
-                            )}
+                            {priority}
                           </button>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Action Button */}
+                <div className="pt-10 border-t border-gray-50 flex justify-center">
+                  <button 
+                    onClick={() => {
+                      setIsAnalyzing(true);
+                      setTimeout(() => {
+                        setIsAnalyzing(false);
+                        setAiFilterStep('results');
+                      }, 2000);
+                    }}
+                    disabled={isAnalyzing}
+                    className="group relative bg-[#0F172A] text-white px-16 py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-gray-900/30 flex items-center justify-center gap-6 disabled:opacity-50 min-w-[400px] overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    {isAnalyzing ? (
+                      <>
+                        <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span className="relative z-10">Analyse Intelligente...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-2xl relative z-10">🚀</span>
+                        <span className="relative z-10">Lancer l'analyse prédictive</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Initial List Header */}
+            <div className="flex items-center gap-4 px-4 pt-16">
+              <div className="h-px flex-1 bg-gray-100"></div>
+              <span className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Candidatures en attente</span>
+              <div className="h-px flex-1 bg-gray-100"></div>
+            </div>
+
+            {/* Initial List */}
+            <div className="space-y-6">
+              {mockaiCandidates.map((candidate) => (
+                <div key={candidate.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
+                  <div className="flex items-center gap-6">
+                    <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
+                      <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
+                      <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
+                    </div>
+                  </div>
+                  <ChevronDown className="text-gray-300 group-hover:text-gray-400 transition-colors" size={20} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {[
+                { label: 'Excellent match', count: 2, color: 'emerald', active: true },
+                { label: 'Bon match', count: 2, color: 'blue', active: false },
+                { label: 'Match partiel', count: 1, color: 'orange', active: false },
+                { label: 'Match faible', count: 0, color: 'red', active: false },
+              ].map((stat, i) => (
+                <div key={i} className={`bg-white p-6 rounded-[2rem] border-2 transition-all text-center space-y-1 ${stat.active ? 'border-[#173E7D] shadow-lg' : 'border-gray-100'}`}>
+                  <div className="text-3xl font-black text-[#173E7D]">{stat.count}</div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Results List */}
+            <div className="space-y-6">
+              {mockaiCandidates.map((candidate) => (
+                <div key={candidate.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
+                  <div 
+                    className="p-8 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 transition-colors"
+                    onClick={() => setExpandedCandidateId(expandedCandidateId === candidate.id ? null : candidate.id)}
+                  >
+                    <div className="flex items-center gap-6">
+                      <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
+                        <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
+                        <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
                       </div>
                     </div>
-
-                    {/* Initial List Header */}
-                    <div className="flex items-center gap-4 px-4 pt-16">
-                      <div className="h-px flex-1 bg-gray-100"></div>
-                      <span className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Candidatures en attente</span>
-                      <div className="h-px flex-1 bg-gray-100"></div>
-                    </div>
-
-                    {/* Initial List */}
-                    <div className="space-y-6">
-                      {mockaiCandidates.map((candidate) => (
-                        <div key={candidate.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
-                          <div className="flex items-center gap-6">
-                            <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
-                              <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
-                              <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
-                            </div>
-                          </div>
-                          <ChevronDown className="text-gray-300 group-hover:text-gray-400 transition-colors" size={20} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-8">
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      {[
-                        { label: 'Excellent match', count: 2, color: 'emerald', active: true },
-                        { label: 'Bon match', count: 2, color: 'blue', active: false },
-                        { label: 'Match partiel', count: 1, color: 'orange', active: false },
-                        { label: 'Match faible', count: 0, color: 'red', active: false },
-                      ].map((stat, i) => (
-                        <div key={i} className={`bg-white p-6 rounded-[2rem] border-2 transition-all text-center space-y-1 ${stat.active ? 'border-[#173E7D] shadow-lg' : 'border-gray-100'}`}>
-                          <div className="text-3xl font-black text-[#173E7D]">{stat.count}</div>
-                          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{stat.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Results List */}
-                    <div className="space-y-6">
-                      {mockaiCandidates.map((candidate) => (
-                        <div key={candidate.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
-                          <div 
-                            className="p-8 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 transition-colors"
-                            onClick={() => setExpandedCandidateId(expandedCandidateId === candidate.id ? null : candidate.id)}
-                          >
-                            <div className="flex items-center gap-6">
-                              <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
-                                <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
-                              </div>
-                              <div>
-                                <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
-                                <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-8">
-                              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                candidate.category === 'Excellent match' ? 'bg-emerald-50 text-emerald-600' :
-                                candidate.category === 'Bon match' ? 'bg-blue-50 text-blue-600' :
-                                'bg-orange-50 text-orange-600'
-                              }`}>
-                                {candidate.category}
-                              </div>
-                              <div className="flex items-center gap-4">
-                                {candidate.match < 60 ? (
-                                  <div className="relative w-12 h-12 flex items-center justify-center">
-                                    <svg className="w-full h-full -rotate-90">
-                                      <circle cx="24" cy="24" r="20" fill="none" stroke="#FEE2E2" strokeWidth="4" />
-                                      <circle cx="24" cy="24" r="20" fill="none" stroke="#F97316" strokeWidth="4" strokeDasharray={125.6} strokeDashoffset={125.6 * (1 - candidate.match / 100)} strokeLinecap="round" />
-                                    </svg>
-                                    <span className="absolute text-xs font-black text-orange-600">{candidate.match}%</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-xl font-black text-[#173E7D]">{candidate.match}%</span>
-                                )}
-                                {expandedCandidateId === candidate.id ? <ChevronUp className="text-gray-400" size={20} /> : <ChevronDown className="text-gray-400" size={20} />}
-                              </div>
-                            </div>
-                          </div>
-
-                          <AnimatePresence>
-                            {expandedCandidateId === candidate.id && (
-                              <motion.div 
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="border-t border-gray-50"
-                              >
-                                <div className="p-10 space-y-10">
-                                  <p className="text-gray-600 font-medium leading-relaxed font-sans">{candidate.summary}</p>
-                                  
-                                  {/* Score Bars */}
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-                                    {[
-                                      { label: 'Expérience', score: candidate.scores?.exp || 0 },
-                                      { label: 'Compétences', score: candidate.scores?.skills || 0 },
-                                      { label: 'Formation', score: candidate.scores?.edu || 0 },
-                                    ].map((s, i) => (
-                                      <div key={i} className="space-y-3">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{s.label}</span>
-                                          <span className="text-sm font-black text-[#173E7D]">{s.score}%</span>
-                                        </div>
-                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                          <div className="h-full bg-gray-300 rounded-full" style={{ width: `${s.score}%` }} />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-
-                                  {/* Strengths & Points of Attention */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                                    <div className="space-y-4">
-                                      <h5 className="flex items-center gap-2 text-sm font-black text-emerald-600 uppercase tracking-widest">
-                                        <CheckSquare size={16} />
-                                        Points forts
-                                      </h5>
-                                      <ul className="space-y-3 font-sans">
-                                        {candidate.strengths?.map((s, i) => (
-                                          <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                            {s}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                    <div className="space-y-4">
-                                      <h5 className="flex items-center gap-2 text-sm font-black text-orange-600 uppercase tracking-widest">
-                                        <AlertTriangle size={16} />
-                                        Points d'attention
-                                      </h5>
-                                      <ul className="space-y-3 font-sans">
-                                        {candidate.weaknesses?.map((w, i) => (
-                                          <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
-                                            {w}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  </div>
-
-                                  {/* Actions */}
-                                  <div className="flex flex-wrap items-center gap-4 pt-6 border-t border-gray-50 font-sans">
-                                    <button 
-                                      onClick={() => {
-                                        setSelectedCandidateCV(candidate);
-                                        setCandidateModalTab('ai-screening');
-                                      }}
-                                      className="bg-[#F68D58] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-500/10"
-                                    >
-                                      <Sparkles size={16} />
-                                      Consulter les Audios & Soft Skills IA
-                                    </button>
-                                    <button className="bg-[#173E7D] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#0c244c] transition-all">
-                                      <Mail size={16} />
-                                      Contacter
-                                    </button>
-                                    <button className="bg-white border border-gray-200 text-[#173E7D] px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-gray-50 transition-all">
-                                      <ClipboardList size={16} />
-                                      Présélectionner
-                                    </button>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex justify-center pt-8">
-                      <button 
-                        onClick={() => setAiFilterStep('select')}
-                        className="text-sm font-black text-gray-400 uppercase tracking-widest hover:text-[#173E7D] transition-colors"
-                      >
-                        Retour à la sélection
-                      </button>
-                    </div>
-                  </div>
-                )
-              ) : (
-                /* Interactive Laboratory Playground for Recruiter to Live-Test AI features */
-                <div className="space-y-10 animate-fadeIn">
-                  {/* Selector of which simulator */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {[
-                      { id: 'interview', label: '1. Assistant Vocal IA', desc: 'Sélecteur de questions, synthèses locales algériennes', color: 'blue', icon: Phone },
-                      { id: 'quiz', label: '2. Quiz Soft Skills', desc: 'Sénarios quotidiens de l\'entreprise en Algérie', color: 'amber', icon: Award },
-                      { id: 'antighost', label: '3. Filtre Anti-Ghost', desc: 'Pre-screening audio 30s motivant', color: 'orange', icon: Mic },
-                    ].map((item) => {
-                      const isActive = playgroundTab === item.id;
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => setPlaygroundTab(item.id as any)}
-                          className={`p-6 rounded-[2rem] border-2 transition-all text-left flex items-start gap-4 ${
-                            isActive 
-                              ? 'bg-white border-[#173E7D] shadow-xl shadow-blue-900/5 hover:-translate-y-0.5' 
-                              : 'bg-white/40 border-gray-100 opacity-80 hover:opacity-100 hover:border-gray-200'
-                          }`}
-                        >
-                          <div className={`p-4 rounded-xl ${
-                            item.color === 'blue' ? 'bg-blue-50 text-blue-600' : 
-                            item.color === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-orange-50 text-[#F68D58]'
-                          }`}>
-                            <Icon size={22} />
-                          </div>
-                          <div>
-                            <h4 className="font-black text-gray-800 text-sm">{item.label}</h4>
-                            <p className="text-xs text-gray-400 font-medium font-sans mt-1 leading-relaxed">{item.desc}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Simulator container card */}
-                  <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-100/10 space-y-8 relative overflow-hidden">
-                    {playgroundTab === 'interview' && (
-                      <div className="space-y-6">
-                        <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                          <div>
-                            <h3 className="text-xl font-black text-[#173E7D]">🎙️ Simulateur de l'Entretien Vocal Pré-qualificatif IA</h3>
-                            <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Découvrez et testez en temps réel l'appel de pré-sélection passé en Darija algérienne décontractée et Français.</p>
-                          </div>
-                          <span className="px-3 py-1 bg-blue-50 text-[#173E7D] border border-blue-100 text-[9px] font-black uppercase rounded-full tracking-wider">Linguistique Locale Algérie</span>
-                        </div>
-
-                        {vocalSimState === 'idle' ? (
-                          <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center">
-                            <div className="w-20 h-20 bg-blue-50 text-[#173E7D] border border-blue-100 rounded-full flex items-center justify-center animate-bounce">
-                              <Phone size={36} />
-                            </div>
-                            <div className="max-w-md space-y-2">
-                              <h4 className="font-black text-gray-800 text-lg">Tester le parcours candidat</h4>
-                              <p className="text-xs text-gray-400 font-sans leading-relaxed">Cliquez sur démarrer pour lancer l'agent vocal interactif qui posera ses questions de disponibilité, transport et de salaire.</p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setVocalSimState('bot_speaking');
-                                setVocalSimStep(1);
-                                setVocalSimDialogue([
-                                  { sender: 'ai', text: "Bonjour ! Ravi de vous avoir au téléphone. J'appelle concernant votre candidature sur Algeria Jobs. Est-ce que vous seriez disponible immédiatement pour démarrer ce poste ?" }
-                                ]);
-                                setTimeout(() => {
-                                  setVocalSimState('user_listening');
-                                }, 3000);
-                              }}
-                              className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#F68D58] transition-all hover:scale-105 shadow-lg shadow-blue-500/20"
-                            >
-                              🚀 Lancer la simulation d'appel
-                            </button>
+                    
+                    <div className="flex items-center gap-8">
+                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        candidate.category === 'Excellent match' ? 'bg-emerald-50 text-emerald-600' :
+                        candidate.category === 'Bon match' ? 'bg-blue-50 text-blue-600' :
+                        'bg-orange-50 text-orange-600'
+                      }`}>
+                        {candidate.category}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {candidate.match < 60 ? (
+                          <div className="relative w-12 h-12 flex items-center justify-center">
+                            <svg className="w-full h-full -rotate-90">
+                              <circle cx="24" cy="24" r="20" fill="none" stroke="#FEE2E2" strokeWidth="4" />
+                              <circle cx="24" cy="24" r="20" fill="none" stroke="#F97316" strokeWidth="4" strokeDasharray={125.6} strokeDashoffset={125.6 * (1 - candidate.match / 100)} strokeLinecap="round" />
+                            </svg>
+                            <span className="absolute text-xs font-black text-orange-600">{candidate.match}%</span>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                            {/* Dialogue flow (3 slots) */}
-                            <div className="lg:col-span-3 space-y-6">
-                              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4 max-h-[350px] overflow-y-auto pr-2 no-scrollbar">
-                                {vocalSimDialogue.map((chat, i) => (
-                                  <div 
-                                    key={i} 
-                                    className={`p-4 rounded-2xl space-y-1 ${
-                                      chat.sender === 'ai' 
-                                        ? 'bg-[#173E7D]/5 border-l-4 border-[#173E7D] mr-8' 
-                                        : 'bg-white shadow-sm border border-slate-100 ml-8'
-                                    }`}
-                                  >
-                                    <div className="flex justify-between text-[9px] font-black uppercase tracking-wider">
-                                      <span className={chat.sender === 'ai' ? 'text-[#173E7D]' : 'text-[#F68D58]'}>
-                                        {chat.sender === 'ai' ? '🤖 Agent Vocal IA' : '🙋 Vous (Candidat Algérien)'}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-gray-700 font-sans leading-relaxed">{chat.text}</p>
-                                  </div>
+                          <span className="text-xl font-black text-[#173E7D]">{candidate.match}%</span>
+                        )}
+                        {expandedCandidateId === candidate.id ? <ChevronUp className="text-gray-400" size={20} /> : <ChevronDown className="text-gray-400" size={20} />}
+                      </div>
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {expandedCandidateId === candidate.id && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-gray-50"
+                      >
+                        <div className="p-10 space-y-10">
+                          <p className="text-gray-600 font-medium leading-relaxed font-sans">{candidate.summary}</p>
+                          
+                          {/* Score Bars */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                            {[
+                              { label: 'Expérience', score: candidate.scores?.exp || 0 },
+                              { label: 'Compétences', score: candidate.scores?.skills || 0 },
+                              { label: 'Formation', score: candidate.scores?.edu || 0 },
+                            ].map((s, i) => (
+                              <div key={i} className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{s.label}</span>
+                                  <span className="text-sm font-black text-[#173E7D]">{s.score}%</span>
+                                </div>
+                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gray-300 rounded-full" style={{ width: `${s.score}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Strengths & Points of Attention */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                            <div className="space-y-4">
+                              <h5 className="flex items-center gap-2 text-sm font-black text-emerald-600 uppercase tracking-widest">
+                                <CheckSquare size={16} />
+                                Points forts
+                              </h5>
+                              <ul className="space-y-3 font-sans">
+                                {candidate.strengths?.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                    {s}
+                                  </li>
                                 ))}
-
-                                {vocalSimState === 'bot_speaking' && (
-                                  <div className="flex items-center gap-3 p-4 bg-blue-50/40 rounded-2xl font-black text-xs text-[#173E7D] w-fit">
-                                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-                                    L'IA parle en Darija chaleureux...
-                                  </div>
-                                )}
-
-                                {vocalSimState === 'transcribing' && (
-                                  <div className="flex items-center gap-3 p-4 bg-[#F68D58]/10 rounded-2xl font-black text-xs text-[#F68D58] w-fit">
-                                    <div className="w-4 h-4 border-2 border-[#F68D58] border-t-transparent rounded-full animate-spin" />
-                                    Transcription & traduction instantanée par l'IA...
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Interactive response actions when user is listening */}
-                              {vocalSimState === 'user_listening' && (
-                                <div className="space-y-4">
-                                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Choisissez votre réponse fictive :</p>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {vocalSimStep === 1 && (
-                                      <>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Bonjour ! Oui, exact, je suis libre de suite, khedma hadi t'laq biya bezaf j'ai quitté mon ancien poste le mois passé." },
-                                                { sender: 'ai', text: "Super ! Et pour la localisation de nos bureaux à Chéraga, par rapport à vos trajets, comment ça se présente ? Êtes-vous véhiculé ?" }
-                                              ]);
-                                              setVocalSimStep(2);
-                                              setVocalSimState('user_listening');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Option A (Darija/Fr) : "Oui, libre immédiatement, j'ai quitté mon ancien poste..."
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Je suis disponible sous un court délai de 15 jours de préavis." },
-                                                { sender: 'ai', text: "C'est tout à fait correct pour nous. Et concernant Chéraga pour le transport quotidien, êtes-vous véhiculé ?" }
-                                              ]);
-                                              setVocalSimStep(2);
-                                              setVocalSimState('user_listening');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Option B (Français) : "Disponible sous 15 jours de préavis..."
-                                        </button>
-                                      </>
-                                    )}
-
-                                    {vocalSimStep === 2 && (
-                                      <>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Oui j'ai ma propre voiture, dima netnequel biha, j'habite à Draria donc pas de soucis de transport." },
-                                                { sender: 'ai', text: "C'est l'idéal ! Enfin, quelles sont vos prétentions salariales nettes par mois ?" }
-                                              ]);
-                                              setVocalSimStep(3);
-                                              setVocalSimState('user_listening');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Option A (Darija) : "Oui j'ai ma propre voiture, j'habite à Draria..."
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Je prends le bus et le métro sans problème pour me déplacer." },
-                                                { sender: 'ai', text: "Entendu. Et enfin, quelles sont vos prétentions salariales nettes par mois ?" }
-                                              ]);
-                                              setVocalSimStep(3);
-                                              setVocalSimState('user_listening');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Option B : "Je prends les transports en commun..."
-                                        </button>
-                                      </>
-                                    )}
-
-                                    {vocalSimStep === 3 && (
-                                      <>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Je souhaite avoir un salaire net de l'ordre de 145 000 DA net par mois." },
-                                                { sender: 'ai', text: "C'est noté. Merci infiniment pour vos réponses, toutes ces informations ont été enregistrées pour l'équipe de recrutement !" }
-                                              ]);
-                                              setVocalSimStep(4);
-                                              setVocalSimState('done');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Déclarer : "Autour de 145 000 DA Net..."
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setVocalSimState('transcribing');
-                                            setTimeout(() => {
-                                              setVocalSimDialogue(prev => [
-                                                ...prev, 
-                                                { sender: 'candidate', text: "Je reste ouvert à la discussion selon la grille interne et les avantages du poste." },
-                                                { sender: 'ai', text: "C'est bien noté. Merci beaucoup, ces détails ont été retranscrits pour les décideurs de l'entreprise !" }
-                                              ]);
-                                              setVocalSimStep(4);
-                                              setVocalSimState('done');
-                                            }, 2000);
-                                          }}
-                                          className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                        >
-                                          Déclarer : "Négociable selon la grille interne..."
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
+                              </ul>
                             </div>
-
-                            {/* Result summary side panel (2 slots) */}
-                            <div className="lg:col-span-2 space-y-6">
-                              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-6">
-                                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Résultats d'Appel générés</h4>
-                                
-                                <div className="space-y-4">
-                                  <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                                    <p className="text-[10px] font-bold text-gray-400">DISPONIBILITÉ SAISIE</p>
-                                    <p className="text-sm font-black text-[#173E7D]">
-                                      {vocalSimStep >= 2 ? (vocalSimDialogue[1]?.text.includes('15 jours') ? 'Sous 15 jours' : 'Immédiate') : 'En attente...'}
-                                    </p>
-                                  </div>
-
-                                  <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                                    <p className="text-[10px] font-bold text-gray-400">LOGISTIQUE & TRAJET</p>
-                                    <p className="text-sm font-black text-[#173E7D]">
-                                      {vocalSimStep >= 3 ? (vocalSimDialogue[3]?.text.includes('voiture') ? 'Véhiculé (Draria)' : 'Transports en commun') : 'En attente...'}
-                                    </p>
-                                  </div>
-
-                                  <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                                    <p className="text-[10px] font-bold text-gray-400">PRÉTENTIONS DÉCLARÉES</p>
-                                    <p className="text-sm font-black text-[#173E7D]">
-                                      {vocalSimStep >= 4 ? (vocalSimDialogue[5]?.text.includes('145 000') ? '145 000 DA net/mois' : 'Négociable') : 'En attente...'}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {vocalSimState === 'done' && (
-                                  <div className="p-4 bg-emerald-50 text-emerald-800 border-2 border-dashed border-emerald-100 rounded-2xl text-xs space-y-2">
-                                    <p className="font-black">✓ Fiche pré-qualification complétée !</p>
-                                    <p className="font-medium leading-relaxed font-sans">Ces données seraient injectées instantanément sous forme d'une pastille d'analyse et d'une transcription textuelle sur votre espace de tri.</p>
-                                    <button 
-                                      onClick={() => {
-                                        setVocalSimState('idle');
-                                        setVocalSimStep(0);
-                                        setVocalSimDialogue([]);
-                                      }}
-                                      className="text-xs font-black underline hover:text-[#173E7D]"
-                                    >
-                                      Recommencer le test
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
+                            <div className="space-y-4">
+                              <h5 className="flex items-center gap-2 text-sm font-black text-orange-600 uppercase tracking-widest">
+                                <AlertTriangle size={16} />
+                                Points d'attention
+                              </h5>
+                              <ul className="space-y-3 font-sans">
+                                {candidate.weaknesses?.map((w, i) => (
+                                  <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
+                                    {w}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex flex-wrap items-center gap-4 pt-6 border-t border-gray-50 font-sans">
+                            <button 
+                              onClick={() => {
+                                setSelectedCandidateCV(candidate);
+                                setCandidateModalTab('ai-screening');
+                              }}
+                              className="bg-[#F68D58] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-500/10"
+                            >
+                              <Sparkles size={16} />
+                              Consulter les Audios & Soft Skills IA
+                            </button>
+                            <button className="bg-[#173E7D] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#0c244c] transition-all">
+                              <Mail size={16} />
+                              Contacter
+                            </button>
+                            <button className="bg-white border border-gray-200 text-[#173E7D] px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-gray-50 transition-all">
+                              <ClipboardList size={16} />
+                              Présélectionner
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center pt-8">
+              <button 
+                onClick={() => setAiFilterStep('select')}
+                className="text-sm font-black text-gray-400 uppercase tracking-widest hover:text-[#173E7D] transition-colors"
+              >
+                Retour à la sélection
+              </button>
+            </div>
+          </div>
+        )
+      ) : access.aiFilterPlayground ? (
+        /* Interactive Laboratory Playground for Recruiter to Live-Test AI features — Corporate only */
+        <div className="space-y-10 animate-fadeIn">
+          {/* Selector of which simulator */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { id: 'interview', label: '1. Assistant Vocal IA', desc: 'Sélecteur de questions, synthèses locales algériennes', color: 'blue', icon: Phone },
+              { id: 'quiz', label: '2. Quiz Soft Skills', desc: 'Sénarios quotidiens de l\'entreprise en Algérie', color: 'amber', icon: Award },
+              { id: 'antighost', label: '3. Filtre Anti-Ghost', desc: 'Pre-screening audio 30s motivant', color: 'orange', icon: Mic },
+            ].map((item) => {
+              const isActive = playgroundTab === item.id;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setPlaygroundTab(item.id as any)}
+                  className={`p-6 rounded-[2rem] border-2 transition-all text-left flex items-start gap-4 ${
+                    isActive 
+                      ? 'bg-white border-[#173E7D] shadow-xl shadow-blue-900/5 hover:-translate-y-0.5' 
+                      : 'bg-white/40 border-gray-100 opacity-80 hover:opacity-100 hover:border-gray-200'
+                  }`}
+                >
+                  <div className={`p-4 rounded-xl ${
+                    item.color === 'blue' ? 'bg-blue-50 text-blue-600' : 
+                    item.color === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-orange-50 text-[#F68D58]'
+                  }`}>
+                    <Icon size={22} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-gray-800 text-sm">{item.label}</h4>
+                    <p className="text-xs text-gray-400 font-medium font-sans mt-1 leading-relaxed">{item.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Simulator container card */}
+          <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-100/10 space-y-8 relative overflow-hidden">
+            {playgroundTab === 'interview' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-[#173E7D]">🎙️ Simulateur de l'Entretien Vocal Pré-qualificatif IA</h3>
+                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Découvrez et testez en temps réel l'appel de pré-sélection passé en Darija algérienne décontractée et Français.</p>
+                  </div>
+                  <span className="px-3 py-1 bg-blue-50 text-[#173E7D] border border-blue-100 text-[9px] font-black uppercase rounded-full tracking-wider">Linguistique Locale Algérie</span>
+                </div>
+
+                {vocalSimState === 'idle' ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center">
+                    <div className="w-20 h-20 bg-blue-50 text-[#173E7D] border border-blue-100 rounded-full flex items-center justify-center animate-bounce">
+                      <Phone size={36} />
+                    </div>
+                    <div className="max-w-md space-y-2">
+                      <h4 className="font-black text-gray-800 text-lg">Tester le parcours candidat</h4>
+                      <p className="text-xs text-gray-400 font-sans leading-relaxed">Cliquez sur démarrer pour lancer l'agent vocal interactif qui posera ses questions de disponibilité, transport et de salaire.</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setVocalSimState('bot_speaking');
+                        setVocalSimStep(1);
+                        setVocalSimDialogue([
+                          { sender: 'ai', text: "Bonjour ! Ravi de vous avoir au téléphone. J'appelle concernant votre candidature sur Algeria Jobs. Est-ce que vous seriez disponible immédiatement pour démarrer ce poste ?" }
+                        ]);
+                        setTimeout(() => {
+                          setVocalSimState('user_listening');
+                        }, 3000);
+                      }}
+                      className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#F68D58] transition-all hover:scale-105 shadow-lg shadow-blue-500/20"
+                    >
+                      🚀 Lancer la simulation d'appel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    {/* Dialogue flow (3 slots) */}
+                    <div className="lg:col-span-3 space-y-6">
+                      <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4 max-h-[350px] overflow-y-auto pr-2 no-scrollbar">
+                        {vocalSimDialogue.map((chat, i) => (
+                          <div 
+                            key={i} 
+                            className={`p-4 rounded-2xl space-y-1 ${
+                              chat.sender === 'ai' 
+                                ? 'bg-[#173E7D]/5 border-l-4 border-[#173E7D] mr-8' 
+                                : 'bg-white shadow-sm border border-slate-100 ml-8'
+                            }`}
+                          >
+                            <div className="flex justify-between text-[9px] font-black uppercase tracking-wider">
+                              <span className={chat.sender === 'ai' ? 'text-[#173E7D]' : 'text-[#F68D58]'}>
+                                {chat.sender === 'ai' ? '🤖 Agent Vocal IA' : '🙋 Vous (Candidat Algérien)'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-700 font-sans leading-relaxed">{chat.text}</p>
+                          </div>
+                        ))}
+
+                        {vocalSimState === 'bot_speaking' && (
+                          <div className="flex items-center gap-3 p-4 bg-blue-50/40 rounded-2xl font-black text-xs text-[#173E7D] w-fit">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                            L'IA parle en Darija chaleureux...
+                          </div>
+                        )}
+
+                        {vocalSimState === 'transcribing' && (
+                          <div className="flex items-center gap-3 p-4 bg-[#F68D58]/10 rounded-2xl font-black text-xs text-[#F68D58] w-fit">
+                            <div className="w-4 h-4 border-2 border-[#F68D58] border-t-transparent rounded-full animate-spin" />
+                            Transcription & traduction instantanée par l'IA...
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {playgroundTab === 'quiz' && (
-                      <div className="space-y-6">
-                        <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                          <div>
-                            <h3 className="text-xl font-black text-[#173E7D]">🧠 Simulateur du Test de Soft-Skills : Quiz Situationnel</h3>
-                            <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Le premier test de mise en situation axé sur le bon sens d'entreprise local en Algérie !</p>
+                      {/* Interactive response actions when user is listening */}
+                      {vocalSimState === 'user_listening' && (
+                        <div className="space-y-4">
+                          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Choisissez votre réponse fictive :</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {vocalSimStep === 1 && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Bonjour ! Oui, exact, je suis libre de suite, khedma hadi t'laq biya bezaf j'ai quitté mon ancien poste le mois passé." },
+                                        { sender: 'ai', text: "Super ! Et pour la localisation de nos bureaux à Chéraga, par rapport à vos trajets, comment ça se présente ? Êtes-vous véhiculé ?" }
+                                      ]);
+                                      setVocalSimStep(2);
+                                      setVocalSimState('user_listening');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Option A (Darija/Fr) : "Oui, libre immédiatement, j'ai quitté mon ancien poste..."
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Je suis disponible sous un court délai de 15 jours de préavis." },
+                                        { sender: 'ai', text: "C'est tout à fait correct pour nous. Et concernant Chéraga pour le transport quotidien, êtes-vous véhiculé ?" }
+                                      ]);
+                                      setVocalSimStep(2);
+                                      setVocalSimState('user_listening');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Option B (Français) : "Disponible sous 15 jours de préavis..."
+                                </button>
+                              </>
+                            )}
+
+                            {vocalSimStep === 2 && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Oui j'ai ma propre voiture, dima netnequel biha, j'habite à Draria donc pas de soucis de transport." },
+                                        { sender: 'ai', text: "C'est l'idéal ! Enfin, quelles sont vos prétentions salariales nettes par mois ?" }
+                                      ]);
+                                      setVocalSimStep(3);
+                                      setVocalSimState('user_listening');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Option A (Darija) : "Oui j'ai ma propre voiture, j'habite à Draria..."
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Je prends le bus et le métro sans problème pour me déplacer." },
+                                        { sender: 'ai', text: "Entendu. Et enfin, quelles sont vos prétentions salariales nettes par mois ?" }
+                                      ]);
+                                      setVocalSimStep(3);
+                                      setVocalSimState('user_listening');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Option B : "Je prends les transports en commun..."
+                                </button>
+                              </>
+                            )}
+
+                            {vocalSimStep === 3 && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Je souhaite avoir un salaire net de l'ordre de 145 000 DA net par mois." },
+                                        { sender: 'ai', text: "C'est noté. Merci infiniment pour vos réponses, toutes ces informations ont été enregistrées pour l'équipe de recrutement !" }
+                                      ]);
+                                      setVocalSimStep(4);
+                                      setVocalSimState('done');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Déclarer : "Autour de 145 000 DA Net..."
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setVocalSimState('transcribing');
+                                    setTimeout(() => {
+                                      setVocalSimDialogue(prev => [
+                                        ...prev, 
+                                        { sender: 'candidate', text: "Je reste ouvert à la discussion selon la grille interne et les avantages du poste." },
+                                        { sender: 'ai', text: "C'est bien noté. Merci beaucoup, ces détails ont été retranscrits pour les décideurs de l'entreprise !" }
+                                      ]);
+                                      setVocalSimStep(4);
+                                      setVocalSimState('done');
+                                    }, 2000);
+                                  }}
+                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
+                                >
+                                  Déclarer : "Négociable selon la grille interne..."
+                                </button>
+                              </>
+                            )}
                           </div>
-                          <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 text-[9px] font-black uppercase rounded-full tracking-wider">Fun & Efficace</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Result summary side panel (2 slots) */}
+                    <div className="lg:col-span-2 space-y-6">
+                      <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-6">
+                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Résultats d'Appel générés</h4>
+                        
+                        <div className="space-y-4">
+                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
+                            <p className="text-[10px] font-bold text-gray-400">DISPONIBILITÉ SAISIE</p>
+                            <p className="text-sm font-black text-[#173E7D]">
+                              {vocalSimStep >= 2 ? (vocalSimDialogue[1]?.text.includes('15 jours') ? 'Sous 15 jours' : 'Immédiate') : 'En attente...'}
+                            </p>
+                          </div>
+
+                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
+                            <p className="text-[10px] font-bold text-gray-400">LOGISTIQUE & TRAJET</p>
+                            <p className="text-sm font-black text-[#173E7D]">
+                              {vocalSimStep >= 3 ? (vocalSimDialogue[3]?.text.includes('voiture') ? 'Véhiculé (Draria)' : 'Transports en commun') : 'En attente...'}
+                            </p>
+                          </div>
+
+                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
+                            <p className="text-[10px] font-bold text-gray-400">PRÉTENTIONS DÉCLARÉES</p>
+                            <p className="text-sm font-black text-[#173E7D]">
+                              {vocalSimStep >= 4 ? (vocalSimDialogue[5]?.text.includes('145 000') ? '145 000 DA net/mois' : 'Négociable') : 'En attente...'}
+                            </p>
+                          </div>
                         </div>
 
-                        {quizScoreCard.step === 0 && (
-                          <div className="space-y-6 max-w-2xl mx-auto py-6">
-                            <div className="space-y-2">
-                              <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-3 py-1 border border-amber-100 rounded-full uppercase tracking-wider">Scénario 1 / 2</span>
-                              <h4 className="text-lg font-black text-[#173E7D]">Option de paiement exigée hors espèce</h4>
-                              <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un client d'une wilaya de l'intérieur insiste pour payer sa facture par chèque d'entreprise à la livraison, mais le protocole stipule uniquement CCP/BaridiMob ou Espèce pour éviter les défauts bancaires. Quelle est votre décision ?"</p>
-                            </div>
-
-                            <div className="space-y-3 pt-4">
-                              {[
-                                { text: "Rebrousser chemin de manière rigide : et informer le client que la livraison est annulée.", val: 1 },
-                                { text: "Prendre le chèque sous mon entière responsabilité personnelle sans informer le gérant.", val: 2 },
-                                { text: "Garder poliment la marchandise en dépôt sécurisé pendant 24h, lui envoyer la localisation du DAB le plus proche ou lui éditer le QR code BaridiMob par smartphone.", val: 3 },
-                              ].map((opt, i) => (
-                                <button
-                                  key={i}
-                                  onClick={() => setQuizScoreCard({ step: 1, answers: [opt.val], result: null })}
-                                  className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-amber-500 hover:bg-amber-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
-                                >
-                                  {i + 1}. {opt.text}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {quizScoreCard.step === 1 && (
-                          <div className="space-y-6 max-w-2xl mx-auto py-6">
-                            <div className="space-y-2">
-                              <span className="text-[10px] font-black text-[#F68D58] bg-orange-50 px-3 py-1 border border-orange-100 rounded-full uppercase tracking-wider">Scénario 2 / 2</span>
-                              <h4 className="text-lg font-black text-[#173E7D]">Incident logistique à fort impact</h4>
-                              <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un coursier à moto est bloqué à un barrage routier de gendarmerie pour contrôle à l'entrée d'Alger-Centre, retardant une livraison stratégique de 2 heures. Le client est très insatisfait et appelle en colère. Que faites-vous ?"</p>
-                            </div>
-
-                            <div className="space-y-3 pt-4">
-                              {[
-                                { text: "Éviter de répondre à ses appels répétés et reporter la responsabilité totale sur le livreur de colis.", val: 1 },
-                                { text: "L'appeler proactivement avec politesse, lui expliquer honnêtement la consigne de contrôle des services publics, lui proposer d'emblée une ristourne de 15% immédiate et guider le livreur de façon optimale.", val: 3 },
-                                { text: "Lui dire sèchement que les conditions climatiques et régulières de circulation ne sont pas de notre resort, de prendre son mal en patience.", val: 2 },
-                              ].map((opt, i) => (
-                                <button
-                                  key={i}
-                                  onClick={() => {
-                                    const allAnsw = [...quizScoreCard.answers, opt.val];
-                                    const points = allAnsw.reduce((a,b) => a+b, 0);
-                                    let result = "Le Solutionneur Créatif 🧠";
-                                    if (points <= 3) result = "L\'Exécutant Rigide 📋";
-                                    else if (points === 4) result = "Le Gestionnaire Prudent 🤝";
-                                    setQuizScoreCard({ step: 2, answers: allAnsw, result });
-                                  }}
-                                  className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-orange-500 hover:bg-orange-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
-                                >
-                                  {i + 1}. {opt.text}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {quizScoreCard.step === 2 && (
-                          <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
-                            <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center">
-                              <Award size={48} className="animate-pulse" />
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PROFIL DE SAVOIR-ÊTRE OBTENU</p>
-                              <h4 className="text-2xl font-black text-[#173E7D]">{quizScoreCard.result}</h4>
-                              <p className="text-xs text-gray-500 font-sans leading-relaxed font-semibold">
-                                {quizScoreCard.result?.includes('Solutionneur') 
-                                  ? "Génie des situations locales. Vous savez gérer l'humain et inventer des passerelles de transition au bon moment pour garder l'harmonie commerciale."
-                                  : quizScoreCard.result?.includes('Prudent')
-                                    ? "Profil équilibré appréciant la négociation encadrée, rassurant pour faire respecter les consignes tout en évitant les heurts."
-                                    : "Profil linéaire préférant l'exécution mécanique des instructions au détriment de l'initiative face à l'imprévu."}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setQuizScoreCard({ step: 0, answers: [], result: null })}
-                              className="px-6 py-3 bg-gray-100 border text-gray-500 font-bold hover:bg-[#173E7D] hover:text-white hover:border-[#173E7D] rounded-xl text-xs transition-colors"
+                        {vocalSimState === 'done' && (
+                          <div className="p-4 bg-emerald-50 text-emerald-800 border-2 border-dashed border-emerald-100 rounded-2xl text-xs space-y-2">
+                            <p className="font-black">✓ Fiche pré-qualification complétée !</p>
+                            <p className="font-medium leading-relaxed font-sans">Ces données seraient injectées instantanément sous forme d'une pastille d'analyse et d'une transcription textuelle sur votre espace de tri.</p>
+                            <button 
+                              onClick={() => {
+                                setVocalSimState('idle');
+                                setVocalSimStep(0);
+                                setVocalSimDialogue([]);
+                              }}
+                              className="text-xs font-black underline hover:text-[#173E7D]"
                             >
-                              Faire un autre test de quiz
+                              Recommencer le test
                             </button>
                           </div>
                         )}
                       </div>
-                    )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-                    {playgroundTab === 'antighost' && (
-                      <div className="space-y-6">
-                        <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                          <div>
-                            <h3 className="text-xl font-black text-[#173E7D]">👻 Filtre Anti-Candidats Fantômes (Pre-screening vocal)</h3>
-                            <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Filtrez les cliqueurs compulsifs automatiquement en exigeant un message vocal motivant de 30 secondes avant de postuler.</p>
+            {playgroundTab === 'quiz' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-[#173E7D]">🧠 Simulateur du Test de Soft-Skills : Quiz Situationnel</h3>
+                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Le premier test de mise en situation axé sur le bon sens d'entreprise local en Algérie !</p>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 text-[9px] font-black uppercase rounded-full tracking-wider">Fun & Efficace</span>
+                </div>
+
+                {quizScoreCard.step === 0 && (
+                  <div className="space-y-6 max-w-2xl mx-auto py-6">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-3 py-1 border border-amber-100 rounded-full uppercase tracking-wider">Scénario 1 / 2</span>
+                      <h4 className="text-lg font-black text-[#173E7D]">Option de paiement exigée hors espèce</h4>
+                      <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un client d'une wilaya de l'intérieur insiste pour payer sa facture par chèque d'entreprise à la livraison, mais le protocole stipule uniquement CCP/BaridiMob ou Espèce pour éviter les défauts bancaires. Quelle est votre décision ?"</p>
+                    </div>
+
+                    <div className="space-y-3 pt-4">
+                      {[
+                        { text: "Rebrousser chemin de manière rigide : et informer le client que la livraison est annulée.", val: 1 },
+                        { text: "Prendre le chèque sous mon entière responsabilité personnelle sans informer le gérant.", val: 2 },
+                        { text: "Garder poliment la marchandise en dépôt sécurisé pendant 24h, lui envoyer la localisation du DAB le plus proche ou lui éditer le QR code BaridiMob par smartphone.", val: 3 },
+                      ].map((opt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setQuizScoreCard({ step: 1, answers: [opt.val], result: null })}
+                          className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-amber-500 hover:bg-amber-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
+                        >
+                          {i + 1}. {opt.text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {quizScoreCard.step === 1 && (
+                  <div className="space-y-6 max-w-2xl mx-auto py-6">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-[#F68D58] bg-orange-50 px-3 py-1 border border-orange-100 rounded-full uppercase tracking-wider">Scénario 2 / 2</span>
+                      <h4 className="text-lg font-black text-[#173E7D]">Incident logistique à fort impact</h4>
+                      <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un coursier à moto est bloqué à un barrage routier de gendarmerie pour contrôle à l'entrée d'Alger-Centre, retardant une livraison stratégique de 2 heures. Le client est très insatisfait et appelle en colère. Que faites-vous ?"</p>
+                    </div>
+
+                    <div className="space-y-3 pt-4">
+                      {[
+                        { text: "Éviter de répondre à ses appels répétés et reporter la responsabilité totale sur le livreur de colis.", val: 1 },
+                        { text: "L'appeler proactivement avec politesse, lui expliquer honnêtement la consigne de contrôle des services publics, lui proposer d'emblée une ristourne de 15% immédiate et guider le livreur de façon optimale.", val: 3 },
+                        { text: "Lui dire sèchement que les conditions climatiques et régulières de circulation ne sont pas de notre resort, de prendre son mal en patience.", val: 2 },
+                      ].map((opt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            const allAnsw = [...quizScoreCard.answers, opt.val];
+                            const points = allAnsw.reduce((a,b) => a+b, 0);
+                            let result = "Le Solutionneur Créatif 🧠";
+                            if (points <= 3) result = "L\'Exécutant Rigide 📋";
+                            else if (points === 4) result = "Le Gestionnaire Prudent 🤝";
+                            setQuizScoreCard({ step: 2, answers: allAnsw, result });
+                          }}
+                          className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-orange-500 hover:bg-orange-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
+                        >
+                          {i + 1}. {opt.text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {quizScoreCard.step === 2 && (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
+                    <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center">
+                      <Award size={48} className="animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PROFIL DE SAVOIR-ÊTRE OBTENU</p>
+                      <h4 className="text-2xl font-black text-[#173E7D]">{quizScoreCard.result}</h4>
+                      <p className="text-xs text-gray-500 font-sans leading-relaxed font-semibold">
+                        {quizScoreCard.result?.includes('Solutionneur') 
+                          ? "Génie des situations locales. Vous savez gérer l'humain et inventer des passerelles de transition au bon moment pour garder l'harmonie commerciale."
+                          : quizScoreCard.result?.includes('Prudent')
+                            ? "Profil équilibré appréciant la négociation encadrée, rassurant pour faire respecter les consignes tout en évitant les heurts."
+                            : "Profil linéaire préférant l'exécution mécanique des instructions au détriment de l'initiative face à l'imprévu."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setQuizScoreCard({ step: 0, answers: [], result: null })}
+                      className="px-6 py-3 bg-gray-100 border text-gray-500 font-bold hover:bg-[#173E7D] hover:text-white hover:border-[#173E7D] rounded-xl text-xs transition-colors"
+                    >
+                      Faire un autre test de quiz
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {playgroundTab === 'antighost' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-[#173E7D]">👻 Filtre Anti-Candidats Fantômes (Pre-screening vocal)</h3>
+                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Filtrez les cliqueurs compulsifs automatiquement en exigeant un message vocal motivant de 30 secondes avant de postuler.</p>
+                  </div>
+                  <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 text-[9px] font-black uppercase rounded-full tracking-wider">Lutte contre les Désistements</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 py-6">
+                  {/* Recording interface panel */}
+                  <div className="space-y-6 border border-gray-100 p-8 rounded-3xl bg-slate-50">
+                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">1. Choisir la langue d'expression confortable</h4>
+                    <div className="flex gap-3">
+                      {[
+                        { id: 'french', label: 'Français' },
+                        { id: 'ar', label: 'Arabe Standard' },
+                        { id: 'darija', label: 'Arabe Algérien' },
+                      ].map((ln) => (
+                        <button
+                          key={ln.id}
+                          onClick={() => setGhostSimLang(ln.id as any)}
+                          className={`px-4 py-2 text-xs font-black rounded-xl border transition-all ${
+                            ghostSimLang === ln.id 
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/10' 
+                              : 'bg-white text-gray-500 border-gray-100 hover:border-gray-200'
+                          }`}
+                        >
+                          {ln.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="text-xs font-bold text-gray-600 leading-relaxed font-sans mt-4">
+                      Question pour le candidat : <br/>
+                      <span className="text-[#173E7D] text-sm font-black">"Quel aspect de l'offre correspond le mieux à vos valeurs professionnelles ?"</span>
+                    </p>
+
+                    {/* State machine controls */}
+                    <div className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl border border-slate-100 space-y-4 pt-10">
+                      {ghostSimStatus === 'idle' && (
+                        <button
+                          onClick={() => {
+                            setGhostSimStatus('recording');
+                            setGhostSimRecordDuration(0);
+                            let count = 0;
+                            const t = setInterval(() => {
+                              count += 1;
+                              setGhostSimRecordDuration(count);
+                              if (count >= 5) {
+                                clearInterval(t);
+                                setGhostSimStatus('recorded');
+                              }
+                            }, 1000);
+                          }}
+                          className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-105 active:scale-95 hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all flex-col text-[9px] font-bold"
+                        >
+                          <Mic size={24} className="mb-0.5" />
+                        </button>
+                      )}
+
+                      {ghostSimStatus === 'recording' && (
+                        <div className="space-y-4 text-center">
+                          <div className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center animate-ping mx-auto">
+                            <Mic size={24} />
                           </div>
-                          <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 text-[9px] font-black uppercase rounded-full tracking-wider">Lutte contre les Désistements</span>
+                          <p className="text-[#F68D58] font-black animate-pulse text-xs">Simulacre d'enregistrement en cours... {ghostSimRecordDuration}s / 5s</p>
                         </div>
+                      )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 py-6">
-                          {/* Recording interface panel */}
-                          <div className="space-y-6 border border-gray-100 p-8 rounded-3xl bg-slate-50">
-                            <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">1. Choisir la langue d'expression confortable</h4>
-                            <div className="flex gap-3">
-                              {[
-                                { id: 'french', label: 'Français' },
-                                { id: 'ar', label: 'Arabe Standard' },
-                                { id: 'darija', label: 'Arabe Algérien' },
-                              ].map((ln) => (
-                                <button
-                                  key={ln.id}
-                                  onClick={() => setGhostSimLang(ln.id as any)}
-                                  className={`px-4 py-2 text-xs font-black rounded-xl border transition-all ${
-                                    ghostSimLang === ln.id 
-                                      ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/10' 
-                                      : 'bg-white text-gray-500 border-gray-100 hover:border-gray-200'
-                                  }`}
-                                >
-                                  {ln.label}
-                                </button>
-                              ))}
-                            </div>
-
-                            <p className="text-xs font-bold text-gray-600 leading-relaxed font-sans mt-4">
-                              Question pour le candidat : <br/>
-                              <span className="text-[#173E7D] text-sm font-black">"Quel aspect de l'offre correspond le mieux à vos valeurs professionnelles ?"</span>
-                            </p>
-
-                            {/* State machine controls */}
-                            <div className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl border border-slate-100 space-y-4 pt-10">
-                              {ghostSimStatus === 'idle' && (
-                                <button
-                                  onClick={() => {
-                                    setGhostSimStatus('recording');
-                                    setGhostSimRecordDuration(0);
-                                    let count = 0;
-                                    const t = setInterval(() => {
-                                      count += 1;
-                                      setGhostSimRecordDuration(count);
-                                      if (count >= 5) {
-                                        clearInterval(t);
-                                        setGhostSimStatus('recorded');
-                                      }
-                                    }, 1000);
-                                  }}
-                                  className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-105 active:scale-95 hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all flex-col text-[9px] font-bold"
-                                >
-                                  <Mic size={24} className="mb-0.5" />
-                                </button>
-                              )}
-
-                              {ghostSimStatus === 'recording' && (
-                                <div className="space-y-4 text-center">
-                                  <div className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center animate-ping mx-auto">
-                                    <Mic size={24} />
-                                  </div>
-                                  <p className="text-[#F68D58] font-black animate-pulse text-xs">Simulacre d'enregistrement en cours... {ghostSimRecordDuration}s / 5s</p>
-                                </div>
-                              )}
-
-                              {ghostSimStatus === 'recorded' && (
-                                <div className="space-y-4 text-center">
-                                  <p className="text-emerald-600 font-black text-xs flex items-center gap-1.5 justify-center">
-                                    <CheckSquare size={14} /> Fichier audio simulé enregistré avec succès !
-                                  </p>
-                                  <div className="flex gap-4">
-                                    <button
-                                      onClick={() => {
-                                        setGhostSimStatus('playing');
-                                        setGhostSimPlayProgress(0);
-                                        const t = setInterval(() => {
-                                          setGhostSimPlayProgress(prev => {
-                                            const next = prev + 20;
-                                            if (next >= 100) {
-                                              clearInterval(t);
-                                              setGhostSimStatus('recorded');
-                                              return 100;
-                                            }
-                                            return next;
-                                          });
-                                        }, 1000);
-                                      }}
-                                      className="px-6 py-2.5 bg-[#173E7D] text-white rounded-xl text-xs font-bold hover:bg-opacity-90 transition-all flex items-center gap-2"
-                                    >
-                                      <Play size={12} /> Écouter ma note vocale
-                                    </button>
-                                    <button
-                                      onClick={() => setGhostSimStatus('idle')}
-                                      className="px-6 py-2.5 bg-slate-100 text-gray-500 hover:text-[#173E7D] rounded-xl text-xs font-bold transition-all"
-                                    >
-                                      Ré-enregistrer
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            
-
-                              {ghostSimStatus === 'playing' && (
-                                <div className="space-y-3 text-center w-full">
-                                  <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto animate-spin">
-                                    <Volume2 size={20} />
-                                  </div>
-                                  <p className="text-[#173E7D] font-black text-xs">Lecture en cours : {Math.floor((ghostSimPlayProgress / 100) * 5)}s / 5s</p>
-                                  <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden max-w-xs mx-auto">
-                                    <div className="h-full bg-orange-500" style={{ width: `${ghostSimPlayProgress}%` }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Explanation of advantages */}
-                          <div className="p-8 rounded-3xl border border-dashed border-gray-100 bg-white space-y-6">
-                            <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Pourquoi cette fonctionnalité fait la différence ?</h4>
-                            
-                            <ul className="space-y-4 text-xs text-gray-600 font-sans leading-relaxed">
-                              <li className="flex gap-3">
-                                <span className="p-1 px-2.5 bg-rose-50 text-rose-600 rounded-lg h-fit font-black">1</span>
-                                <div>
-                                  <strong className="text-gray-800 font-bold block">Taux d'Engagement Maximum</strong>
-                                  L'obligation d'un pitch audio de 30s élimine d'emblée ~75% de "cliqueurs automatiques" n'ayant pas lu l'offre d'emploi.
-                                </div>
-                              </li>
-                              <li className="flex gap-3">
-                                <span className="p-1 px-2.5 bg-amber-50 text-amber-600 rounded-lg h-fit font-black">2</span>
-                                <div>
-                                  <strong className="text-gray-800 font-bold block">Qualité d'Expression de suite visible</strong>
-                                  Un simple clic d'écoute de 10s vous permet d'évaluer la clarté linguistique et l'attitude d'un candidat sans faire d'appel téléphonique.
-                                </div>
-                              </li>
-                              <li className="flex gap-3">
-                                <span className="p-1 px-2.5 bg-emerald-50 text-emerald-600 rounded-lg h-fit font-black">3</span>
-                                <div>
-                                  <strong className="text-gray-800 font-bold block">Sentiment de Confiance Candidat</strong>
-                                  Le choix de l'Arabe d'Algérie rassure le candidat timide et élimine les blocages de sélection par rapport aux examens de langues intimidants.
-                                </div>
-                              </li>
-                            </ul>
+                      {ghostSimStatus === 'recorded' && (
+                        <div className="space-y-4 text-center">
+                          <p className="text-emerald-600 font-black text-xs flex items-center gap-1.5 justify-center">
+                            <CheckSquare size={14} /> Fichier audio simulé enregistré avec succès !
+                          </p>
+                          <div className="flex gap-4">
+                            <button
+                              onClick={() => {
+                                setGhostSimStatus('playing');
+                                setGhostSimPlayProgress(0);
+                                const t = setInterval(() => {
+                                  setGhostSimPlayProgress(prev => {
+                                    const next = prev + 20;
+                                    if (next >= 100) {
+                                      clearInterval(t);
+                                      setGhostSimStatus('recorded');
+                                      return 100;
+                                    }
+                                    return next;
+                                  });
+                                }, 1000);
+                              }}
+                              className="px-6 py-2.5 bg-[#173E7D] text-white rounded-xl text-xs font-bold hover:bg-opacity-90 transition-all flex items-center gap-2"
+                            >
+                              <Play size={12} /> Écouter ma note vocale
+                            </button>
+                            <button
+                              onClick={() => setGhostSimStatus('idle')}
+                              className="px-6 py-2.5 bg-slate-100 text-gray-500 hover:text-[#173E7D] rounded-xl text-xs font-bold transition-all"
+                            >
+                              Ré-enregistrer
+                            </button>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    
+
+                      {ghostSimStatus === 'playing' && (
+                        <div className="space-y-3 text-center w-full">
+                          <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto animate-spin">
+                            <Volume2 size={20} />
+                          </div>
+                          <p className="text-[#173E7D] font-black text-xs">Lecture en cours : {Math.floor((ghostSimPlayProgress / 100) * 5)}s / 5s</p>
+                          <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden max-w-xs mx-auto">
+                            <div className="h-full bg-orange-500" style={{ width: `${ghostSimPlayProgress}%` }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Explanation of advantages */}
+                  <div className="p-8 rounded-3xl border border-dashed border-gray-100 bg-white space-y-6">
+                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Pourquoi cette fonctionnalité fait la différence ?</h4>
+                    
+                    <ul className="space-y-4 text-xs text-gray-600 font-sans leading-relaxed">
+                      <li className="flex gap-3">
+                        <span className="p-1 px-2.5 bg-rose-50 text-rose-600 rounded-lg h-fit font-black">1</span>
+                        <div>
+                          <strong className="text-gray-800 font-bold block">Taux d'Engagement Maximum</strong>
+                          L'obligation d'un pitch audio de 30s élimine d'emblée ~75% de "cliqueurs automatiques" n'ayant pas lu l'offre d'emploi.
+                        </div>
+                      </li>
+                      <li className="flex gap-3">
+                        <span className="p-1 px-2.5 bg-amber-50 text-amber-600 rounded-lg h-fit font-black">2</span>
+                        <div>
+                          <strong className="text-gray-800 font-bold block">Qualité d'Expression de suite visible</strong>
+                          Un simple clic d'écoute de 10s vous permet d'évaluer la clarté linguistique et l'attitude d'un candidat sans faire d'appel téléphonique.
+                        </div>
+                      </li>
+                      <li className="flex gap-3">
+                        <span className="p-1 px-2.5 bg-emerald-50 text-emerald-600 rounded-lg h-fit font-black">3</span>
+                        <div>
+                          <strong className="text-gray-800 font-bold block">Sentiment de Confiance Candidat</strong>
+                          Le choix de l'Arabe d'Algérie rassure le candidat timide et élimine les blocages de sélection par rapport aux examens de langues intimidants.
+                        </div>
+                      </li>
+                    </ul>
                   </div>
                 </div>
-              )}
-            </div>
-          );
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        // Someone reached the playground sub-tab state without Corporate access (e.g. stale state) — show the lock screen instead of the tools
+        <TierLockedScreen
+          title="Labo de Pré-sélection IA"
+          description="Testez le quiz de soft skills, l'assistant vocal pré-qualificatif et le filtre anti-candidats fantômes. Réservé au plan Corporate."
+          requiredTier="Corporate"
+          icon={Sparkles}
+          onUpgrade={() => setActiveTab('subscription')}
+        />
+      )}
+    </div>
+  );
+}
         case 'subscription':
           return (
             <div className="space-y-8">

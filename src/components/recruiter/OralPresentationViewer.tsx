@@ -79,7 +79,7 @@ export default function OralPresentationViewer({
       setSaving(true);
 
       await oralPresentationService.updateRecruiterScore(
-        presentation.id,
+        candidateId,
         score
       );
 

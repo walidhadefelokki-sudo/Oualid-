@@ -1,215 +1,91 @@
-///////////////////////////////////////////////////////////////
-// TYPES
-///////////////////////////////////////////////////////////////
-
-export interface QuizOption {
-  id: string;
-  text: string;
-}
+import api from "./api";
 
 export interface QuizQuestion {
   id: string;
+  order: number;
   question: string;
-  options: QuizOption[];
+  skill?: string | null;
+  difficulty: "EASY" | "MEDIUM" | "HARD";
+}
+
+export interface QuizAnswer {
+  id: string;
+  questionId: string;
+  answer: string;
+  aiScore?: number | null;
+  aiFeedback?: string | null;
+  question?: QuizQuestion;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quizId: string;
+  aiScore?: number | null;
+  recruiterScore?: number | null;
+  feedback?: string | null;
+  submittedAt?: string | null;
+  answers: QuizAnswer[];
 }
 
 export interface Quiz {
   id: string;
-  applicationId: string;
-  title: string;
-  duration: number;
-  passingScore: number;
+  status: "PENDING" | "GENERATED" | "IN_PROGRESS" | "SUBMITTED" | "REVIEWED";
+  generatedAt: string;
+  submittedAt?: string | null;
   questions: QuizQuestion[];
+  attempt?: QuizAttempt | null;
 }
-
-export interface SubmitQuizRequest {
-  applicationId: string;
-  answers: Record<string, string>;
-}
-
-export interface SubmitQuizResponse {
-  success: boolean;
-  score: number;
-  passed: boolean;
-  message?: string;
-}
-
-///////////////////////////////////////////////////////////////
-// CONFIG
-///////////////////////////////////////////////////////////////
-
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:5000/api";
-
-///////////////////////////////////////////////////////////////
-// SERVICE
-///////////////////////////////////////////////////////////////
 
 class QuizService {
-
-  /////////////////////////////////////////////////////////////
-  // GET QUIZ
-  /////////////////////////////////////////////////////////////
-
-  async getQuiz(
-    applicationId: string
-  ): Promise<Quiz> {
-
-    const response = await fetch(
-
-      `${API_URL}/quiz/${applicationId}`,
-
-      {
-        method: "GET",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-
-    );
-
-    if (!response.ok) {
-
-      throw new Error("Unable to load quiz.");
-
-    }
-
-    return response.json();
-
+  /**
+   * Candidate: Get the quiz (generates it from the candidate's CV
+   * on first call).
+   */
+  async getQuiz(): Promise<Quiz> {
+    const response = await api.get("/quiz");
+    return response.data.data.quiz;
   }
 
-  /////////////////////////////////////////////////////////////
-  // SUBMIT QUIZ
-  /////////////////////////////////////////////////////////////
+  /**
+   * Candidate: Start/resume the quiz.
+   */
+  async startQuiz(): Promise<Quiz> {
+    const response = await api.post("/quiz/start");
+    return response.data.data.quiz;
+  }
 
+  /**
+   * Candidate: Submit all answers.
+   */
   async submitQuiz(
-    data: SubmitQuizRequest
-  ): Promise<SubmitQuizResponse> {
-
-    const response = await fetch(
-
-      `${API_URL}/quiz/submit`,
-
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify(data),
-      }
-
-    );
-
-    if (!response.ok) {
-
-      throw new Error("Unable to submit quiz.");
-
-    }
-
-    return response.json();
-
+    answers: { questionId: string; answer: string }[]
+  ): Promise<{ attempt: QuizAttempt; aiScore: number }> {
+    const response = await api.post("/quiz/submit", { answers });
+    return response.data.data;
   }
 
-  /////////////////////////////////////////////////////////////
-  // GET RESULT
-  /////////////////////////////////////////////////////////////
-
-  async getQuizResult(
-    applicationId: string
-  ): Promise<SubmitQuizResponse> {
-
-    const response = await fetch(
-
-      `${API_URL}/quiz/result/${applicationId}`,
-
-      {
-        method: "GET",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-
-    );
-
-    if (!response.ok) {
-
-      throw new Error("Unable to load quiz result.");
-
-    }
-
-    return response.json();
-
+  /**
+   * Candidate: Get own attempt/result.
+   */
+  async getMyAttempt(): Promise<QuizAttempt | null> {
+    const response = await api.get("/quiz/attempt");
+    return response.data.data.attempt;
   }
 
-  /////////////////////////////////////////////////////////////
-  // REGENERATE QUIZ
-  /////////////////////////////////////////////////////////////
-
-  async regenerateQuiz(
-    applicationId: string
-  ): Promise<Quiz> {
-
-    const response = await fetch(
-
-      `${API_URL}/quiz/regenerate/${applicationId}`,
-
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-
-    );
-
-    if (!response.ok) {
-
-      throw new Error("Unable to regenerate quiz.");
-
-    }
-
-    return response.json();
-
+  /**
+   * Candidate: Delete own attempt to retake the quiz.
+   */
+  async deleteAttempt(): Promise<void> {
+    await api.delete("/quiz/attempt");
   }
 
-  /////////////////////////////////////////////////////////////
-  // DELETE QUIZ
-  /////////////////////////////////////////////////////////////
-
-  async deleteQuiz(
-    quizId: string
-  ): Promise<void> {
-
-    const response = await fetch(
-
-      `${API_URL}/quiz/${quizId}`,
-
-      {
-        method: "DELETE",
-      }
-
-    );
-
-    if (!response.ok) {
-
-      throw new Error("Unable to delete quiz.");
-
-    }
-
+  /**
+   * Recruiter/Admin: View a specific attempt.
+   */
+  async getAttemptById(attemptId: string): Promise<QuizAttempt> {
+    const response = await api.get(`/quiz/attempt/${attemptId}`);
+    return response.data.data.attempt;
   }
-
 }
 
-///////////////////////////////////////////////////////////////
-// EXPORT
-///////////////////////////////////////////////////////////////
-
-const quizService = new QuizService();
-
-export default quizService;
+export default new QuizService();

@@ -13,79 +13,58 @@ import {
   deleteAttempt,
 } from "../controllers/quiz.controller";
 
-import { protect, restrictTo } from "../middleware/auth.middleware";
+import { protect } from "../middleware/auth.middleware";
+import { restrictTo } from "../middleware/role.middleware";
+import { requireRecruiterTier } from "../middleware/tier.middleware";
 
 const router = express.Router();
+
+router.use(protect);
 
 /* -------------------------------------------------------------------------- */
 /*                              Candidate Routes                              */
 /* -------------------------------------------------------------------------- */
 
-// Start / Resume quiz
-router.post(
-  "/application/:applicationId/start",
-  protect,
-  restrictTo("CANDIDATE"),
-  startQuiz
-);
+// Start / resume quiz (generates it from CV on first call)
+router.post("/start", restrictTo("CANDIDATE"), startQuiz);
 
-// Get quiz questions
-router.get(
-  "/application/:applicationId",
-  protect,
-  restrictTo("CANDIDATE"),
-  getQuiz
-);
+// Get quiz questions (generates it from CV on first call)
+router.get("/", restrictTo("CANDIDATE"), getQuiz);
 
-// Submit quiz
-router.post(
-  "/application/:applicationId/submit",
-  protect,
-  restrictTo("CANDIDATE"),
-  submitQuiz
-);
+// Submit quiz answers
+router.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
 
-// Get own attempt
-router.get(
-  "/application/:applicationId/attempt",
-  protect,
-  restrictTo("CANDIDATE"),
-  getMyAttempt
-);
+// Get own attempt/result
+router.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
 
-// Delete own attempt
-router.delete(
-  "/application/:applicationId",
-  protect,
-  restrictTo("CANDIDATE"),
-  deleteAttempt
-);
+// Delete own attempt (to retake)
+router.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
 
 /* -------------------------------------------------------------------------- */
-/*                              Recruiter Routes                              */
+/*                    Recruiter Routes (Quiz Results — CORPORATE)             */
 /* -------------------------------------------------------------------------- */
 
-// Get recruiter attempts
+// Get recruiter's candidates' attempts
 router.get(
   "/recruiter",
-  protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   getRecruiterAttempts
 );
 
 // Recruiter statistics
 router.get(
   "/recruiter/statistics",
-  protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics
 );
 
-// View candidate attempt
+// View a specific attempt
 router.get(
   "/attempt/:id",
-  protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   getAttemptById
 );
 
@@ -93,20 +72,8 @@ router.get(
 /*                                 Admin Routes                               */
 /* -------------------------------------------------------------------------- */
 
-// Get all quiz attempts
-router.get(
-  "/",
-  protect,
-  restrictTo("ADMIN"),
-  getAllAttempts
-);
+router.get("/all", restrictTo("ADMIN"), getAllAttempts);
 
-// Admin statistics
-router.get(
-  "/statistics",
-  protect,
-  restrictTo("ADMIN"),
-  getAdminStatistics
-);
+router.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics);
 
 export default router;

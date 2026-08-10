@@ -12,6 +12,7 @@ const ORANGE = '#F68D58';
 
 type Candidate = {
   id?: string | number;
+  candidateId?: string;
   name: string;
   role?: string;
   avatar?: string;
@@ -568,7 +569,7 @@ export default function CandidatesSection({
                 <X size={24} />
               </button>
               <h2 className="text-3xl font-black mb-8" style={{ color: NAVY }}>Oral Presentation</h2>
-              <OralPresentationViewer candidateId={selectedPresentationCandidate.id} />
+              <OralPresentationViewer candidateId={selectedPresentationCandidate.candidateId ?? selectedPresentationCandidate.id} />
             </motion.div>
           </motion.div>
         )}

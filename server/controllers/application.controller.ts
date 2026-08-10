@@ -26,12 +26,21 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
       return next(new AppError("You have already applied for this job", 400));
     }
 
+    if (!user.candidateProfile.resumeId) {
+      return next(
+        new AppError(
+          "Please upload your CV to your profile before applying.",
+          400
+        )
+      );
+    }
+
     const application = await prisma.application.create({
       data: {
         jobId,
         candidateId: user.candidateProfile.id,
         coverLetter,
-        resumeUrl: req.file?.path || user.candidateProfile.resumeUrl,
+        cvId: user.candidateProfile.resumeId,
       },
     });
 
@@ -104,14 +113,48 @@ export const getJobApplications = async (req: Request, res: Response, next: Next
 
     const applications = await prisma.application.findMany({
       where: { jobId },
-      include: { candidate: { include: { user: true } } },
+      include: {
+        candidate: { include: { user: true } },
+        cv: true,
+        aianalysis: true,
+      },
       orderBy: { appliedAt: 'desc' },
     });
 
+    // Quiz + oral presentation are candidate-level (not application-level),
+    // so fetch them per unique candidate and attach.
+    const candidateIds = [...new Set(applications.map((a) => a.candidateId))];
+    const candidateUserIds = [
+      ...new Set(applications.map((a) => a.candidate.userId)),
+    ];
+
+    const [quizzes, presentations] = await Promise.all([
+      prisma.quiz.findMany({
+        where: { candidateId: { in: candidateUserIds } },
+        include: { attempt: true },
+      }),
+      prisma.oralPresentation.findMany({
+        where: { candidateId: { in: candidateIds } },
+        include: { video: true },
+      }),
+    ]);
+
+    const quizByUserId = new Map(quizzes.map((q) => [q.candidateId, q]));
+    const presentationByCandidateId = new Map(
+      presentations.map((p) => [p.candidateId, p])
+    );
+
+    const enriched = applications.map((application) => ({
+      ...application,
+      quiz: quizByUserId.get(application.candidate.userId) ?? null,
+      oralPresentation:
+        presentationByCandidateId.get(application.candidateId) ?? null,
+    }));
+
     res.status(200).json({
       status: "success",
-      results: applications.length,
-      data: { applications },
+      results: enriched.length,
+      data: { applications: enriched },
     });
   } catch (err) {
     next(err);

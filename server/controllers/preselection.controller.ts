@@ -51,7 +51,7 @@ export const getPreselection = async (
   } catch (err) {
     next(err);
   }
-);
+};
 
 export const shortlistCandidate = async (
   req: Request,

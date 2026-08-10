@@ -2,108 +2,76 @@ import express from "express";
 
 import {
   uploadPresentation,
-  getPresentationByApplication,
-  getPresentationById,
+  getMyPresentation,
+  getPresentationByCandidateId,
   updateRecruiterScore,
-  updateTranscript,
-  updateAIScore,
   deletePresentation,
   getRecruiterPresentations,
   getAllPresentations,
   getRecruiterStatistics,
 } from "../controllers/oralPresentation.controller";
 
-import { protect, restrictTo } from "../middleware/auth.middleware";
+import { protect } from "../middleware/auth.middleware";
+import { restrictTo } from "../middleware/role.middleware";
+import { requireRecruiterTier } from "../middleware/tier.middleware";
 import { presentationUpload } from "../utils/cloudinary";
-// If you haven't created presentationUpload yet,
-// temporarily use:
-// import { upload as presentationUpload } from "../utils/cloudinary";
 
 const router = express.Router();
+
+router.use(protect);
 
 /* -------------------------------------------------------------------------- */
 /*                               Candidate Routes                             */
 /* -------------------------------------------------------------------------- */
 
-// Upload or replace presentation
+// Upload or replace own presentation (profile-level, not tied to an application)
 router.post(
-  "/application/:applicationId",
-  protect,
+  "/me",
   restrictTo("CANDIDATE"),
   presentationUpload.single("video"),
   uploadPresentation
 );
 
 // Get own presentation
-router.get(
-  "/application/:applicationId",
-  protect,
-  restrictTo("CANDIDATE"),
-  getPresentationByApplication
-);
+router.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
 
 // Delete own presentation
-router.delete(
-  "/application/:applicationId",
-  protect,
-  restrictTo("CANDIDATE"),
-  deletePresentation
-);
+router.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
 
 /* -------------------------------------------------------------------------- */
-/*                               Recruiter Routes                             */
+/*                    Recruiter Routes (Oral Presentation — CORPORATE)        */
 /* -------------------------------------------------------------------------- */
 
-// Recruiter's presentations
+// Recruiter's own list of presentations (candidates who applied to them)
 router.get(
   "/recruiter",
-  protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   getRecruiterPresentations
 );
 
 // Recruiter statistics
 router.get(
   "/recruiter/statistics",
-  protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics
 );
 
-// View presentation
+// View a specific candidate's presentation
 router.get(
-  "/:id",
-  protect,
+  "/candidate/:candidateId",
   restrictTo("RECRUITER", "ADMIN"),
-  getPresentationById
+  requireRecruiterTier("CORPORATE"),
+  getPresentationByCandidateId
 );
 
 // Recruiter score
 router.patch(
-  "/:id/recruiter-score",
-  protect,
+  "/candidate/:candidateId/recruiter-score",
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   updateRecruiterScore
-);
-
-/* -------------------------------------------------------------------------- */
-/*                                  AI Routes                                 */
-/* -------------------------------------------------------------------------- */
-
-// Save transcript
-router.patch(
-  "/:id/transcript",
-  protect,
-  restrictTo("ADMIN"),
-  updateTranscript
-);
-
-// Save AI score
-router.patch(
-  "/:id/ai-score",
-  protect,
-  restrictTo("ADMIN"),
-  updateAIScore
 );
 
 /* -------------------------------------------------------------------------- */
@@ -111,11 +79,6 @@ router.patch(
 /* -------------------------------------------------------------------------- */
 
 // Get all presentations
-router.get(
-  "/",
-  protect,
-  restrictTo("ADMIN"),
-  getAllPresentations
-);
+router.get("/", restrictTo("ADMIN"), getAllPresentations);
 
 export default router;

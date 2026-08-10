@@ -6,6 +6,7 @@ import { restrictTo } from "../middleware/role.middleware";
 const router = Router();
 
 router.get("/", jobController.getAllJobs);
+router.get("/recruiter/mine", protect, restrictTo("RECRUITER", "ADMIN"), jobController.getRecruiterJobs);
 router.get("/:id", jobController.getJob);
 
 router.use(protect);

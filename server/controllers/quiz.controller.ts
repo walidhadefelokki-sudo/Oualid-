@@ -7,12 +7,7 @@ export const startQuiz = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const result = await quizService.startQuiz(
-      applicationId,
-      req.user!.id
-    );
+    const result = await quizService.startQuiz(req.user!.id);
 
     res.status(200).json({
       status: "success",
@@ -29,18 +24,11 @@ export const getQuiz = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const quiz = await quizService.getQuiz(
-      applicationId,
-      req.user!.id
-    );
+    const quiz = await quizService.getQuiz(req.user!.id);
 
     res.status(200).json({
       status: "success",
-      data: {
-        quiz,
-      },
+      data: { quiz },
     });
   } catch (err) {
     next(err);
@@ -53,14 +41,9 @@ export const submitQuiz = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
     const { answers } = req.body;
 
-    const result = await quizService.submitQuiz(
-      applicationId,
-      req.user!.id,
-      answers
-    );
+    const result = await quizService.submitQuiz(req.user!.id, answers);
 
     res.status(200).json({
       status: "success",
@@ -77,18 +60,11 @@ export const getMyAttempt = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const attempt = await quizService.getMyAttempt(
-      applicationId,
-      req.user!.id
-    );
+    const attempt = await quizService.getMyAttempt(req.user!.id);
 
     res.status(200).json({
       status: "success",
-      data: {
-        attempt,
-      },
+      data: { attempt },
     });
   } catch (err) {
     next(err);
@@ -111,9 +87,7 @@ export const getAttemptById = async (
 
     res.status(200).json({
       status: "success",
-      data: {
-        attempt,
-      },
+      data: { attempt },
     });
   } catch (err) {
     next(err);
@@ -129,12 +103,11 @@ export const getRecruiterAttempts = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const result =
-      await quizService.getRecruiterAttempts(
-        req.user!.id,
-        page,
-        limit
-      );
+    const result = await quizService.getRecruiterAttempts(
+      req.user!.id,
+      page,
+      limit
+    );
 
     res.status(200).json({
       status: "success",
@@ -154,11 +127,7 @@ export const getAllAttempts = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
 
-    const result =
-      await quizService.getAllAttempts(
-        page,
-        limit
-      );
+    const result = await quizService.getAllAttempts(page, limit);
 
     res.status(200).json({
       status: "success",
@@ -175,16 +144,13 @@ export const getRecruiterStatistics = async (
   next: NextFunction
 ) => {
   try {
-    const statistics =
-      await quizService.getRecruiterStatistics(
-        req.user!.id
-      );
+    const statistics = await quizService.getRecruiterStatistics(
+      req.user!.id
+    );
 
     res.status(200).json({
       status: "success",
-      data: {
-        statistics,
-      },
+      data: { statistics },
     });
   } catch (err) {
     next(err);
@@ -197,14 +163,11 @@ export const getAdminStatistics = async (
   next: NextFunction
 ) => {
   try {
-    const statistics =
-      await quizService.getAdminStatistics();
+    const statistics = await quizService.getAdminStatistics();
 
     res.status(200).json({
       status: "success",
-      data: {
-        statistics,
-      },
+      data: { statistics },
     });
   } catch (err) {
     next(err);
@@ -217,13 +180,7 @@ export const deleteAttempt = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const result =
-      await quizService.deleteAttempt(
-        applicationId,
-        req.user!.id
-      );
+    const result = await quizService.deleteAttempt(req.user!.id);
 
     res.status(200).json({
       status: "success",

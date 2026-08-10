@@ -1113,4 +1113,3 @@ export default function RankingCharts({
   );
 
 }
-      </div>

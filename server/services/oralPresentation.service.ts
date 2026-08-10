@@ -1,6 +1,7 @@
-import { Prisma, OralPresentationStatus } from "@prisma/client";
+import { OralPresentationStatus } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
+import candidateScoreService from "./candidateScore.service";
 
 interface UploadedFile {
   path?: string;
@@ -12,62 +13,24 @@ interface UploadedFile {
 
 class OralPresentationService {
   /**
-   * Upload or replace an oral presentation video
+   * Candidate: Upload or replace their profile presentation video.
+   * One presentation per candidate profile (not per application).
    */
-  async uploadPresentation(
-    applicationId: string,
-    userId: string,
-    file: UploadedFile
-  ) {
-    // ---------------------------------------
-    // Validate upload
-    // ---------------------------------------
-
+  async uploadPresentation(userId: string, file: UploadedFile) {
     if (!file) {
       throw new AppError("Please upload a video.", 400);
     }
 
-    // ---------------------------------------
-    // Find candidate
-    // ---------------------------------------
-
     const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      include: {
-        candidateProfile: true,
-      },
+      where: { id: userId },
+      include: { candidateProfile: { include: { oralPresentation: true } } },
     });
 
     if (!user?.candidateProfile) {
       throw new AppError("Candidate profile not found.", 404);
     }
 
-    // ---------------------------------------
-    // Verify application ownership
-    // ---------------------------------------
-
-    const application = await prisma.application.findFirst({
-      where: {
-        id: applicationId,
-        candidateId: user.candidateProfile.id,
-      },
-      include: {
-        oralPresentation: true,
-      },
-    });
-
-    if (!application) {
-      throw new AppError(
-        "Application not found or you do not own it.",
-        404
-      );
-    }
-
-    // ---------------------------------------
-    // Create FileAsset
-    // ---------------------------------------
+    const candidateId = user.candidateProfile.id;
 
     const fileAsset = await prisma.fileAsset.create({
       data: {
@@ -80,161 +43,104 @@ class OralPresentationService {
       },
     });
 
-    // ---------------------------------------
-    // Update existing presentation
-    // ---------------------------------------
+    const existing = user.candidateProfile.oralPresentation;
 
-    if (application.oralPresentation) {
-      const presentation =
-        await prisma.oralPresentation.update({
-          where: {
-            applicationId,
-          },
-          data: {
-            videoId: fileAsset.id,
-            status: OralPresentationStatus.UPLOADED,
-          },
-          include: {
-            video: true,
-            application: true,
-          },
-        });
+    // Update existing presentation (and clean up the old video asset)
+    if (existing) {
+      const presentation = await prisma.oralPresentation.update({
+        where: { candidateId },
+        data: {
+          videoId: fileAsset.id,
+          status: OralPresentationStatus.UPLOADED,
+        },
+        include: { video: true },
+      });
+
+      if (existing.videoId && existing.videoId !== fileAsset.id) {
+        await prisma.fileAsset
+          .delete({ where: { id: existing.videoId } })
+          .catch(() => null);
+      }
 
       return presentation;
     }
 
-    // ---------------------------------------
     // Create new presentation
-    // ---------------------------------------
-
-    const presentation =
-      await prisma.oralPresentation.create({
-        data: {
-          applicationId,
-          videoId: fileAsset.id,
-          status: OralPresentationStatus.UPLOADED,
-        },
-        include: {
-          video: true,
-          application: true,
-        },
-      });
+    const presentation = await prisma.oralPresentation.create({
+      data: {
+        candidateId,
+        videoId: fileAsset.id,
+        status: OralPresentationStatus.UPLOADED,
+      },
+      include: { video: true },
+    });
 
     return presentation;
   }
-    /**
-   * Candidate: Get presentation by application
+
+  /**
+   * Candidate: Get own presentation
    */
-  async getPresentationByApplication(
-    applicationId: string,
-    userId: string
-  ) {
+  async getMyPresentation(userId: string) {
     const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      include: {
-        candidateProfile: true,
-      },
+      where: { id: userId },
+      include: { candidateProfile: true },
     });
 
     if (!user?.candidateProfile) {
       throw new AppError("Candidate profile not found.", 404);
     }
 
-    const application = await prisma.application.findFirst({
-      where: {
-        id: applicationId,
-        candidateId: user.candidateProfile.id,
-      },
-    });
-
-    if (!application) {
-      throw new AppError(
-        "Application not found or access denied.",
-        404
-      );
-    }
-
     const presentation = await prisma.oralPresentation.findUnique({
-      where: {
-        applicationId,
-      },
-      include: {
-        video: true,
-        application: {
-          include: {
-            job: true,
-          },
-        },
-      },
+      where: { candidateId: user.candidateProfile.id },
+      include: { video: true },
     });
 
     return presentation;
   }
 
   /**
-   * Recruiter/Admin: View presentation
+   * Recruiter/Admin: View a candidate's presentation.
+   * A recruiter may only view it if the candidate has applied to one of
+   * the recruiter's jobs.
    */
-  async getPresentationById(
-    presentationId: string,
-    recruiterUserId: string,
+  async getPresentationByCandidateId(
+    candidateId: string,
+    requesterUserId: string,
     role: string
   ) {
-    const presentation =
-      await prisma.oralPresentation.findUnique({
-        where: {
-          id: presentationId,
-        },
-        include: {
-          video: true,
-          application: {
-            include: {
-              candidate: {
-                include: {
-                  user: true,
-                },
-              },
-              recruiter: true,
-              job: true,
-            },
-          },
-        },
-      });
+    const presentation = await prisma.oralPresentation.findUnique({
+      where: { candidateId },
+      include: {
+        video: true,
+        candidate: { include: { user: true } },
+      },
+    });
 
     if (!presentation) {
-      throw new AppError(
-        "Presentation not found.",
-        404
-      );
+      throw new AppError("Presentation not found.", 404);
     }
 
     if (role !== "ADMIN") {
-      const recruiter =
-        await prisma.user.findUnique({
-          where: {
-            id: recruiterUserId,
-          },
-          include: {
-            recruiterProfile: true,
-          },
-        });
+      const requester = await prisma.user.findUnique({
+        where: { id: requesterUserId },
+        include: { recruiterProfile: true },
+      });
 
-      if (!recruiter?.recruiterProfile) {
-        throw new AppError(
-          "Recruiter profile not found.",
-          404
-        );
+      if (!requester?.recruiterProfile) {
+        throw new AppError("Recruiter profile not found.", 404);
       }
 
-      if (
-        recruiter.recruiterProfile.id !==
-        presentation.application.recruiterId
-      ) {
-        throw new AppError(
-          "Unauthorized.",
-          403
-        );
+      const hasApplication = await prisma.application.findFirst({
+        where: {
+          candidateId,
+          recruiterId: requester.recruiterProfile.id,
+        },
+        select: { id: true },
+      });
+
+      if (!hasApplication) {
+        throw new AppError("Unauthorized.", 403);
       }
     }
 
@@ -242,233 +148,115 @@ class OralPresentationService {
   }
 
   /**
-   * Recruiter review
+   * Recruiter: Score a candidate's presentation.
+   * Same ownership rule as viewing: candidate must have applied to one
+   * of the recruiter's jobs.
    */
   async updateRecruiterScore(
-    presentationId: string,
+    candidateId: string,
     recruiterUserId: string,
     recruiterScore: number
   ) {
-    if (
-      recruiterScore < 0 ||
-      recruiterScore > 100
-    ) {
-      throw new AppError(
-        "Recruiter score must be between 0 and 100.",
-        400
-      );
+    if (recruiterScore < 0 || recruiterScore > 100) {
+      throw new AppError("Recruiter score must be between 0 and 100.", 400);
     }
 
-    const recruiter =
-      await prisma.user.findUnique({
-        where: {
-          id: recruiterUserId,
-        },
-        include: {
-          recruiterProfile: true,
-        },
-      });
+    const recruiter = await prisma.user.findUnique({
+      where: { id: recruiterUserId },
+      include: { recruiterProfile: true },
+    });
 
     if (!recruiter?.recruiterProfile) {
-      throw new AppError(
-        "Recruiter profile not found.",
-        404
-      );
+      throw new AppError("Recruiter profile not found.", 404);
     }
 
-    const presentation =
-      await prisma.oralPresentation.findUnique({
-        where: {
-          id: presentationId,
-        },
-        include: {
-          application: true,
-        },
-      });
+    const presentation = await prisma.oralPresentation.findUnique({
+      where: { candidateId },
+    });
 
     if (!presentation) {
-      throw new AppError(
-        "Presentation not found.",
-        404
-      );
+      throw new AppError("Presentation not found.", 404);
     }
 
-    if (
-      presentation.application.recruiterId !==
-      recruiter.recruiterProfile.id
-    ) {
-      throw new AppError(
-        "Unauthorized.",
-        403
-      );
-    }
-
-    return prisma.oralPresentation.update({
+    const hasApplication = await prisma.application.findFirst({
       where: {
-        id: presentationId,
+        candidateId,
+        recruiterId: recruiter.recruiterProfile.id,
       },
+      select: { id: true },
+    });
+
+    if (!hasApplication) {
+      throw new AppError("Unauthorized.", 403);
+    }
+
+    const updated = await prisma.oralPresentation.update({
+      where: { candidateId },
       data: {
         recruiterScore,
         status: OralPresentationStatus.REVIEWED,
       },
-      include: {
-        video: true,
-        application: true,
-      },
+      include: { video: true },
     });
+
+    // OralPresentation is candidate-level, but scoring is per-application
+    // (Application caches a snapshot via Application.oralPresentationScore).
+    // Sync it onto every application this candidate has, then recalculate
+    // each final score through the single centralized scoring service.
+    const applications = await prisma.application.findMany({
+      where: { candidateId },
+      select: { id: true },
+    });
+
+    await prisma.application.updateMany({
+      where: { candidateId },
+      data: { oralPresentationScore: recruiterScore },
+    });
+
+    await Promise.all(
+      applications.map((app) =>
+        candidateScoreService.createOrUpdateScore(app.id).catch(() => null)
+      )
+    );
+
+    return updated;
   }
 
   /**
-   * Save AI transcript
+   * Candidate: Delete own presentation
    */
-  async updateTranscript(
-    presentationId: string,
-    transcript: string
-  ) {
-    const presentation =
-      await prisma.oralPresentation.findUnique({
-        where: {
-          id: presentationId,
-        },
-      });
-
-    if (!presentation) {
-      throw new AppError(
-        "Presentation not found.",
-        404
-      );
-    }
-
-    return prisma.oralPresentation.update({
-      where: {
-        id: presentationId,
-      },
-      data: {
-        transcript,
-      },
-    });
-  }
-
-  /**
-   * Save AI score
-   */
-  async updateAIScore(
-    presentationId: string,
-    aiScore: number
-  ) {
-    if (aiScore < 0 || aiScore > 100) {
-      throw new AppError(
-        "AI score must be between 0 and 100.",
-        400
-      );
-    }
-
-    const presentation =
-      await prisma.oralPresentation.findUnique({
-        where: {
-          id: presentationId,
-        },
-      });
-
-    if (!presentation) {
-      throw new AppError(
-        "Presentation not found.",
-        404
-      );
-    }
-
-    return prisma.oralPresentation.update({
-      where: {
-        id: presentationId,
-      },
-      data: {
-        aiScore,
-      },
-      include: {
-        application: true,
-        video: true,
-      },
-    });
-  }
-    /**
-   * Candidate: Delete presentation
-   */
-  async deletePresentation(
-    applicationId: string,
-    userId: string
-  ) {
+  async deletePresentation(userId: string) {
     const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      include: {
-        candidateProfile: true,
-      },
+      where: { id: userId },
+      include: { candidateProfile: { include: { oralPresentation: true } } },
     });
 
     if (!user?.candidateProfile) {
       throw new AppError("Candidate profile not found.", 404);
     }
 
-    const application = await prisma.application.findFirst({
-      where: {
-        id: applicationId,
-        candidateId: user.candidateProfile.id,
-      },
-      include: {
-        oralPresentation: true,
-      },
-    });
+    const presentation = user.candidateProfile.oralPresentation;
 
-    if (!application) {
-      throw new AppError(
-        "Application not found.",
-        404
-      );
-    }
-
-    if (!application.oralPresentation) {
-      throw new AppError(
-        "Presentation not found.",
-        404
-      );
+    if (!presentation) {
+      throw new AppError("Presentation not found.", 404);
     }
 
     await prisma.$transaction(async (tx) => {
-
-      if (application.oralPresentation?.videoId) {
-        await tx.fileAsset.delete({
-          where: {
-            id: application.oralPresentation.videoId,
-          },
-        });
-      }
-
       await tx.oralPresentation.delete({
-        where: {
-          applicationId,
-        },
+        where: { candidateId: user.candidateProfile!.id },
       });
 
-      await tx.application.update({
-        where: {
-          id: applicationId,
-        },
-        data: {
-          oralPresentationScore: null,
-        },
-      });
-
+      if (presentation.videoId) {
+        await tx.fileAsset.delete({ where: { id: presentation.videoId } });
+      }
     });
 
-    return {
-      success: true,
-      message: "Presentation deleted successfully.",
-    };
+    return { success: true, message: "Presentation deleted successfully." };
   }
 
   /**
-   * Recruiter: List presentations
+   * Recruiter: List presentations belonging to candidates who applied
+   * to this recruiter's jobs.
    */
   async getRecruiterPresentations(
     recruiterUserId: string,
@@ -476,201 +264,99 @@ class OralPresentationService {
     limit = 10
   ) {
     const recruiter = await prisma.user.findUnique({
-      where: {
-        id: recruiterUserId,
-      },
-      include: {
-        recruiterProfile: true,
-      },
+      where: { id: recruiterUserId },
+      include: { recruiterProfile: true },
     });
 
     if (!recruiter?.recruiterProfile) {
-      throw new AppError(
-        "Recruiter profile not found.",
-        404
-      );
+      throw new AppError("Recruiter profile not found.", 404);
     }
 
     const skip = (page - 1) * limit;
 
-    const [items, total] = await prisma.$transaction([
+    const where = {
+      candidate: {
+        applications: {
+          some: { recruiterId: recruiter.recruiterProfile.id },
+        },
+      },
+    };
 
+    const [items, total] = await prisma.$transaction([
       prisma.oralPresentation.findMany({
-        where: {
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
-        },
-        include: {
-          video: true,
-          application: {
-            include: {
-              candidate: {
-                include: {
-                  user: true,
-                },
-              },
-              job: true,
-            },
-          },
-        },
+        where,
+        include: { video: true, candidate: { include: { user: true } } },
         skip,
         take: limit,
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { createdAt: "desc" },
       }),
-
-      prisma.oralPresentation.count({
-        where: {
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
-        },
-      }),
-
+      prisma.oralPresentation.count({ where }),
     ]);
 
     return {
       items,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
 
   /**
    * Admin: List all presentations
    */
-  async getAllPresentations(
-    page = 1,
-    limit = 20
-  ) {
+  async getAllPresentations(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
 
     const [items, total] = await prisma.$transaction([
-
       prisma.oralPresentation.findMany({
-        include: {
-          video: true,
-          application: {
-            include: {
-              candidate: {
-                include: {
-                  user: true,
-                },
-              },
-              recruiter: true,
-              job: true,
-            },
-          },
-        },
+        include: { video: true, candidate: { include: { user: true } } },
         skip,
         take: limit,
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { createdAt: "desc" },
       }),
-
       prisma.oralPresentation.count(),
-
     ]);
 
     return {
       items,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
 
   /**
-   * Recruiter dashboard statistics
+   * Recruiter dashboard statistics, scoped to candidates who applied
+   * to this recruiter's jobs.
    */
-  async getRecruiterStatistics(
-    recruiterUserId: string
-  ) {
+  async getRecruiterStatistics(recruiterUserId: string) {
     const recruiter = await prisma.user.findUnique({
-      where: {
-        id: recruiterUserId,
-      },
-      include: {
-        recruiterProfile: true,
-      },
+      where: { id: recruiterUserId },
+      include: { recruiterProfile: true },
     });
 
     if (!recruiter?.recruiterProfile) {
-      throw new AppError(
-        "Recruiter profile not found.",
-        404
-      );
+      throw new AppError("Recruiter profile not found.", 404);
     }
 
-    const [
-      total,
-      pending,
-      uploaded,
-      reviewed,
-    ] = await prisma.$transaction([
-
-      prisma.oralPresentation.count({
-        where: {
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
+    const baseWhere = {
+      candidate: {
+        applications: {
+          some: { recruiterId: recruiter.recruiterProfile.id },
         },
-      }),
+      },
+    };
 
+    const [total, pending, uploaded, reviewed] = await prisma.$transaction([
+      prisma.oralPresentation.count({ where: baseWhere }),
       prisma.oralPresentation.count({
-        where: {
-          status:
-            OralPresentationStatus.PENDING,
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
-        },
+        where: { ...baseWhere, status: OralPresentationStatus.PENDING },
       }),
-
       prisma.oralPresentation.count({
-        where: {
-          status:
-            OralPresentationStatus.UPLOADED,
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
-        },
+        where: { ...baseWhere, status: OralPresentationStatus.UPLOADED },
       }),
-
       prisma.oralPresentation.count({
-        where: {
-          status:
-            OralPresentationStatus.REVIEWED,
-          application: {
-            recruiterId:
-              recruiter.recruiterProfile.id,
-          },
-        },
+        where: { ...baseWhere, status: OralPresentationStatus.REVIEWED },
       }),
-
     ]);
 
-    return {
-      total,
-      pending,
-      uploaded,
-      reviewed,
-    };
+    return { total, pending, uploaded, reviewed };
   }
 }
 

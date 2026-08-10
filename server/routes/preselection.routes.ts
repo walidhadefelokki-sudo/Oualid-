@@ -2,10 +2,9 @@ import { Router } from "express";
 
 import preselectionController from "../controllers/preselection.controller";
 
-import {
-  protect,
-  restrictTo,
-} from "../middleware/auth.middleware";
+import { protect } from "../middleware/auth.middleware";
+import { restrictTo } from "../middleware/role.middleware";
+import { requireRecruiterTier } from "../middleware/tier.middleware";
 
 const router = Router();
 
@@ -22,7 +21,7 @@ router.get(
 );
 
 // ============================================================
-// Recruiter
+// Recruiter (Preselection — CORPORATE plan)
 // ============================================================
 
 // View one preselection
@@ -30,6 +29,7 @@ router.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.getPreselection
 );
 
@@ -38,6 +38,7 @@ router.patch(
   "/application/:applicationId/review",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.reviewCandidate
 );
 
@@ -46,6 +47,7 @@ router.patch(
   "/application/:applicationId/shortlist",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.shortlistCandidate
 );
 
@@ -54,6 +56,7 @@ router.patch(
   "/application/:applicationId/reject",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.rejectCandidate
 );
 
@@ -62,6 +65,7 @@ router.patch(
   "/application/:applicationId/comment",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.updateComment
 );
 
@@ -70,6 +74,7 @@ router.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.getRecruiterPreselections
 );
 
@@ -78,6 +83,7 @@ router.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.getRecruiterStatistics
 );
 
@@ -86,6 +92,7 @@ router.get(
   "/recruiter/ranking",
   protect,
   restrictTo("RECRUITER"),
+  requireRecruiterTier("CORPORATE"),
   preselectionController.getRanking
 );
 

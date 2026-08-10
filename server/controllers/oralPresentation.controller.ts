@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import oralPresentationService from "../services/oralPresentation.service";
-import { AppError } from "../middleware/error.middleware";
 
 export const uploadPresentation = async (
   req: Request,
@@ -8,71 +7,57 @@ export const uploadPresentation = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const presentation =
-      await oralPresentationService.uploadPresentation(
-        applicationId,
-        req.user!.id,
-        req.file as any
-      );
+    const presentation = await oralPresentationService.uploadPresentation(
+      req.user!.id,
+      req.file as any
+    );
 
     res.status(201).json({
       status: "success",
-      data: {
-        presentation,
-      },
+      data: { presentation },
     });
   } catch (err) {
     next(err);
   }
 };
 
-export const getPresentationByApplication = async (
+export const getMyPresentation = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const presentation =
-      await oralPresentationService.getPresentationByApplication(
-        applicationId,
-        req.user!.id
-      );
+    const presentation = await oralPresentationService.getMyPresentation(
+      req.user!.id
+    );
 
     res.status(200).json({
       status: "success",
-      data: {
-        presentation,
-      },
+      data: { presentation },
     });
   } catch (err) {
     next(err);
   }
 };
 
-export const getPresentationById = async (
+export const getPresentationByCandidateId = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const { id } = req.params;
+    const { candidateId } = req.params;
 
     const presentation =
-      await oralPresentationService.getPresentationById(
-        id,
+      await oralPresentationService.getPresentationByCandidateId(
+        candidateId,
         req.user!.id,
         req.user!.role
       );
 
     res.status(200).json({
       status: "success",
-      data: {
-        presentation,
-      },
+      data: { presentation },
     });
   } catch (err) {
     next(err);
@@ -85,73 +70,18 @@ export const updateRecruiterScore = async (
   next: NextFunction
 ) => {
   try {
-    const { id } = req.params;
+    const { candidateId } = req.params;
     const { recruiterScore } = req.body;
 
-    const presentation =
-      await oralPresentationService.updateRecruiterScore(
-        id,
-        req.user!.id,
-        Number(recruiterScore)
-      );
+    const presentation = await oralPresentationService.updateRecruiterScore(
+      candidateId,
+      req.user!.id,
+      Number(recruiterScore)
+    );
 
     res.status(200).json({
       status: "success",
-      data: {
-        presentation,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const updateTranscript = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { id } = req.params;
-    const { transcript } = req.body;
-
-    const presentation =
-      await oralPresentationService.updateTranscript(
-        id,
-        transcript
-      );
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        presentation,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const updateAIScore = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { id } = req.params;
-    const { aiScore } = req.body;
-
-    const presentation =
-      await oralPresentationService.updateAIScore(
-        id,
-        Number(aiScore)
-      );
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        presentation,
-      },
+      data: { presentation },
     });
   } catch (err) {
     next(err);
@@ -164,13 +94,9 @@ export const deletePresentation = async (
   next: NextFunction
 ) => {
   try {
-    const { applicationId } = req.params;
-
-    const result =
-      await oralPresentationService.deletePresentation(
-        applicationId,
-        req.user!.id
-      );
+    const result = await oralPresentationService.deletePresentation(
+      req.user!.id
+    );
 
     res.status(200).json({
       status: "success",
@@ -190,12 +116,11 @@ export const getRecruiterPresentations = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const data =
-      await oralPresentationService.getRecruiterPresentations(
-        req.user!.id,
-        page,
-        limit
-      );
+    const data = await oralPresentationService.getRecruiterPresentations(
+      req.user!.id,
+      page,
+      limit
+    );
 
     res.status(200).json({
       status: "success",
@@ -215,11 +140,10 @@ export const getAllPresentations = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
 
-    const data =
-      await oralPresentationService.getAllPresentations(
-        page,
-        limit
-      );
+    const data = await oralPresentationService.getAllPresentations(
+      page,
+      limit
+    );
 
     res.status(200).json({
       status: "success",
@@ -236,16 +160,13 @@ export const getRecruiterStatistics = async (
   next: NextFunction
 ) => {
   try {
-    const statistics =
-      await oralPresentationService.getRecruiterStatistics(
-        req.user!.id
-      );
+    const statistics = await oralPresentationService.getRecruiterStatistics(
+      req.user!.id
+    );
 
     res.status(200).json({
       status: "success",
-      data: {
-        statistics,
-      },
+      data: { statistics },
     });
   } catch (err) {
     next(err);

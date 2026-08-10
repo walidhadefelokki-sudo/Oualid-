@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
-import { supabase } from '../supabase';
+import { signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../firebase';
+import api from '../services/api';
 import Logo from './Logo';
 
 import { translations, Language } from '../translations';
@@ -12,9 +14,13 @@ interface AuthModalProps {
   language: Language;
   initialRole?: 'user' | 'employer';
   initialStep?: 'selection' | 'form';
+  // Called with the backend's { token, user } payload once signup or
+  // Google sign-in succeeds, so the parent (App.tsx) can update session
+  // state and route to the dashboard.
+  onAuthSuccess?: (result: { token: string; user: any }) => void;
 }
 
-export default function AuthModal({ isOpen, onClose, language, initialRole, initialStep }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, language, initialRole, initialStep, onAuthSuccess }: AuthModalProps) {
   const [step, setStep] = useState<'selection' | 'form'>(initialStep || 'selection');
   const [role, setRole] = useState<'user' | 'employer'>(initialRole || 'user');
   const [showPassword, setShowPassword] = useState(false);
@@ -100,23 +106,25 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
   }[language];
 
   const handleGoogleLogin = async () => {
+    setError(null);
+    setLoading(true);
     try {
-      // Save intended role to localStorage to persist across redirect
-      localStorage.setItem('intended_role', role);
-      
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
-        }
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+
+      const { data } = await api.post('/auth/google', {
+        idToken,
+        role,
+        companyName: role === 'employer' ? formData.companyName : undefined,
       });
-      if (error) throw error;
+
+      localStorage.setItem('token', data.token);
+      onAuthSuccess?.({ token: data.token, user: data.data.user });
+      onClose();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.message || err.message || t.error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -139,44 +147,33 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
     setLoading(true);
 
     try {
-      const { data, error: signupError } = await supabase.auth.signUp({
+      const [firstName, ...rest] = formData.name.trim().split(' ');
+      const lastName = rest.join(' ');
+
+      const { data } = await api.post('/auth/register', {
         email: formData.email,
         password: formData.password,
-        options: {
-          data: {
-            full_name: role === 'user' ? formData.name : null,
-            company_name: role === 'employer' ? formData.companyName : null,
-            role: role
-          }
-        }
+        role: role === 'employer' ? 'RECRUITER' : 'CANDIDATE',
+        firstName: role === 'user' ? (firstName || formData.name) : undefined,
+        lastName: role === 'user' ? (lastName || undefined) : undefined,
+        companyName: role === 'employer' ? formData.companyName : undefined,
       });
 
-      if (signupError) {
-        // Handle specific rate limit error (429)
-        if (signupError.status === 429 || signupError.message?.toLowerCase().includes('rate limit')) {
-          const rateLimitMsg = {
-            en: "Rate limit exceeded. Please try again in 1 hour or check your Inbox/Spam for an existing confirmation email.",
-            fr: "Limite de tentatives atteinte. Réessayez dans 1 heure ou vérifiez vos Emails/Spams pour un mail de confirmation.",
-            ar: "تم تجاوز حد المحاولات. يرجى المحاولة بعد ساعة أو التحقق من بريدك الإلكتروني (بما في ذلك الرسائل المزعجة)."
-          }[language];
-          setError(rateLimitMsg);
-          return;
-        }
-        throw signupError;
-      }
-
-      if (data.user) {
-        // Profile creation is handled by the useEffect in App.tsx or a trigger
-        const successMsg = {
-          en: "Registration successful! Please check your email.",
-          fr: "Inscription réussie ! Veuillez vérifier votre email.",
-          ar: "تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني."
-        }[language];
-        alert(successMsg);
-        onClose();
-      }
+      localStorage.setItem('token', data.token);
+      onAuthSuccess?.({ token: data.token, user: data.data.user });
+      onClose();
     } catch (err: any) {
-      setError(err.message || t.error);
+      const message = err?.response?.data?.message;
+      if (err?.response?.status === 429 || message?.toLowerCase().includes('rate limit')) {
+        const rateLimitMsg = {
+          en: "Rate limit exceeded. Please try again in 1 hour.",
+          fr: "Limite de tentatives atteinte. Réessayez dans 1 heure.",
+          ar: "تم تجاوز حد المحاولات. يرجى المحاولة بعد ساعة."
+        }[language];
+        setError(rateLimitMsg);
+      } else {
+        setError(message || t.error);
+      }
     } finally {
       setLoading(false);
     }

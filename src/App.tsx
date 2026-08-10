@@ -5,6 +5,7 @@ import Logo2 from './components/Logo2';
 import ContactFormDesign from './components/ContactFormDesign';
 import ContactForm from './components/ContactForm';
 import { ArrowLeft, Check, Sparkles, Crown, LayoutDashboard } from 'lucide-react';
+import api from './services/api.ts';
 import { 
   Search, 
   Briefcase, 
@@ -43,11 +44,11 @@ import {
   Phone,
   ShieldCheck
 } from 'lucide-react';
-import { supabase } from './supabase';
-import { db, auth } from './firebase';
-import { signInAnonymously, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
+import { db, auth, googleProvider } from './firebase';
+import { signInAnonymously, signInWithPopup, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import Dashboard from './components/Dashboard';
+import AdminDashboard from './components/admin/AdminDashboard';
 import AuthModal from './components/AuthModal';
 import { translations, Language } from './translations';
 import { WILAYAS, JOB_KEYWORDS } from './constants';
@@ -418,25 +419,6 @@ export default function App() {
     setIsMenuOpen(false);
   };
 
-  const fetchUserProfile = async (uid: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('uid', uid)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-        console.error("Error fetching user profile:", error);
-        return null;
-      }
-      return data;
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-    }
-    return null;
-  };
-
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -481,17 +463,26 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+
+      const { data } = await api.post('/auth/google', {
+        idToken,
+        role: loginRole,
       });
-      
-      if (error) throw error;
-      
-      // Note: Profile creation is usually handled via Supabase Triggers/Functions 
-      // or on the first session load in the useEffect below.
+
+      localStorage.setItem('token', data.token);
+      setUser({
+        uid: data.data.user.id,
+        email: data.data.user.email,
+        displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
+        role: data.data.user.role,
+        recruiterTier: data.data.user.recruiterTier,
+      });
+
+      setIsLoginOpen(false);
+      setIsAuthModalOpen(false);
+      setView('dashboard');
     } catch (error) {
       console.error("Error during Google Login:", error);
       alert("Erreur lors de la connexion avec Google.");
@@ -499,31 +490,46 @@ export default function App() {
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password: loginPassword,
-      });
-      if (error) throw error;
-      setIsLoginOpen(false);
-      setLoginEmail('');
-      setLoginPassword('');
-    } catch (error: any) {
-      console.error("Error during Email Login:", error);
-      setLoginError(language === 'fr' ? 'Email ou mot de passe incorrect.' : 'البريد الإلكتروني أو كلمة المرور غير صحيحة.');
-    }
-  };
+      e.preventDefault();
+      setLoginError(null);
+      try {
+        const { data } = await api.post('/auth/login', {
+          email: loginEmail,
+          password: loginPassword,
+        });
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setView('landing');
-    } catch (error) {
-      console.error("Error during logout:", error);
-    }
-  };
+        localStorage.setItem('token', data.token);
+        setUser({
+          uid: data.data.user.id,
+          email: data.data.user.email,
+          displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
+          role: data.data.user.role,
+          recruiterTier: data.data.user.recruiterTier,
+        });
+
+        setIsLoginOpen(false);
+        setLoginEmail('');
+        setLoginPassword('');
+        setView('dashboard');
+      } catch (error: any) {
+        console.error("Error during Email Login:", error);
+        setLoginError(
+          error?.response?.data?.message ||
+          (language === 'fr' ? 'Email ou mot de passe incorrect.' : 'البريد الإلكتروني أو كلمة المرور غير صحيحة.')
+        );
+      }
+    };
+
+
+   const handleLogout = async () => {
+      try {
+        localStorage.removeItem('token');
+        setUser(null);
+        setView('landing');
+      } catch (error) {
+        console.error("Error during logout:", error);
+      }
+    };
 
   useEffect(() => {
     // Test Firestore connection
@@ -538,70 +544,46 @@ export default function App() {
     };
     testConnection();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user;
-      
-      if (currentUser) {
-        // Sign into Firebase Auth anonymously if not already signed in
-        // This is a bridge to allow Firestore access while using Supabase Auth
-        if (!auth.currentUser) {
-          try {
-            await signInAnonymously(auth);
-          } catch (err) {
-            console.error("Error signing into Firebase anonymously:", err);
-          }
-        }
+    // Bridge: sign into Firebase Auth anonymously (if not already signed
+    // in) so Firestore-backed features (e.g. invitation notifications)
+    // keep working, independent of how the user logged into our own API.
+    if (!auth.currentUser) {
+      signInAnonymously(auth).catch((err) => {
+        console.error("Error signing into Firebase anonymously:", err);
+      });
+    }
 
-        let profile = await fetchUserProfile(currentUser.id);
-        
-        const metadata = currentUser.user_metadata;
-        const savedRole = localStorage.getItem('intended_role');
-        const roleFromMetadata = metadata.role || savedRole || loginRole;
-        
-        // Clean up localStorage
-        if (savedRole) localStorage.removeItem('intended_role');
-        
-        if (!profile) {
-          // Create profile if it doesn't exist
-          const { data: newProfile, error: createError } = await supabase
-            .from('users')
-            .upsert({
-              uid: currentUser.id,
-              email: currentUser.email,
-              display_name: metadata.full_name || currentUser.email,
-              photo_url: metadata.avatar_url,
-              company_name: metadata.company_name,
-              role: roleFromMetadata,
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-          
-          if (!createError) profile = newProfile;
-        } else if (roleFromMetadata === 'employer' && profile.role !== 'employer') {
-          // Update role if needed
-          await supabase
-            .from('users')
-            .update({ role: 'employer' })
-            .eq('uid', currentUser.id);
-          profile.role = 'employer';
-        }
-        
-        setUser({ 
-          uid: currentUser.id,
-          email: currentUser.email,
-          displayName: profile?.display_name || currentUser.user_metadata.full_name,
-          photoURL: profile?.photo_url || currentUser.user_metadata.avatar_url,
-          role: profile?.role || loginRole
-        });
-      } else {
+    // Restore session from our own backend using the JWT saved in
+    // localStorage (set on login/signup/Google sign-in).
+    const restoreSession = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
         setUser((prev) => isDemo ? prev : null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    });
 
-    return () => subscription.unsubscribe();
-  }, [loginRole]);
+      try {
+        const { data } = await api.get('/auth/me');
+        const u = data.data.user;
+        setUser({
+          uid: u.id,
+          email: u.email,
+          displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+          role: u.role,
+          recruiterTier: u.recruiterTier,
+        });
+      } catch (err) {
+        // Token invalid/expired
+        localStorage.removeItem('token');
+        setUser((prev) => isDemo ? prev : null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, []);
 
   useEffect(() => {
     // Cycle through colors for the intro effect
@@ -646,8 +628,12 @@ export default function App() {
     );
   }
 
+  if (user && view === 'dashboard' && (user.role === 'ADMIN' || user.role === 'admin')) {
+    return <AdminDashboard onGoHome={() => setView('landing')} />;
+  }
+
   if ((user || isDemo) && view === 'dashboard') {
-    return <Dashboard user={user} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} />;
+    return <Dashboard user={user} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />;
   }
 
   return (
@@ -1986,6 +1972,16 @@ export default function App() {
         language={language}
         initialRole={modalInitialRole}
         initialStep={modalInitialStep}
+        onAuthSuccess={({ user: u }) => {
+          setUser({
+            uid: u.id,
+            email: u.email,
+            displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+            role: u.role,
+            recruiterTier: u.recruiterTier,
+          });
+          setView('dashboard');
+        }}
       />
     </div>
   );

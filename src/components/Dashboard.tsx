@@ -4,7 +4,10 @@ import CVDirectory from "./recruiter/CVDirectory";
 import QuizResults from "./recruiter/QuizResults";
 import OralPresentationResults from "./recruiter/OralPresentationResults";
 import PreselectedCandidates from "./recruiter/PreselectedCandidates";
-import AIFilterResults from "./recruiter/AIFilterResults";
+import AIFilterResults, { AICandidate } from "./recruiter/AIFilterResults";
+import aiAnalysisService from "../services/aiAnalysis.service";
+import jobService from "../services/job.service";
+import applicationService, { ApplicationStatus } from "../services/application.service";
 import OralPresentationCard from "./candidate/OralPresentationCard";
 import OralPresentationViewer from "./recruiter/OralPresentationViewer";
 import AIQuiz from "./candidate/AIQuiz";
@@ -83,6 +86,8 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { useRef } from "react";
 import { supabase } from '../supabase';
+import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/notifications';
+import candidateProfileService from '../services/candidateProfile.service';
 import { WILAYAS } from '../constants';
 import { translations, Language } from '../translations';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -145,7 +150,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 interface Job {
-  id: number;
+  id: string;
   title: string;
   company: string;
   location: string;
@@ -163,7 +168,7 @@ interface Job {
 interface JobCardProps {
   job: Job;
   isSaved: boolean;
-  onToggleSave: (id: number) => void;
+  onToggleSave: (id: string) => void;
 }
 
 interface Notification {
@@ -230,12 +235,14 @@ export default function Dashboard({
   language, 
   setLanguage,
   onGoHome,
+  onLogout,
   isDemo = false
 }: { 
   user: any; 
   language: Language; 
   setLanguage: (lang: Language) => void; 
   onGoHome: () => void;
+  onLogout?: () => void;
   isDemo?: boolean;
 }) {
   // Use a default user if none provided (especially for demo mode/crash prevention)
@@ -319,18 +326,205 @@ export default function Dashboard({
   const [loadingPreselected, setLoadingPreselected] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
 
-  const loadCandidates = () => {};
+  const mapApplicationStatus = (status: ApplicationStatus): string => {
+    switch (status) {
+      case "PENDING":
+        return "Nouveau";
+      case "REJECTED":
+        return "Refusé";
+      case "HIRED":
+        return "Recruté";
+      default:
+        return "En cours";
+    }
+  };
+
+  const loadCandidates = async () => {
+    try {
+      setLoadingCandidates(true);
+
+      const jobs = await jobService.getRecruiterJobs();
+
+      const groups = await Promise.all(
+        jobs.map(async (job) => {
+          let applications: Awaited<
+            ReturnType<typeof applicationService.getJobApplications>
+          > = [];
+
+          try {
+            applications = await applicationService.getJobApplications(
+              job.id
+            );
+          } catch (error) {
+            console.error(
+              `Failed to load applications for job ${job.id}:`,
+              error
+            );
+          }
+
+          return {
+            jobId: job.id,
+            jobTitle: job.title,
+            publishedAt: job.publishedAt
+              ? new Date(job.publishedAt).toLocaleDateString("fr-FR")
+              : undefined,
+            candidates: applications.map((application) => {
+              const user = application.candidate.user;
+
+              return {
+                id: application.id,
+                candidateId: application.candidate.id,
+                name: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
+                role: application.candidate.currentJobTitle ?? "",
+                avatar: user.avatarUrl ?? undefined,
+                status: mapApplicationStatus(application.status),
+                match: Math.round(application.aiScore ?? 0),
+                exp: application.candidate.yearsExperience
+                  ? `${application.candidate.yearsExperience} ans`
+                  : undefined,
+                location:
+                  application.candidate.city ??
+                  application.candidate.wilaya ??
+                  undefined,
+                email: user.email,
+                phone: user.phone ?? undefined,
+                quizScore: application.quiz?.attempt?.aiScore
+                  ? Math.round(application.quiz.attempt.aiScore)
+                  : undefined,
+                hasPresentation: !!application.oralPresentation?.video,
+                skills: application.candidate.skills ?? [],
+                aiSummary: application.aianalysis?.strengths?.[0],
+                strengths: application.aianalysis?.strengths ?? [],
+                weaknesses: application.aianalysis?.weaknesses ?? [],
+              };
+            }),
+          };
+        })
+      );
+
+      setCandidatesByJob(groups);
+    } catch (error) {
+      console.error("Failed to load candidates:", error);
+      setCandidatesByJob([]);
+    } finally {
+      setLoadingCandidates(false);
+    }
+  };
   const loadQuizResults = () => {};
   const loadPresentations = () => {};
   const loadPreselectedCandidates = () => {};
-  const loadAICandidates = () => {};
+
+  const categorizeMatch = (score: number) => {
+    if (score >= 80) return "Excellent match";
+    if (score >= 60) return "Bon match";
+    return "Match partiel";
+  };
+
+  const loadAICandidates = async () => {
+    try {
+      setLoadingAI(true);
+
+      const { items } = await aiAnalysisService.getRecruiterAnalyses();
+
+      const mapped: AICandidate[] = items.map((analysis) => {
+        const { application } = analysis;
+        const { candidate } = application;
+        const user = candidate.user;
+        const match = Math.round(analysis.overallScore ?? 0);
+
+        return {
+          id: application.id,
+          name: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
+          role: application.job?.title ?? candidate.currentJobTitle ?? "",
+          exp: candidate.yearsExperience
+            ? `${candidate.yearsExperience} years`
+            : "",
+          location: candidate.city ?? candidate.wilaya ?? "",
+          match,
+          category: categorizeMatch(match),
+          summary: analysis.strengths?.[0] ?? "",
+          email: user.email,
+          phone: user.phone ?? "",
+          scores: {
+            exp: Math.round(analysis.experienceScore ?? 0),
+            skills: Math.round(analysis.skillsScore ?? 0),
+            edu: Math.round(analysis.educationScore ?? 0),
+          },
+          strengths: analysis.strengths ?? [],
+          weaknesses: analysis.weaknesses ?? [],
+        };
+      });
+
+      setAiCandidates(mapped);
+    } catch (error) {
+      console.error("Failed to load AI candidates:", error);
+      setAiCandidates([]);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  const updateCandidateStatus = async (
+    candidate: any,
+    status: ApplicationStatus,
+    successMessage: string
+  ) => {
+    if (!candidate?.id) return;
+
+    try {
+      await applicationService.updateStatus(candidate.id, status);
+      await loadCandidates();
+      alert(successMessage);
+    } catch (error: any) {
+      console.error(`Failed to update status to ${status}:`, error);
+      const message = error?.response?.data?.message || error.message;
+      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
+    }
+  };
 
   const handleOpenCV = () => {};
-  const handleInterview = () => {};
-  const handleHire = () => {};
-  const handleReject = () => {};
+  const handleInterview = (candidate: any) =>
+    updateCandidateStatus(
+      candidate,
+      "INTERVIEW",
+      lt(
+        "Candidate moved to interview stage.",
+        "Candidat déplacé vers l'étape entretien.",
+        "تم نقل المرشح إلى مرحلة المقابلة."
+      )
+    );
+  const handleHire = (candidate: any) =>
+    updateCandidateStatus(
+      candidate,
+      "HIRED",
+      lt("Candidate hired!", "Candidat recruté !", "تم توظيف المرشح!")
+    );
+  const handleReject = (candidate: any) =>
+    updateCandidateStatus(
+      candidate,
+      "REJECTED",
+      lt(
+        "Candidate rejected.",
+        "Candidat refusé.",
+        "تم رفض المرشح."
+      )
+    );
   const handleOpenCandidate = () => {};
   const handleViewPresentation = () => {};
+  const handleEmail = (candidate: any) => {
+    if (!candidate?.email) return;
+    window.open(`mailto:${candidate.email}`, "_blank");
+  };
+  const handleShortlist = (candidate: any) =>
+    updateCandidateStatus(
+      candidate,
+      "SHORTLISTED",
+      lt(
+        "Candidate shortlisted.",
+        "Candidat présélectionné.",
+        "تمت إضافة المرشح إلى القائمة المختصرة."
+      )
+    );
 
   const [oralRecordingUrl, setOralRecordingUrl] =
     useState<string | null>(null);
@@ -349,40 +543,38 @@ export default function Dashboard({
     loadPresentations();
     loadPreselectedCandidates();
     loadAICandidates();
+
+    if (user && !isDemo) {
+      candidateProfileService
+        .getMyCV()
+        .then((resume) => {
+          if (resume?.url) {
+            setProfileData(prev => ({ ...prev, resumeUrl: resume.url }));
+          }
+        })
+        .catch(() => null);
+    }
+
     if (!user || isDemo) return;
 
-    // Fetch initial notifications
+    // Fetch notifications from our own API, then poll periodically to
+    // pick up new ones (replaces the old Supabase realtime subscription).
+    let cancelled = false;
     const fetchNotifications = async () => {
       try {
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', user.uid)
-          .order('created_at', { ascending: false });
-        
-        if (!error && data) setNotifications(data);
+        const data = await getNotifications();
+        if (!cancelled) setNotifications(data);
       } catch (err) {
         console.error("Error fetching notifications:", err);
       }
     };
 
     fetchNotifications();
-
-    // Subscribe to real-time notifications
-    const channel = supabase
-      .channel(`public:notifications:user_id=eq.${user.uid}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'notifications',
-        filter: `user_id=eq.${user.uid}`
-      }, payload => {
-        setNotifications(prev => [payload.new as Notification, ...prev]);
-      })
-      .subscribe();
+    const intervalId = setInterval(fetchNotifications, 30000);
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      clearInterval(intervalId);
     };
   }, [user, isDemo]);
 
@@ -397,38 +589,14 @@ export default function Dashboard({
 
     setIsUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.uid}-${Math.random()}.${fileExt}`;
-      const filePath = `cvs/${fileName}`;
+      const resume = await candidateProfileService.uploadCV(file);
 
-      const { error: uploadError } = await supabase.storage
-        .from('cvs')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        if (uploadError.message === 'Failed to fetch') {
-          throw new Error('Impossible de se connecter au serveur de stockage. Veuillez vérifier votre connexion ou la configuration de stockage.');
-        }
-        throw uploadError;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('cvs')
-        .getPublicUrl(filePath);
-
-      // Update user profile or CV record with the new URL
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ resume_url: publicUrl })
-        .eq('uid', user.uid);
-
-      if (updateError) throw updateError;
-
-      setProfileData(prev => ({ ...prev, resumeUrl: publicUrl }));
+      setProfileData(prev => ({ ...prev, resumeUrl: resume?.url || '' }));
       alert(lt('CV uploaded successfully!', 'CV téléchargé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
     } catch (error: any) {
       console.error('Error uploading file:', error);
-      alert(lt(`Error: ${error.message}`, `Erreur: ${error.message}`, `خطأ: ${error.message}`));
+      const message = error?.response?.data?.message || error.message;
+      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
     } finally {
       setIsUploading(false);
     }
@@ -533,31 +701,8 @@ export default function Dashboard({
     return () => unsubscribe();
   }, [user, isDemo]);
 
-  // Firebase Saved Jobs Logic
-  useEffect(() => {
-    if (!user || isDemo) return;
-
-    // Skip real Firestore logic if user is not authenticated in Firebase
-    if (!auth.currentUser) return;
-
-    const q = query(
-      collection(db, 'saved_jobs'),
-      where('userId', '==', user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const jobIds = snapshot.docs.map(doc => doc.data().jobId);
-      setSavedJobs(jobIds);
-    }, (error) => {
-      if (error.code === 'permission-denied') {
-        console.warn("Firestore permissions denied for saved_jobs - expected in demo mode without auth");
-      } else {
-        console.error("Error fetching saved jobs:", error);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [user, isDemo]);
+  // Saved jobs are currently client-side only (see toggleSaveJob) since
+  // there is no backend endpoint for them yet.
 
   const handleSendInvite = async () => {
     if (!inviteEmail || !user) return;
@@ -647,87 +792,6 @@ export default function Dashboard({
     }
   };
 
-  const mockaiCandidates = [
-    {
-      id: 1,
-      name: 'Ahmed Benali',
-      role: 'Développeur Full Stack',
-      exp: '5 ans',
-      location: 'Alger',
-      match: 92,
-      category: 'Excellent match',
-      summary: lt(
-        'Excellent candidate with solid Full Stack experience. Profile very well suited to the job requirements.',
-        'Excellent candidat avec une solide expérience Full Stack. Profil très adapté aux exigences du poste.',
-        'ممتاز مع خبرة قوية في Full Stack. الملف الشخصي مناسب جداً لمتطلبات الوظيفة.'
-      ),
-      email: 'ahmed.benali@email.dz',
-      phone: '+213 550 12 34 56',
-      scores: { exp: 95, skills: 90, edu: 88 },
-      strengths: ['5 ans d\'expérience Full Stack', 'Compétences React, Node.js, PostgreSQL', 'Basé à Alger — aucune relocalisation nécessaire'],
-      weaknesses: ['Pas d\'expérience cloud mentionnée']
-    },
-    {
-      id: 2,
-      name: 'Fatima Zohra Kaci',
-      role: 'Ingénieur Logiciel',
-      exp: '3 ans',
-      location: 'Oran',
-      match: 87,
-      category: 'Bon match',
-      summary: 'Très bon profil technique avec une expérience pertinente en ingénierie logicielle.',
-      email: 'f.kaci@email.dz',
-      phone: '+213 660 98 76 54',
-      scores: { exp: 85, skills: 92, edu: 84 },
-      strengths: ['Excellentes compétences techniques', 'Formation solide', 'Expérience en entreprise'],
-      weaknesses: ['Expérience légèrement inférieure au souhaité']
-    },
-    {
-      id: 3,
-      name: 'Mohammed Saidi',
-      role: 'Développeur Backend',
-      exp: '7 ans',
-      location: 'Constantine',
-      match: 78,
-      category: 'Bon match',
-      summary: 'Profil senior avec une grande expertise backend, bien que moins polyvalent sur le frontend.',
-      email: 'm.saidi@email.dz',
-      phone: '+213 770 11 22 33',
-      scores: { exp: 98, skills: 75, edu: 70 },
-      strengths: ['Expertise backend confirmée', '7 ans d\'expérience', 'Stabilité professionnelle'],
-      weaknesses: ['Manque de compétences frontend modernes']
-    },
-    {
-      id: 4,
-      name: 'Youcef Hamdi',
-      role: 'Développeur Mobile',
-      exp: '4 ans',
-      location: 'Sétif',
-      match: 68,
-      category: 'Match partiel',
-      summary: 'Candidat intéressant mais dont le profil est plus orienté mobile que full stack web.',
-      email: 'y.hamdi@email.dz',
-      phone: '+213 555 44 33 22',
-      scores: { exp: 70, skills: 65, edu: 72 },
-      strengths: ['Expérience mobile solide', 'Bonne autonomie'],
-      weaknesses: ['Compétences web à renforcer', 'Peu d\'expérience en équipe agile']
-    },
-    {
-      id: 5,
-      name: 'Amina Bouzid',
-      role: 'Data Scientist',
-      exp: '2 ans',
-      location: 'Alger',
-      match: 52,
-      category: 'Match partiel',
-      summary: 'Profil très junior avec une spécialisation data qui s\'éloigne du besoin de développement full stack.',
-      email: 'amina.b@email.dz',
-      phone: '+213 551 22 33 44',
-      scores: { exp: 45, skills: 55, edu: 60 },
-      strengths: ['Potentiel d\'apprentissage élevé', 'Rigueur analytique'],
-      weaknesses: ['Manque d\'expérience en développement web', 'Profil trop spécialisé data']
-    }
-  ];
 
   // -----------------------------------------------------------------------
   // ⚠️ FILE TRUNCATED HERE IN YOUR ORIGINAL PASTE
@@ -1107,47 +1171,11 @@ export default function Dashboard({
     ]
   });
 
-  const [candidatesByJob, setCandidatesByJob] = useState([
-    {
-      jobTitle: 'Senior React Developer',
-      publishedAt: '17/08/2026',
-      candidates: [
-        { name: 'Ahmed Benali', role: 'Fullstack Developer', exp: '5 ans', match: 95, avatar: 'https://i.pravatar.cc/150?u=ahmed', email: 'ahmed.benali@email.dz', phone: '+213 550 12 34 56', status: 'Nouveau' },
-        { name: 'Karim Zidi', role: 'DevOps Engineer', exp: '7 ans', match: 92, avatar: 'https://i.pravatar.cc/150?u=karim', email: 'k.zidi@email.dz', phone: '+213 772 55 66 77', status: 'En cours' },
-        { name: 'Sami Mansour', role: 'Frontend Engineer', exp: '4 ans', match: 89, avatar: 'https://i.pravatar.cc/150?u=sami', email: 's.mansour@email.dz', phone: '+213 554 11 22 33', status: 'Nouveau' },
-      ]
-    },
-    {
-      jobTitle: 'UX Designer',
-      publishedAt: '15/08/2026',
-      candidates: [
-        { name: 'Sarah Mansouri', role: 'UI/UX Designer', exp: '3 ans', match: 88, avatar: 'https://i.pravatar.cc/150?u=sarah', email: 's.mansouri@email.dz', phone: '+213 661 22 33 44', status: 'Nouveau' },
-        { name: 'Lina Kaci', role: 'Product Manager', exp: '4 ans', match: 85, avatar: 'https://i.pravatar.cc/150?u=lina', email: 'l.kaci@email.dz', phone: '+213 553 88 99 00', status: 'En cours' },
-        { name: 'Omar Sy', role: 'Visual Designer', exp: '5 ans', match: 82, avatar: 'https://i.pravatar.cc/150?u=omar', email: 'o.sy@email.dz', phone: '+213 552 33 44 55', status: 'Nouveau' },
-      ]
-    },
-    {
-      jobTitle: 'Marketing Manager',
-      publishedAt: '10/08/2026',
-      candidates: [
-        { name: 'Yacine Brahimi', role: 'Growth Hacker', exp: '6 ans', match: 91, avatar: 'https://i.pravatar.cc/150?u=yacine', email: 'y.brahimi@email.dz', phone: '+213 662 44 55 66', status: 'Nouveau' },
-        { name: 'Amel Bent', role: 'Content Strategist', exp: '2 ans', match: 76, avatar: 'https://i.pravatar.cc/150?u=amel', email: 'a.bent@email.dz', phone: '+213 551 77 88 99', status: 'Refusé' },
-        { name: 'Sofiane H.', role: 'SEO Specialist', exp: '3 ans', match: 84, avatar: 'https://i.pravatar.cc/150?u=sofiane', email: 's.h@email.dz', phone: '+213 771 22 33 44', status: 'En cours' },
-      ]
-    },
-    {
-      jobTitle: 'Data Scientist',
-      publishedAt: '05/08/2026',
-      candidates: [
-        { name: 'Zinedine Z.', role: 'ML Engineer', exp: '4 ans', match: 94, avatar: 'https://i.pravatar.cc/150?u=zizou', email: 'z.z@email.dz', phone: '+213 550 10 10 10', status: 'Nouveau' },
-        { name: 'Kylian M.', role: 'Data Analyst', exp: '2 ans', match: 81, avatar: 'https://i.pravatar.cc/150?u=kylian', email: 'k.m@email.dz', phone: '+213 660 07 07 07', status: 'Nouveau' },
-      ]
-    }
-  ]);
+  const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
 
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [savedJobs, setSavedJobs] = useState<number[]>([]);
+  const [savedJobs, setSavedJobs] = useState<string[]>([]);
   const [postedJobs, setPostedJobs] = useState([
     { title: 'Senior React Developer', apps: 45, status: 'Active', date: '12/03/2024' },
     { title: 'UX Designer', apps: 28, status: 'Active', date: '10/03/2024' },
@@ -1201,31 +1229,19 @@ export default function Dashboard({
     setActiveTab('manage-jobs');
   };
   const cvPreviewRef = useRef<HTMLDivElement>(null);
-  const handleApplyToJob = async (jobTitle: string) => {
+  const handleApplyToJob = async (jobId: string) => {
     if (!user) {
       alert(language === 'ar' ? 'يرجى تسجيل الدخول للتقديم.' : 'Veuillez vous connecter pour postuler.');
       return;
     }
 
     try {
-      // Find the job object from MOCK_JOBS
-      const job = MOCK_JOBS.find(j => j.title === jobTitle || j.title === jobTitle);
-      
-      const applicationData = {
-        jobId: job?.id || 0,
-        candidateId: user.uid,
-        candidateName: user.displayName || user.email,
-        candidateEmail: user.email,
-        candidatePhone: user.phone || '', // Need to ensure phone is in user profile
-        resumeUrl: user.resumeUrl || '', // Assuming it's in the profile
-        status: 'pending',
-        appliedAt: serverTimestamp()
-      };
-
-      await addDoc(collection(db, 'applications'), applicationData);
-      alert(language === 'ar' ? `تم إرسال طلبك لوظيفة ${jobTitle} بنجاح!` : `Votre candidature pour le poste de ${jobTitle} a été envoyée avec succès !`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'applications');
+      await applicationService.applyToJob(jobId);
+      alert(language === 'ar' ? 'تم إرسال طلبك بنجاح!' : 'Votre candidature a été envoyée avec succès !');
+    } catch (error: any) {
+      console.error('Error applying to job:', error);
+      const message = error?.response?.data?.message || error.message;
+      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
     }
   };
 
@@ -1236,133 +1252,87 @@ export default function Dashboard({
   const [selectedSalary, setSelectedSalary] = useState('');
   const [selectedSector, setSelectedSector] = useState('');
 
-  const toggleSaveJob = async (id: number) => {
-    if (!user) return;
-
-    const savedJobId = `${user.uid}_${id}`;
-    const docRef = doc(db, 'saved_jobs', savedJobId);
-
-    if (savedJobs.includes(id)) {
-      try {
-        await deleteDoc(docRef);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, 'saved_jobs');
-      }
-    } else {
-      try {
-        await setDoc(docRef, {
-          userId: user.uid,
-          jobId: id,
-          createdAt: serverTimestamp()
-        });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, 'saved_jobs');
-      }
-    }
+  // NOTE: there is no backend endpoint for saved jobs yet (the SavedJob
+  // Prisma model exists but has no controller/route). This keeps saves
+  // in-memory for the session rather than writing to the old, disconnected
+  // Firestore 'saved_jobs' collection. Persisting across sessions/devices
+  // needs a real backend endpoint.
+  const toggleSaveJob = (id: string) => {
+    setSavedJobs((prev) =>
+      prev.includes(id) ? prev.filter((j) => j !== id) : [...prev, id]
+    );
   };
 
-  const MOCK_JOBS: Job[] = [
-    {
-      id: 1,
-      title: language === 'ar' ? 'مطور فول ستاك سينيور' : 'Développeur Fullstack Senior',
-      company: 'TechDz Solutions',
-      location: language === 'ar' ? 'الجزائر' : 'Alger',
-      type: 'CDI',
-      remote: language === 'ar' ? 'عن بعد' : 'Télétravail',
-      salary: '150k - 200k DZD',
-      salaryMin: 150000,
-      description: language === 'ar'
-        ? 'نحن نبحث عن مطور شغوف للانضمام إلى فريقنا الديناميكي والعمل على مشاريع دولية مبتكرة باستخدام أحدث التقنيات.'
-        : 'Nous recherchons un développeur passionné pour rejoindre notre équipe dynamique et travailler sur des projets d\'envergure internationale avec les dernières technologies.',
-      requirements: ['React/Node.js', 'TypeScript', 'AWS', 'Docker'],
-      benefits: language === 'ar'
-        ? ['تأمين صحي ممتاز', 'مكافأة سنوية', 'ساعات عمل مرنة']
-        : ['Assurance santé premium', 'Bonus annuel', 'Horaires flexibles'],
-      logo: 'https://images.unsplash.com/photo-1549923746-c502d488b3ea?auto=format&fit=crop&q=80&w=200',
-      sector: language === 'ar' ? 'المعلوماتية / التكنولوجيا' : 'Informatique / Technologie'
-    },
-    {
-      id: 2,
-      title: 'UX/UI Designer',
-      company: 'Creative Studio',
-      location: language === 'ar' ? 'وهران' : 'Oran',
-      type: 'CDD',
-      remote: language === 'ar' ? 'هجين' : 'Hybride',
-      salary: '120k - 160k DZD',
-      salaryMin: 120000,
-      description: language === 'ar'
-        ? 'انضم إلى استوديو الإبداع لدينا لتصميم واجهات مستخدم استثنائية وتجارب مستخدم فريدة لعملائنا في قطاع التكنولوجيا المالية.'
-        : 'Rejoignez notre studio créatif pour concevoir des interfaces utilisateur exceptionnelles et des expériences uniques pour nos clients fintech.',
-      requirements: ['Figma', 'Design System', 'Prototyping', 'User Research'],
-      benefits: language === 'ar'
-        ? ['تكوين مستمر', 'معدات Apple', 'خرجات الفريق']
-        : ['Formation continue', 'Équipement Apple fourni', 'Sorties d\'équipe'],
-      logo: 'https://images.unsplash.com/photo-1572044162444-ad60f128bde3?auto=format&fit=crop&q=80&w=200',
-      sector: language === 'ar' ? 'التصميم / الإبداع' : 'Design / Création'
-    },
-    {
-      id: 3,
-      title: language === 'ar' ? 'رئيس مشروع IT' : 'Chef de Projet IT',
-      company: 'Global Services',
-      location: language === 'ar' ? 'قسنطينة' : 'Constantine',
-      type: 'CDI',
-      remote: language === 'ar' ? 'في الموقع' : 'Sur site',
-      salary: '180k - 250k DZD',
-      salaryMin: 180000,
-      description: language === 'ar'
-        ? 'إدارة مشاريع التحول الرقمي المعقدة للمؤسسات المالية الكبرى في الجزائر وقيادة فرق تقنية متعددة التخصصات.'
-        : 'Gérez des projets complexes de transformation digitale pour des institutions financières majeures en Algérie et dirigez des équipes pluridisciplinaires.',
-      requirements: ['PMP/Agile', 'Project Management', 'Leadership', 'Jira'],
-      benefits: language === 'ar'
-        ? ['سيارة عمل', 'خطة تقاعد', 'قسائم طعام']
-        : ['Voiture de fonction', 'Plan de retraite', 'Tickets restaurant'],
-      logo: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=200',
-      sector: language === 'ar' ? 'الإدارة / التسيير' : 'Management / Gestion'
-    },
-    {
-      id: 4,
-      title: language === 'ar' ? 'متربص في التسويق الرقمي' : 'Stagiaire Marketing Digital',
-      company: 'Media Pulse',
-      location: language === 'ar' ? 'الجزائر' : 'Alger',
-      type: 'Stage',
-      remote: language === 'ar' ? 'هجين' : 'Hybride',
-      salary: '30k - 50k DZD',
-      salaryMin: 30000,
-      description: language === 'ar'
-        ? 'تعلم أساسيات التسويق الرقمي وإدارة الشبكات الاجتماعية داخل وكالة سريعة النمو ومبدعة.'
-        : 'Apprenez les ficelles du marketing digital et du community management au sein d\'une agence créative en pleine croissance.',
-      requirements: ['Marketing', 'Copywriting', 'Social Media', 'Canva'],
-      benefits: language === 'ar'
-        ? ['إمكانية التوظيف', 'توجيه', 'أجواء شركة ناشئة']
-        : ['Possibilité de recrutement', 'Mentorat', 'Ambiance startup'],
-      logo: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=200',
-      sector: language === 'ar' ? 'التسويق / الاتصال' : 'Marketing / Communication'
-    },
-    {
-      id: 5,
-      title: language === 'ar' ? 'محاسب مؤكد' : 'Comptable Confirmé',
-      company: 'Fiduciaire DZ',
-      location: language === 'ar' ? 'سطيف' : 'Sétif',
-      type: 'CDI',
-      remote: language === 'ar' ? 'في الموقع' : 'Sur site',
-      salary: '90k - 130k DZD',
-      salaryMin: 90000,
-      description: language === 'ar'
-        ? 'إدارة محفظة عملاء متنوعة لمكتب محاسبة مشهور وضمان الامتثال للمعايير المحاسبية والضريبية.'
-        : 'Gérez un portefeuille clients diversifié pour un cabinet comptable de renom et assurez la conformité fiscale.',
-      requirements: ['Accounting', 'Taxation', 'ERP Software', 'Audit'],
-      benefits: language === 'ar'
-        ? ['استقرار', 'علاوات الأداء', 'تأمين']
-        : ['Stabilité', 'Primes de performance', 'Assurance'],
-      logo: 'https://images.unsplash.com/photo-1454165833767-027ffea9e77b?auto=format&fit=crop&q=80&w=200',
-      sector: language === 'ar' ? 'المالية / المحاسبة' : 'Finance / Comptabilité'
-    }
-  ];
+
+  // Maps the backend JobType enum to the localized label used by the
+  // job-type filter dropdown (best-effort -- the backend has 6 enum
+  // values, the filter UI has 5 French/Arabic labels).
+  const mapJobType = (type: string): string => {
+    const map: Record<string, [string, string]> = {
+      FULL_TIME: ['CDI', 'دوام كامل'],
+      CONTRACT: ['CDD', 'عقد محدد المدة'],
+      TEMPORARY: ['CDD', 'عقد محدد المدة'],
+      PART_TIME: ['CDI', 'دوام كامل'],
+      INTERNSHIP: ['Stage', 'تدريب'],
+      FREELANCE: ['Freelance', 'عمل حر'],
+    };
+    const [fr, ar] = map[type] || [type, type];
+    return language === 'ar' ? ar : fr;
+  };
+
+  const mapBackendJobToFrontend = (job: any): Job => ({
+    id: job.id,
+    title: job.title,
+    company: job.company?.name || '',
+    location: job.location,
+    type: mapJobType(job.type),
+    remote: job.remote
+      ? (language === 'ar' ? 'عن بعد' : 'Télétravail')
+      : (language === 'ar' ? 'في الموقع' : 'Sur site'),
+    salary: job.salaryMin
+      ? `${Math.round(job.salaryMin / 1000)}k${job.salaryMax ? ` - ${Math.round(job.salaryMax / 1000)}k` : ''} ${job.currency || 'DZD'}`
+      : (language === 'ar' ? 'غير محدد' : 'Non précisé'),
+    salaryMin: job.salaryMin || 0,
+    description: job.description,
+    requirements: [],
+    benefits: [],
+    logo: job.company?.logo?.url || 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&q=80&w=200',
+    sector: job.category?.name || '',
+  });
+
+  const [realJobs, setRealJobs] = useState<Job[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadJobs = async () => {
+      try {
+        setLoadingJobs(true);
+        const jobs = await jobService.getAllJobs();
+        if (!cancelled) {
+          setRealJobs(jobs.map(mapBackendJobToFrontend));
+        }
+      } catch (error) {
+        console.error('Failed to load jobs:', error);
+        if (!cancelled) setRealJobs([]);
+      } finally {
+        if (!cancelled) setLoadingJobs(false);
+      }
+    };
+
+    loadJobs();
+    return () => { cancelled = true; };
+  }, [language]);
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      onGoHome();
+      if (onLogout) {
+        onLogout();
+      } else {
+        localStorage.removeItem('token');
+        onGoHome();
+      }
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -2029,11 +1999,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       handleInterview={handleInterview}
       handleHire={handleHire}
       handleReject={handleReject}
+      handleEmail={handleEmail}
+      handleShortlist={handleShortlist}
       // NEW — tier-gated visibility inside the Candidatures view
       canViewOralPresentation={access.oralPresentation}
       canViewPreselection={access.preselection}
       onRequestUpgrade={() => setActiveTab('subscription')}
-      // handleEmail, handleShortlist, handleViewQuiz omitted — not defined yet
+      // handleViewQuiz omitted — no per-candidate quiz detail modal yet
     />
   );
         // case 'candidates':
@@ -2379,905 +2351,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
             </div>
           );
-        case 'ai-filter': {
-  // Free tier never sees the AI Filter feature at all
-  if (!access.aiFilterAnalyse) {
-    return (
-      <TierLockedScreen
-        title="Filtrage IA des candidatures"
-        description="Laissez Gemini analyser et classer automatiquement vos candidats par pertinence. Disponible dès le plan Premium."
-        requiredTier="Premium"
-        icon={Cpu}
-        onUpgrade={() => setActiveTab('subscription')}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-10">
-      <div className="bg-[#fcfdf2] rounded-[2rem] p-8 border border-blue-50 flex items-center justify-between gap-6">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-[#173E7D] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Zap size={32} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-black text-[#173E7D]">Recrutement Augmenté par l'IA</h2>
-            <p className="text-gray-500 font-medium font-sans">Automatisez la pré-qualification de vos candidats et découvrez leur potentiel.</p>
-          </div>
-        </div>
-        <div className="hidden md:block">
-          <PremiumBadge />
-        </div>
-      </div>
-
-      {/* Sub-Tabs for AI Filter category */}
-      <div className="flex border-b border-gray-100 gap-8">
-        <button
-          onClick={() => setAiFilterSubTab('analyse')}
-          className={`pb-4 text-sm font-black uppercase tracking-widest relative transition-all ${
-            aiFilterSubTab === 'analyse' ? 'text-[#173E7D]' : 'text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          📊 Analyse des CVs (Gemini)
-          {aiFilterSubTab === 'analyse' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#173E7D] rounded-full" />}
-        </button>
-        <button
-          onClick={() => (access.aiFilterPlayground ? setAiFilterSubTab('playground') : setActiveTab('subscription'))}
-          className={`pb-4 text-sm font-black uppercase tracking-widest relative flex items-center gap-2 transition-all ${
-            aiFilterSubTab === 'playground' ? 'text-[#F68D58]' : 'text-gray-400 hover:text-[#F68D58]'
-          } ${!access.aiFilterPlayground ? 'opacity-60' : ''}`}
-        >
-          {access.aiFilterPlayground ? (
-            <Sparkles size={16} className="text-current animate-pulse" />
-          ) : (
-            <Lock size={14} className="text-current" />
-          )}
-          🧪 Labo de Pré-sélection & Outils IA
-          {!access.aiFilterPlayground && (
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] text-[8px] font-black uppercase tracking-widest">
-              Corporate
-            </span>
-          )}
-          {aiFilterSubTab === 'playground' && <motion.div layoutId="aiSubTabUnderline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#F68D58] rounded-full" />}
-        </button>
-      </div>
-
-      {aiFilterSubTab === 'analyse' ? (
-        /* Main Gemini Comparative Analysis Flow */
-        aiFilterStep === 'select' ? (
-          <div className="space-y-12">
-            {/* Selection Card - Step by Step Flow */}
-            <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-900/5 space-y-16 relative overflow-hidden">
-              {/* Decorative Background */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 opacity-50 blur-3xl"></div>
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-50 rounded-full -ml-32 -mb-32 opacity-50 blur-3xl"></div>
-
-              <div className="relative z-10 space-y-16">
-                {/* Step 1: Select Job */}
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-[#173E7D] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-blue-900/20">1</div>
-                    <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Sélectionner l'offre à analyser</h3>
-                  </div>
-                  <div className="relative group max-w-2xl">
-                    <select 
-                      value={selectedJobForAI}
-                      onChange={(e) => setSelectedJobForAI(e.target.value)}
-                      className="w-full px-8 py-6 rounded-[2rem] border-2 border-gray-50 outline-none focus:border-[#173E7D] focus:ring-8 focus:ring-blue-50 transition-all bg-gray-50/50 text-gray-700 font-bold appearance-none cursor-pointer text-lg"
-                    >
-                      <option>Développeur Full Stack — 23 candidatures</option>
-                      <option>Designer UI/UX — 12 candidatures</option>
-                      <option>Chef de Projet — 45 candidatures</option>
-                    </select>
-                    <ChevronDown className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-[#173E7D] transition-colors" size={24} />
-                  </div>
-                </div>
-
-                {/* Step 2: AI Priorities */}
-                <div className="space-y-8 pt-10 border-t border-gray-50">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-[#F68D58] text-white rounded-xl flex items-center justify-center font-black shadow-lg shadow-orange-900/20">2</div>
-                    <h3 className="text-lg font-black text-[#173E7D] uppercase tracking-widest">Définir les priorités de l'IA</h3>
-                  </div>
-                  <div className="space-y-6">
-                    <p className="text-sm text-gray-400 font-medium max-w-xl font-sans">Sélectionnez les éléments que Gemini doit valoriser lors de l'analyse comparative des CV pour cette offre spécifique.</p>
-                    
-                    <div className="flex flex-wrap gap-4">
-                      {availablePriorities.map((priority) => {
-                        const isSelected = aiPriorities.includes(priority);
-                        return (
-                          <button
-                            key={priority}
-                            onClick={() => {
-                              if (isSelected) {
-                                setAiPriorities(aiPriorities.filter(p => p !== priority));
-                              } else {
-                                setAiPriorities([...aiPriorities, priority]);
-                              }
-                            }}
-                            className={`px-8 py-4 rounded-2xl text-sm font-black transition-all border-2 ${
-                              isSelected 
-                                ? 'bg-[#173E7D] text-white border-[#173E7D] shadow-xl shadow-blue-900/20 scale-105' 
-                                : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'
-                            }`}
-                          >
-                            {priority}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 3: Action Button */}
-                <div className="pt-10 border-t border-gray-50 flex justify-center">
-                  <button 
-                    onClick={() => {
-                      setIsAnalyzing(true);
-                      setTimeout(() => {
-                        setIsAnalyzing(false);
-                        setAiFilterStep('results');
-                      }, 2000);
-                    }}
-                    disabled={isAnalyzing}
-                    className="group relative bg-[#0F172A] text-white px-16 py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] hover:bg-black hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-gray-900/30 flex items-center justify-center gap-6 disabled:opacity-50 min-w-[400px] overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    {isAnalyzing ? (
-                      <>
-                        <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span className="relative z-10">Analyse Intelligente...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-2xl relative z-10">🚀</span>
-                        <span className="relative z-10">Lancer l'analyse prédictive</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Initial List Header */}
-            <div className="flex items-center gap-4 px-4 pt-16">
-              <div className="h-px flex-1 bg-gray-100"></div>
-              <span className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Candidatures en attente</span>
-              <div className="h-px flex-1 bg-gray-100"></div>
-            </div>
-
-            {/* Initial List */}
-            <div className="space-y-6">
-              {mockaiCandidates.map((candidate) => (
-                <div key={candidate.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-gray-200 transition-all">
-                  <div className="flex items-center gap-6">
-                    <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
-                      <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
-                      <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
-                    </div>
-                  </div>
-                  <ChevronDown className="text-gray-300 group-hover:text-gray-400 transition-colors" size={20} />
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {[
-                { label: 'Excellent match', count: 2, color: 'emerald', active: true },
-                { label: 'Bon match', count: 2, color: 'blue', active: false },
-                { label: 'Match partiel', count: 1, color: 'orange', active: false },
-                { label: 'Match faible', count: 0, color: 'red', active: false },
-              ].map((stat, i) => (
-                <div key={i} className={`bg-white p-6 rounded-[2rem] border-2 transition-all text-center space-y-1 ${stat.active ? 'border-[#173E7D] shadow-lg' : 'border-gray-100'}`}>
-                  <div className="text-3xl font-black text-[#173E7D]">{stat.count}</div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Results List */}
-            <div className="space-y-6">
-              {mockaiCandidates.map((candidate) => (
-                <div key={candidate.id} className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden transition-all">
-                  <div 
-                    className="p-8 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 transition-colors"
-                    onClick={() => setExpandedCandidateId(expandedCandidateId === candidate.id ? null : candidate.id)}
-                  >
-                    <div className="flex items-center gap-6">
-                      <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden">
-                        <img src={`https://i.pravatar.cc/150?u=${candidate.id}`} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-black text-[#173E7D]">{candidate.name}</h4>
-                        <p className="text-sm text-gray-400 font-bold font-sans">{candidate.role} • {candidate.exp} • {candidate.location}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-8">
-                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                        candidate.category === 'Excellent match' ? 'bg-emerald-50 text-emerald-600' :
-                        candidate.category === 'Bon match' ? 'bg-blue-50 text-blue-600' :
-                        'bg-orange-50 text-orange-600'
-                      }`}>
-                        {candidate.category}
-                      </div>
-                      <div className="flex items-center gap-4">
-                        {candidate.match < 60 ? (
-                          <div className="relative w-12 h-12 flex items-center justify-center">
-                            <svg className="w-full h-full -rotate-90">
-                              <circle cx="24" cy="24" r="20" fill="none" stroke="#FEE2E2" strokeWidth="4" />
-                              <circle cx="24" cy="24" r="20" fill="none" stroke="#F97316" strokeWidth="4" strokeDasharray={125.6} strokeDashoffset={125.6 * (1 - candidate.match / 100)} strokeLinecap="round" />
-                            </svg>
-                            <span className="absolute text-xs font-black text-orange-600">{candidate.match}%</span>
-                          </div>
-                        ) : (
-                          <span className="text-xl font-black text-[#173E7D]">{candidate.match}%</span>
-                        )}
-                        {expandedCandidateId === candidate.id ? <ChevronUp className="text-gray-400" size={20} /> : <ChevronDown className="text-gray-400" size={20} />}
-                      </div>
-                    </div>
-                  </div>
-
-                  <AnimatePresence>
-                    {expandedCandidateId === candidate.id && (
-                      <motion.div 
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-gray-50"
-                      >
-                        <div className="p-10 space-y-10">
-                          <p className="text-gray-600 font-medium leading-relaxed font-sans">{candidate.summary}</p>
-                          
-                          {/* Score Bars */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-                            {[
-                              { label: 'Expérience', score: candidate.scores?.exp || 0 },
-                              { label: 'Compétences', score: candidate.scores?.skills || 0 },
-                              { label: 'Formation', score: candidate.scores?.edu || 0 },
-                            ].map((s, i) => (
-                              <div key={i} className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{s.label}</span>
-                                  <span className="text-sm font-black text-[#173E7D]">{s.score}%</span>
-                                </div>
-                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-gray-300 rounded-full" style={{ width: `${s.score}%` }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Strengths & Points of Attention */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                            <div className="space-y-4">
-                              <h5 className="flex items-center gap-2 text-sm font-black text-emerald-600 uppercase tracking-widest">
-                                <CheckSquare size={16} />
-                                Points forts
-                              </h5>
-                              <ul className="space-y-3 font-sans">
-                                {candidate.strengths?.map((s, i) => (
-                                  <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                    {s}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="space-y-4">
-                              <h5 className="flex items-center gap-2 text-sm font-black text-orange-600 uppercase tracking-widest">
-                                <AlertTriangle size={16} />
-                                Points d'attention
-                              </h5>
-                              <ul className="space-y-3 font-sans">
-                                {candidate.weaknesses?.map((w, i) => (
-                                  <li key={i} className="flex items-start gap-3 text-sm text-gray-600 font-medium">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
-                                    {w}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex flex-wrap items-center gap-4 pt-6 border-t border-gray-50 font-sans">
-                            <button 
-                              onClick={() => {
-                                setSelectedCandidateCV(candidate);
-                                setCandidateModalTab('ai-screening');
-                              }}
-                              className="bg-[#F68D58] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#e57d47] transition-all shadow-lg shadow-orange-500/10"
-                            >
-                              <Sparkles size={16} />
-                              Consulter les Audios & Soft Skills IA
-                            </button>
-                            <button className="bg-[#173E7D] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[#0c244c] transition-all">
-                              <Mail size={16} />
-                              Contacter
-                            </button>
-                            <button className="bg-white border border-gray-200 text-[#173E7D] px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-gray-50 transition-all">
-                              <ClipboardList size={16} />
-                              Présélectionner
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-center pt-8">
-              <button 
-                onClick={() => setAiFilterStep('select')}
-                className="text-sm font-black text-gray-400 uppercase tracking-widest hover:text-[#173E7D] transition-colors"
-              >
-                Retour à la sélection
-              </button>
-            </div>
-          </div>
-        )
-      ) : access.aiFilterPlayground ? (
-        /* Interactive Laboratory Playground for Recruiter to Live-Test AI features — Corporate only */
-        <div className="space-y-10 animate-fadeIn">
-          {/* Selector of which simulator */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { id: 'interview', label: '1. Assistant Vocal IA', desc: 'Sélecteur de questions, synthèses locales algériennes', color: 'blue', icon: Phone },
-              { id: 'quiz', label: '2. Quiz Soft Skills', desc: 'Sénarios quotidiens de l\'entreprise en Algérie', color: 'amber', icon: Award },
-              { id: 'antighost', label: '3. Filtre Anti-Ghost', desc: 'Pre-screening audio 30s motivant', color: 'orange', icon: Mic },
-            ].map((item) => {
-              const isActive = playgroundTab === item.id;
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setPlaygroundTab(item.id as any)}
-                  className={`p-6 rounded-[2rem] border-2 transition-all text-left flex items-start gap-4 ${
-                    isActive 
-                      ? 'bg-white border-[#173E7D] shadow-xl shadow-blue-900/5 hover:-translate-y-0.5' 
-                      : 'bg-white/40 border-gray-100 opacity-80 hover:opacity-100 hover:border-gray-200'
-                  }`}
-                >
-                  <div className={`p-4 rounded-xl ${
-                    item.color === 'blue' ? 'bg-blue-50 text-blue-600' : 
-                    item.color === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-orange-50 text-[#F68D58]'
-                  }`}>
-                    <Icon size={22} />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-gray-800 text-sm">{item.label}</h4>
-                    <p className="text-xs text-gray-400 font-medium font-sans mt-1 leading-relaxed">{item.desc}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Simulator container card */}
-          <div className="bg-white rounded-[3.5rem] p-12 border border-gray-100 shadow-xl shadow-blue-100/10 space-y-8 relative overflow-hidden">
-            {playgroundTab === 'interview' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-[#173E7D]">🎙️ Simulateur de l'Entretien Vocal Pré-qualificatif IA</h3>
-                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Découvrez et testez en temps réel l'appel de pré-sélection passé en Darija algérienne décontractée et Français.</p>
-                  </div>
-                  <span className="px-3 py-1 bg-blue-50 text-[#173E7D] border border-blue-100 text-[9px] font-black uppercase rounded-full tracking-wider">Linguistique Locale Algérie</span>
-                </div>
-
-                {vocalSimState === 'idle' ? (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center">
-                    <div className="w-20 h-20 bg-blue-50 text-[#173E7D] border border-blue-100 rounded-full flex items-center justify-center animate-bounce">
-                      <Phone size={36} />
-                    </div>
-                    <div className="max-w-md space-y-2">
-                      <h4 className="font-black text-gray-800 text-lg">Tester le parcours candidat</h4>
-                      <p className="text-xs text-gray-400 font-sans leading-relaxed">Cliquez sur démarrer pour lancer l'agent vocal interactif qui posera ses questions de disponibilité, transport et de salaire.</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setVocalSimState('bot_speaking');
-                        setVocalSimStep(1);
-                        setVocalSimDialogue([
-                          { sender: 'ai', text: "Bonjour ! Ravi de vous avoir au téléphone. J'appelle concernant votre candidature sur Algeria Jobs. Est-ce que vous seriez disponible immédiatement pour démarrer ce poste ?" }
-                        ]);
-                        setTimeout(() => {
-                          setVocalSimState('user_listening');
-                        }, 3000);
-                      }}
-                      className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#F68D58] transition-all hover:scale-105 shadow-lg shadow-blue-500/20"
-                    >
-                      🚀 Lancer la simulation d'appel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                    {/* Dialogue flow (3 slots) */}
-                    <div className="lg:col-span-3 space-y-6">
-                      <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4 max-h-[350px] overflow-y-auto pr-2 no-scrollbar">
-                        {vocalSimDialogue.map((chat, i) => (
-                          <div 
-                            key={i} 
-                            className={`p-4 rounded-2xl space-y-1 ${
-                              chat.sender === 'ai' 
-                                ? 'bg-[#173E7D]/5 border-l-4 border-[#173E7D] mr-8' 
-                                : 'bg-white shadow-sm border border-slate-100 ml-8'
-                            }`}
-                          >
-                            <div className="flex justify-between text-[9px] font-black uppercase tracking-wider">
-                              <span className={chat.sender === 'ai' ? 'text-[#173E7D]' : 'text-[#F68D58]'}>
-                                {chat.sender === 'ai' ? '🤖 Agent Vocal IA' : '🙋 Vous (Candidat Algérien)'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-700 font-sans leading-relaxed">{chat.text}</p>
-                          </div>
-                        ))}
-
-                        {vocalSimState === 'bot_speaking' && (
-                          <div className="flex items-center gap-3 p-4 bg-blue-50/40 rounded-2xl font-black text-xs text-[#173E7D] w-fit">
-                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-                            L'IA parle en Darija chaleureux...
-                          </div>
-                        )}
-
-                        {vocalSimState === 'transcribing' && (
-                          <div className="flex items-center gap-3 p-4 bg-[#F68D58]/10 rounded-2xl font-black text-xs text-[#F68D58] w-fit">
-                            <div className="w-4 h-4 border-2 border-[#F68D58] border-t-transparent rounded-full animate-spin" />
-                            Transcription & traduction instantanée par l'IA...
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Interactive response actions when user is listening */}
-                      {vocalSimState === 'user_listening' && (
-                        <div className="space-y-4">
-                          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Choisissez votre réponse fictive :</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {vocalSimStep === 1 && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Bonjour ! Oui, exact, je suis libre de suite, khedma hadi t'laq biya bezaf j'ai quitté mon ancien poste le mois passé." },
-                                        { sender: 'ai', text: "Super ! Et pour la localisation de nos bureaux à Chéraga, par rapport à vos trajets, comment ça se présente ? Êtes-vous véhiculé ?" }
-                                      ]);
-                                      setVocalSimStep(2);
-                                      setVocalSimState('user_listening');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Option A (Darija/Fr) : "Oui, libre immédiatement, j'ai quitté mon ancien poste..."
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Je suis disponible sous un court délai de 15 jours de préavis." },
-                                        { sender: 'ai', text: "C'est tout à fait correct pour nous. Et concernant Chéraga pour le transport quotidien, êtes-vous véhiculé ?" }
-                                      ]);
-                                      setVocalSimStep(2);
-                                      setVocalSimState('user_listening');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Option B (Français) : "Disponible sous 15 jours de préavis..."
-                                </button>
-                              </>
-                            )}
-
-                            {vocalSimStep === 2 && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Oui j'ai ma propre voiture, dima netnequel biha, j'habite à Draria donc pas de soucis de transport." },
-                                        { sender: 'ai', text: "C'est l'idéal ! Enfin, quelles sont vos prétentions salariales nettes par mois ?" }
-                                      ]);
-                                      setVocalSimStep(3);
-                                      setVocalSimState('user_listening');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Option A (Darija) : "Oui j'ai ma propre voiture, j'habite à Draria..."
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Je prends le bus et le métro sans problème pour me déplacer." },
-                                        { sender: 'ai', text: "Entendu. Et enfin, quelles sont vos prétentions salariales nettes par mois ?" }
-                                      ]);
-                                      setVocalSimStep(3);
-                                      setVocalSimState('user_listening');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Option B : "Je prends les transports en commun..."
-                                </button>
-                              </>
-                            )}
-
-                            {vocalSimStep === 3 && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Je souhaite avoir un salaire net de l'ordre de 145 000 DA net par mois." },
-                                        { sender: 'ai', text: "C'est noté. Merci infiniment pour vos réponses, toutes ces informations ont été enregistrées pour l'équipe de recrutement !" }
-                                      ]);
-                                      setVocalSimStep(4);
-                                      setVocalSimState('done');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Déclarer : "Autour de 145 000 DA Net..."
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setVocalSimState('transcribing');
-                                    setTimeout(() => {
-                                      setVocalSimDialogue(prev => [
-                                        ...prev, 
-                                        { sender: 'candidate', text: "Je reste ouvert à la discussion selon la grille interne et les avantages du poste." },
-                                        { sender: 'ai', text: "C'est bien noté. Merci beaucoup, ces détails ont été retranscrits pour les décideurs de l'entreprise !" }
-                                      ]);
-                                      setVocalSimStep(4);
-                                      setVocalSimState('done');
-                                    }, 2000);
-                                  }}
-                                  className="p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-[#173E7D] text-left text-xs text-gray-600 font-bold transition-all font-sans leading-relaxed"
-                                >
-                                  Déclarer : "Négociable selon la grille interne..."
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Result summary side panel (2 slots) */}
-                    <div className="lg:col-span-2 space-y-6">
-                      <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-6">
-                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Résultats d'Appel générés</h4>
-                        
-                        <div className="space-y-4">
-                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                            <p className="text-[10px] font-bold text-gray-400">DISPONIBILITÉ SAISIE</p>
-                            <p className="text-sm font-black text-[#173E7D]">
-                              {vocalSimStep >= 2 ? (vocalSimDialogue[1]?.text.includes('15 jours') ? 'Sous 15 jours' : 'Immédiate') : 'En attente...'}
-                            </p>
-                          </div>
-
-                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                            <p className="text-[10px] font-bold text-gray-400">LOGISTIQUE & TRAJET</p>
-                            <p className="text-sm font-black text-[#173E7D]">
-                              {vocalSimStep >= 3 ? (vocalSimDialogue[3]?.text.includes('voiture') ? 'Véhiculé (Draria)' : 'Transports en commun') : 'En attente...'}
-                            </p>
-                          </div>
-
-                          <div className="p-4 bg-white rounded-xl border border-slate-150 space-y-1">
-                            <p className="text-[10px] font-bold text-gray-400">PRÉTENTIONS DÉCLARÉES</p>
-                            <p className="text-sm font-black text-[#173E7D]">
-                              {vocalSimStep >= 4 ? (vocalSimDialogue[5]?.text.includes('145 000') ? '145 000 DA net/mois' : 'Négociable') : 'En attente...'}
-                            </p>
-                          </div>
-                        </div>
-
-                        {vocalSimState === 'done' && (
-                          <div className="p-4 bg-emerald-50 text-emerald-800 border-2 border-dashed border-emerald-100 rounded-2xl text-xs space-y-2">
-                            <p className="font-black">✓ Fiche pré-qualification complétée !</p>
-                            <p className="font-medium leading-relaxed font-sans">Ces données seraient injectées instantanément sous forme d'une pastille d'analyse et d'une transcription textuelle sur votre espace de tri.</p>
-                            <button 
-                              onClick={() => {
-                                setVocalSimState('idle');
-                                setVocalSimStep(0);
-                                setVocalSimDialogue([]);
-                              }}
-                              className="text-xs font-black underline hover:text-[#173E7D]"
-                            >
-                              Recommencer le test
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {playgroundTab === 'quiz' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-[#173E7D]">🧠 Simulateur du Test de Soft-Skills : Quiz Situationnel</h3>
-                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Le premier test de mise en situation axé sur le bon sens d'entreprise local en Algérie !</p>
-                  </div>
-                  <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-100 text-[9px] font-black uppercase rounded-full tracking-wider">Fun & Efficace</span>
-                </div>
-
-                {quizScoreCard.step === 0 && (
-                  <div className="space-y-6 max-w-2xl mx-auto py-6">
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-3 py-1 border border-amber-100 rounded-full uppercase tracking-wider">Scénario 1 / 2</span>
-                      <h4 className="text-lg font-black text-[#173E7D]">Option de paiement exigée hors espèce</h4>
-                      <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un client d'une wilaya de l'intérieur insiste pour payer sa facture par chèque d'entreprise à la livraison, mais le protocole stipule uniquement CCP/BaridiMob ou Espèce pour éviter les défauts bancaires. Quelle est votre décision ?"</p>
-                    </div>
-
-                    <div className="space-y-3 pt-4">
-                      {[
-                        { text: "Rebrousser chemin de manière rigide : et informer le client que la livraison est annulée.", val: 1 },
-                        { text: "Prendre le chèque sous mon entière responsabilité personnelle sans informer le gérant.", val: 2 },
-                        { text: "Garder poliment la marchandise en dépôt sécurisé pendant 24h, lui envoyer la localisation du DAB le plus proche ou lui éditer le QR code BaridiMob par smartphone.", val: 3 },
-                      ].map((opt, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQuizScoreCard({ step: 1, answers: [opt.val], result: null })}
-                          className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-amber-500 hover:bg-amber-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
-                        >
-                          {i + 1}. {opt.text}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {quizScoreCard.step === 1 && (
-                  <div className="space-y-6 max-w-2xl mx-auto py-6">
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-[#F68D58] bg-orange-50 px-3 py-1 border border-orange-100 rounded-full uppercase tracking-wider">Scénario 2 / 2</span>
-                      <h4 className="text-lg font-black text-[#173E7D]">Incident logistique à fort impact</h4>
-                      <p className="text-sm font-bold text-gray-500 font-sans leading-relaxed">"Un coursier à moto est bloqué à un barrage routier de gendarmerie pour contrôle à l'entrée d'Alger-Centre, retardant une livraison stratégique de 2 heures. Le client est très insatisfait et appelle en colère. Que faites-vous ?"</p>
-                    </div>
-
-                    <div className="space-y-3 pt-4">
-                      {[
-                        { text: "Éviter de répondre à ses appels répétés et reporter la responsabilité totale sur le livreur de colis.", val: 1 },
-                        { text: "L'appeler proactivement avec politesse, lui expliquer honnêtement la consigne de contrôle des services publics, lui proposer d'emblée une ristourne de 15% immédiate et guider le livreur de façon optimale.", val: 3 },
-                        { text: "Lui dire sèchement que les conditions climatiques et régulières de circulation ne sont pas de notre resort, de prendre son mal en patience.", val: 2 },
-                      ].map((opt, i) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            const allAnsw = [...quizScoreCard.answers, opt.val];
-                            const points = allAnsw.reduce((a,b) => a+b, 0);
-                            let result = "Le Solutionneur Créatif 🧠";
-                            if (points <= 3) result = "L\'Exécutant Rigide 📋";
-                            else if (points === 4) result = "Le Gestionnaire Prudent 🤝";
-                            setQuizScoreCard({ step: 2, answers: allAnsw, result });
-                          }}
-                          className="w-full p-5 text-left border-2 border-gray-100 rounded-2xl bg-white hover:border-orange-500 hover:bg-orange-50/10 transition-all font-sans text-xs font-bold text-gray-600 leading-relaxed"
-                        >
-                          {i + 1}. {opt.text}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {quizScoreCard.step === 2 && (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
-                    <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center">
-                      <Award size={48} className="animate-pulse" />
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PROFIL DE SAVOIR-ÊTRE OBTENU</p>
-                      <h4 className="text-2xl font-black text-[#173E7D]">{quizScoreCard.result}</h4>
-                      <p className="text-xs text-gray-500 font-sans leading-relaxed font-semibold">
-                        {quizScoreCard.result?.includes('Solutionneur') 
-                          ? "Génie des situations locales. Vous savez gérer l'humain et inventer des passerelles de transition au bon moment pour garder l'harmonie commerciale."
-                          : quizScoreCard.result?.includes('Prudent')
-                            ? "Profil équilibré appréciant la négociation encadrée, rassurant pour faire respecter les consignes tout en évitant les heurts."
-                            : "Profil linéaire préférant l'exécution mécanique des instructions au détriment de l'initiative face à l'imprévu."}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setQuizScoreCard({ step: 0, answers: [], result: null })}
-                      className="px-6 py-3 bg-gray-100 border text-gray-500 font-bold hover:bg-[#173E7D] hover:text-white hover:border-[#173E7D] rounded-xl text-xs transition-colors"
-                    >
-                      Faire un autre test de quiz
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {playgroundTab === 'antighost' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-start border-b border-gray-50 pb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-[#173E7D]">👻 Filtre Anti-Candidats Fantômes (Pre-screening vocal)</h3>
-                    <p className="text-sm text-gray-400 font-sans mt-1 leading-relaxed">Filtrez les cliqueurs compulsifs automatiquement en exigeant un message vocal motivant de 30 secondes avant de postuler.</p>
-                  </div>
-                  <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 text-[9px] font-black uppercase rounded-full tracking-wider">Lutte contre les Désistements</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 py-6">
-                  {/* Recording interface panel */}
-                  <div className="space-y-6 border border-gray-100 p-8 rounded-3xl bg-slate-50">
-                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">1. Choisir la langue d'expression confortable</h4>
-                    <div className="flex gap-3">
-                      {[
-                        { id: 'french', label: 'Français' },
-                        { id: 'ar', label: 'Arabe Standard' },
-                        { id: 'darija', label: 'Arabe Algérien' },
-                      ].map((ln) => (
-                        <button
-                          key={ln.id}
-                          onClick={() => setGhostSimLang(ln.id as any)}
-                          className={`px-4 py-2 text-xs font-black rounded-xl border transition-all ${
-                            ghostSimLang === ln.id 
-                              ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/10' 
-                              : 'bg-white text-gray-500 border-gray-100 hover:border-gray-200'
-                          }`}
-                        >
-                          {ln.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <p className="text-xs font-bold text-gray-600 leading-relaxed font-sans mt-4">
-                      Question pour le candidat : <br/>
-                      <span className="text-[#173E7D] text-sm font-black">"Quel aspect de l'offre correspond le mieux à vos valeurs professionnelles ?"</span>
-                    </p>
-
-                    {/* State machine controls */}
-                    <div className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl border border-slate-100 space-y-4 pt-10">
-                      {ghostSimStatus === 'idle' && (
-                        <button
-                          onClick={() => {
-                            setGhostSimStatus('recording');
-                            setGhostSimRecordDuration(0);
-                            let count = 0;
-                            const t = setInterval(() => {
-                              count += 1;
-                              setGhostSimRecordDuration(count);
-                              if (count >= 5) {
-                                clearInterval(t);
-                                setGhostSimStatus('recorded');
-                              }
-                            }, 1000);
-                          }}
-                          className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-105 active:scale-95 hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all flex-col text-[9px] font-bold"
-                        >
-                          <Mic size={24} className="mb-0.5" />
-                        </button>
-                      )}
-
-                      {ghostSimStatus === 'recording' && (
-                        <div className="space-y-4 text-center">
-                          <div className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center animate-ping mx-auto">
-                            <Mic size={24} />
-                          </div>
-                          <p className="text-[#F68D58] font-black animate-pulse text-xs">Simulacre d'enregistrement en cours... {ghostSimRecordDuration}s / 5s</p>
-                        </div>
-                      )}
-
-                      {ghostSimStatus === 'recorded' && (
-                        <div className="space-y-4 text-center">
-                          <p className="text-emerald-600 font-black text-xs flex items-center gap-1.5 justify-center">
-                            <CheckSquare size={14} /> Fichier audio simulé enregistré avec succès !
-                          </p>
-                          <div className="flex gap-4">
-                            <button
-                              onClick={() => {
-                                setGhostSimStatus('playing');
-                                setGhostSimPlayProgress(0);
-                                const t = setInterval(() => {
-                                  setGhostSimPlayProgress(prev => {
-                                    const next = prev + 20;
-                                    if (next >= 100) {
-                                      clearInterval(t);
-                                      setGhostSimStatus('recorded');
-                                      return 100;
-                                    }
-                                    return next;
-                                  });
-                                }, 1000);
-                              }}
-                              className="px-6 py-2.5 bg-[#173E7D] text-white rounded-xl text-xs font-bold hover:bg-opacity-90 transition-all flex items-center gap-2"
-                            >
-                              <Play size={12} /> Écouter ma note vocale
-                            </button>
-                            <button
-                              onClick={() => setGhostSimStatus('idle')}
-                              className="px-6 py-2.5 bg-slate-100 text-gray-500 hover:text-[#173E7D] rounded-xl text-xs font-bold transition-all"
-                            >
-                              Ré-enregistrer
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    
-
-                      {ghostSimStatus === 'playing' && (
-                        <div className="space-y-3 text-center w-full">
-                          <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto animate-spin">
-                            <Volume2 size={20} />
-                          </div>
-                          <p className="text-[#173E7D] font-black text-xs">Lecture en cours : {Math.floor((ghostSimPlayProgress / 100) * 5)}s / 5s</p>
-                          <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden max-w-xs mx-auto">
-                            <div className="h-full bg-orange-500" style={{ width: `${ghostSimPlayProgress}%` }} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Explanation of advantages */}
-                  <div className="p-8 rounded-3xl border border-dashed border-gray-100 bg-white space-y-6">
-                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Pourquoi cette fonctionnalité fait la différence ?</h4>
-                    
-                    <ul className="space-y-4 text-xs text-gray-600 font-sans leading-relaxed">
-                      <li className="flex gap-3">
-                        <span className="p-1 px-2.5 bg-rose-50 text-rose-600 rounded-lg h-fit font-black">1</span>
-                        <div>
-                          <strong className="text-gray-800 font-bold block">Taux d'Engagement Maximum</strong>
-                          L'obligation d'un pitch audio de 30s élimine d'emblée ~75% de "cliqueurs automatiques" n'ayant pas lu l'offre d'emploi.
-                        </div>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="p-1 px-2.5 bg-amber-50 text-amber-600 rounded-lg h-fit font-black">2</span>
-                        <div>
-                          <strong className="text-gray-800 font-bold block">Qualité d'Expression de suite visible</strong>
-                          Un simple clic d'écoute de 10s vous permet d'évaluer la clarté linguistique et l'attitude d'un candidat sans faire d'appel téléphonique.
-                        </div>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="p-1 px-2.5 bg-emerald-50 text-emerald-600 rounded-lg h-fit font-black">3</span>
-                        <div>
-                          <strong className="text-gray-800 font-bold block">Sentiment de Confiance Candidat</strong>
-                          Le choix de l'Arabe d'Algérie rassure le candidat timide et élimine les blocages de sélection par rapport aux examens de langues intimidants.
-                        </div>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        // Someone reached the playground sub-tab state without Corporate access (e.g. stale state) — show the lock screen instead of the tools
-        <TierLockedScreen
-          title="Labo de Pré-sélection IA"
-          description="Testez le quiz de soft skills, l'assistant vocal pré-qualificatif et le filtre anti-candidats fantômes. Réservé au plan Corporate."
-          requiredTier="Corporate"
-          icon={Sparkles}
-          onUpgrade={() => setActiveTab('subscription')}
-        />
-      )}
-    </div>
-  );
-}
         case 'subscription':
           return (
             <div className="space-y-8">
@@ -4611,7 +3684,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           </div>
         );
       case 'jobs':
-        const filteredJobs = MOCK_JOBS.filter(job => {
+        const filteredJobs = realJobs.filter(job => {
           const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                                job.company.toLowerCase().includes(searchQuery.toLowerCase());
           const matchesWilaya = !selectedWilaya || job.location === selectedWilaya;
@@ -5453,7 +4526,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       case 'ai-quiz':
         return <AIQuiz />;  
       case 'saved':
-        const savedJobsList = MOCK_JOBS.filter(job => savedJobs.includes(job.id));
+        const savedJobsList = realJobs.filter(job => savedJobs.includes(job.id));
         return (
           <div className="space-y-8">
             <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
@@ -5498,7 +4571,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               {notifications.length > 0 && (
                 <button 
                   onClick={async () => {
-                    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.uid);
+                    await markAllNotificationsRead();
                     setNotifications(notifications.map(n => ({ ...n, is_read: true })));
                   }}
                   className="text-sm font-bold text-[#F68D58] hover:underline"
@@ -5514,7 +4587,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     key={n.id} 
                     onClick={async () => {
                       if (!n.is_read) {
-                        await supabase.from('notifications').update({ is_read: true }).eq('id', n.id);
+                        await markNotificationRead(n.id);
                         setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, is_read: true } : notif));
                       }
                     }}
@@ -6914,7 +5987,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className="flex flex-col gap-4">
                 <button 
                   onClick={() => {
-                    handleApplyToJob(selectedJob.title);
+                    handleApplyToJob(selectedJob.id);
                     setShowApplyConfirmation(false);
                     setSelectedJob(null);
                   }}

@@ -2,10 +2,13 @@ import { Router } from "express";
 
 import aiAnalysisController from "../controllers/aiAnalysis.controller";
 
-import { authenticate } from "../middleware/auth.middleware";
-import { authorize } from "../middleware/role.middleware";
+import { protect } from "../middleware/auth.middleware";
+import { restrictTo } from "../middleware/role.middleware";
+import { requireRecruiterTier } from "../middleware/tier.middleware";
 
 const router = Router();
+
+router.use(protect);
 
 // ============================================================
 // Candidate
@@ -14,44 +17,43 @@ const router = Router();
 // View own AI analysis
 router.get(
   "/:applicationId",
-  authenticate,
-  authorize("CANDIDATE", "RECRUITER", "ADMIN"),
+  restrictTo("CANDIDATE", "RECRUITER", "ADMIN"),
   aiAnalysisController.getAnalysis
 );
 
 // ============================================================
-// Recruiter
+// Recruiter (AI Filter — PREMIUM plan or higher)
 // ============================================================
 
 // Analyze candidate application
 router.post(
   "/:applicationId/analyze",
-  authenticate,
-  authorize("RECRUITER", "ADMIN"),
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("PREMIUM"),
   aiAnalysisController.analyzeApplication
 );
 
 // Recalculate AI analysis
 router.post(
   "/:applicationId/recalculate",
-  authenticate,
-  authorize("RECRUITER", "ADMIN"),
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("PREMIUM"),
   aiAnalysisController.recalculate
 );
 
 // Recruiter dashboard
 router.get(
   "/recruiter/all",
-  authenticate,
-  authorize("RECRUITER", "ADMIN"),
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("PREMIUM"),
   aiAnalysisController.getRecruiterAnalyses
 );
 
 // Recruiter statistics
 router.get(
   "/recruiter/statistics",
-  authenticate,
-  authorize("RECRUITER", "ADMIN"),
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("PREMIUM"),
   aiAnalysisController.getStatistics
 );
 
@@ -62,8 +64,7 @@ router.get(
 // Delete AI Analysis
 router.delete(
   "/:applicationId",
-  authenticate,
-  authorize("ADMIN"),
+  restrictTo("ADMIN"),
   aiAnalysisController.deleteAnalysis
 );
 

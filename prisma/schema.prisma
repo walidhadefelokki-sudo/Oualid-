@@ -5,7 +5,8 @@
 // ======================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -421,6 +422,8 @@ model QuizQuestion {
 
   difficulty  QuizDifficulty @default(MEDIUM)
 
+  answers     QuizAnswer[]
+
   createdAt   DateTime @default(now())
 }
 
@@ -462,12 +465,10 @@ model QuizAnswer {
   id          String @id @default(cuid())
 
   attemptId   String
-  attempt     QuizAttempt
-               @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attempt     QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   questionId  String
-  question    QuizQuestion
-               @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question    QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   answer      String @db.Text
 
@@ -704,11 +705,8 @@ model Application {
   appliedAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   aianalysis       AIAnalysis?
-  quiz             Quiz?
-  oralPresentation OralPresentation?
   interviews       Interview[]
   candidateScore   CandidateScore?
-  quizAttempts     QuizAttempt[]
 
   @@index([candidateId])
   @@index([recruiterId])
@@ -790,6 +788,9 @@ model User {
 
   candidateProfile CandidateProfile?
   recruiterProfile RecruiterProfile?
+
+  quiz         Quiz?
+  quizAttempts QuizAttempt[]
 
   refreshTokens  RefreshToken[]
   sessions       UserSession[]

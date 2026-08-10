@@ -13,10 +13,8 @@ import {
   deleteScore,
 } from "../controllers/candidateScore.controller";
 
-import {
-  protect,
-  restrictTo,
-} from "../middleware/auth.middleware";
+import { protect } from "../middleware/auth.middleware";
+import { restrictTo } from "../middleware/role.middleware";
 
 const router = Router();
 

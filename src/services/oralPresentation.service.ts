@@ -3,10 +3,6 @@ import api from "./api.ts";
 export interface OralPresentation {
   id: string;
 
-  transcript?: string;
-  durationSeconds?: number;
-
-  aiScore?: number;
   recruiterScore?: number;
 
   status: "PENDING" | "UPLOADED" | "REVIEWED";
@@ -80,29 +76,15 @@ class OralPresentationService {
   }
 
   /**
-   * Recruiter/Admin
-   * Get presentation by id
-   */
-  async getPresentationById(
-    presentationId: string
-  ): Promise<OralPresentation> {
-    const response = await api.get(
-      `/oral-presentations/${presentationId}`
-    );
-
-    return response.data.data.presentation;
-  }
-
-  /**
    * Recruiter
-   * Update recruiter score
+   * Update recruiter score for a candidate's presentation
    */
   async updateRecruiterScore(
-    presentationId: string,
+    candidateId: string,
     recruiterScore: number
   ): Promise<OralPresentation> {
     const response = await api.patch(
-      `/oral-presentations/${presentationId}/recruiter-score`,
+      `/oral-presentations/candidate/${candidateId}/recruiter-score`,
       {
         recruiterScore,
       }

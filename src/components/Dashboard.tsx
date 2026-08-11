@@ -1175,6 +1175,13 @@ export default function Dashboard({
 
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  // Separate from `selectedJob` above on purpose: `selectedJob` drives the
+  // candidate-facing job-details modal (expects full listing fields like
+  // requirements/benefits/salary). The recruiter's own posted-job objects
+  // (from postedJobs) don't have that shape, so "Gérer" must not reuse
+  // `selectedJob` — doing so crashed the page (selectedJob.requirements
+  // was undefined).
+  const [selectedManagedJob, setSelectedManagedJob] = useState<any | null>(null);
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
   const [postedJobs, setPostedJobs] = useState([
     { title: 'Senior React Developer', apps: 45, status: 'Active', date: '12/03/2024' },
@@ -1965,7 +1972,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <div className="flex items-center gap-3 relative z-10">
                       <button 
                         onClick={() => {
-                          setSelectedJob(job);
+                          setSelectedManagedJob(job);
                           setActiveTab('candidates');
                         }}
                         className="flex-1 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-800 hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-blue-900/10"

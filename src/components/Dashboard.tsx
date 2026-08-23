@@ -1183,11 +1183,37 @@ export default function Dashboard({
   // was undefined).
   const [selectedManagedJob, setSelectedManagedJob] = useState<any | null>(null);
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
-  const [postedJobs, setPostedJobs] = useState([
-    { title: 'Senior React Developer', apps: 45, status: 'Active', date: '12/03/2024' },
-    { title: 'UX Designer', apps: 28, status: 'Active', date: '10/03/2024' },
-    { title: 'Marketing Manager', apps: 12, status: 'Closed', date: '01/03/2024' },
-  ]);
+  const [postedJobs, setPostedJobs] = useState<import('../services/job.service').RecruiterJobCard[]>([]);
+
+  const loadPostedJobs = async () => {
+    try {
+      const jobs = await jobService.getRecruiterJobs();
+      setPostedJobs(jobs);
+    } catch (error) {
+      console.error('Failed to load recruiter jobs:', error);
+      setPostedJobs([]);
+    }
+  };
+
+  useEffect(() => {
+    loadPostedJobs();
+  }, []);
+
+  // Display-label (French UI) -> backend enum maps. See prisma/schema.prisma.
+  const JOB_TYPE_MAP: Record<string, string> = {
+    'Temps plein': 'FULL_TIME',
+    'CDI': 'FULL_TIME',
+    'Temps partiel': 'PART_TIME',
+    'Freelance': 'FREELANCE',
+    'Stage': 'INTERNSHIP',
+    'CDD': 'CONTRACT',
+  };
+  const EXPERIENCE_MAP: Record<string, string> = {
+    'Débutant (0-2 ans)': 'JUNIOR',
+    'Confirmé (3-5 ans)': 'MID',
+    'Senior (5-10 ans)': 'SENIOR',
+    'Expert (10+ ans)': 'LEAD',
+  };
 
   const [newJobData, setNewJobData] = useState({
     title: '',
@@ -1203,37 +1229,48 @@ export default function Dashboard({
     deadline: ''
   });
 
-  const handlePostJob = (e: React.FormEvent) => {
+  const handlePostJob = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newJobData.title || !newJobData.description) {
       alert(language === 'ar' ? 'يرجى ملء جميع الحقول المطلوبة.' : 'Veuillez remplir tous les champs obligatoires.');
       return;
     }
 
-    const newJob = {
-      title: newJobData.title,
-      apps: 0,
-      status: 'Active',
-      date: new Date().toLocaleDateString('fr-FR')
-    };
+    try {
+      await jobService.createJob({
+        title: newJobData.title,
+        description: newJobData.description,
+        location: newJobData.wilaya,
+        wilaya: newJobData.wilaya,
+        type: (JOB_TYPE_MAP[newJobData.type] || 'FULL_TIME') as any,
+        experienceLevel: (EXPERIENCE_MAP[newJobData.experience] || 'MID') as any,
+        salaryMin: newJobData.salaryMin ? Number(newJobData.salaryMin) : undefined,
+        salaryMax: newJobData.salaryMax ? Number(newJobData.salaryMax) : undefined,
+      });
 
-    setPostedJobs([newJob, ...postedJobs]);
-    setNewJobData({
-      title: '',
-      sector: 'Technologie',
-      type: 'CDI',
-      salaryMin: '',
-      salaryMax: '',
-      description: '',
-      requirements: '',
-      benefits: '',
-      deadline: '',
-      wilaya: 'Alger',
-      experience: 'Confirmé (3-5 ans)'
-    } as any);
-    
-    alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
-    setActiveTab('manage-jobs');
+      await loadPostedJobs();
+
+      setNewJobData({
+        title: '',
+        sector: 'Technologie',
+        type: 'CDI',
+        salaryMin: '',
+        salaryMax: '',
+        description: '',
+        requirements: '',
+        benefits: '',
+        deadline: '',
+        wilaya: 'Alger',
+        experience: 'Confirmé (3-5 ans)'
+      } as any);
+
+      alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
+      setActiveTab('manage-jobs');
+    } catch (error: any) {
+      console.error('Error posting job:', error);
+      const message = error?.response?.data?.message || error.message;
+      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
+    }
   };
   const cvPreviewRef = useRef<HTMLDivElement>(null);
   const handleApplyToJob = async (jobId: string) => {
@@ -1931,9 +1968,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                {postedJobs.map((job, i) => (
+                {postedJobs.map((job) => (
                   <motion.div 
-                    key={i} 
+                    key={job.id} 
                     whileHover={{ y: -10, scale: 1.02 }}
                     className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden flex flex-col"
                   >
@@ -1944,9 +1981,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <Briefcase size={22} />
                       </div>
                       <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${
-                        job.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-100 text-gray-400 border-gray-200'
+                        job.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-100 text-gray-400 border-gray-200'
                       }`}>
-                        {job.status === 'Active' ? lt('Active', 'Active', 'نشط') : lt('Closed', 'Fermée', 'مغلقة')}
+                        {job.status === 'PUBLISHED' ? lt('Active', 'Active', 'نشط') : lt('Closed', 'Fermée', 'مغلقة')}
                       </span>
                     </div>
 
@@ -1954,18 +1991,18 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <h3 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors tracking-tight line-clamp-2 min-h-[4rem]">{job.title}</h3>
                       <div className="flex items-center gap-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">
                         <Clock size={14} className="text-[#F68D58]" />
-                        {lt('Published on ', 'Publiée le ', 'نشرت في ')} {job.date}
+                        {lt('Published on ', 'Publiée le ', 'نشرت في ')} {job.publishedAt ? new Date(job.publishedAt).toLocaleDateString('fr-FR') : '—'}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-10 relative z-10">
                       <div className="bg-gray-50/80 backdrop-blur-sm p-5 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
                         <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1.5">{lt('Applications', 'Candidatures', 'التقديمات')}</p>
-                        <p className="text-2xl font-black text-[#173E7D]">{job.apps}</p>
+                        <p className="text-2xl font-black text-[#173E7D]">{job.applicationsCount}</p>
                       </div>
                       <div className="bg-gray-50/80 backdrop-blur-sm p-5 rounded-3xl border border-gray-100 group-hover:bg-white transition-colors">
                         <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1.5">IA Match</p>
-                        <p className="text-2xl font-black text-[#F68D58]">84%</p>
+                        <p className="text-2xl font-black text-[#F68D58]">{job.averageMatch != null ? `${job.averageMatch}%` : '—'}</p>
                       </div>
                     </div>
 
@@ -1981,7 +2018,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       </button>
                       <button 
                         className="w-14 h-14 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all"
-                        onClick={() => setPostedJobs(postedJobs.filter((_, idx) => idx !== i))}
+                        onClick={async () => {
+                          if (!confirm(lt('Delete this job?', 'Supprimer cette offre ?', 'حذف هذا العرض؟'))) return;
+                          try {
+                            await jobService.deleteJob(job.id);
+                            setPostedJobs((prev) => prev.filter((j) => j.id !== job.id));
+                          } catch (error) {
+                            console.error('Failed to delete job:', error);
+                          }
+                        }}
                         title={lt('Delete', 'Supprimer', 'حذف')}
                       >
                         <Trash2 size={20} />

@@ -1,8 +1,22 @@
 import { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { sendJobMatchEmail } from "../utils/email";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
+
+// Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
+// the random suffix keeps the (unique) Job.slug collision-free without
+// an extra DB round trip to check availability.
+const slugify = (title: string) => {
+  const base = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const suffix = crypto.randomBytes(3).toString("hex");
+  return `${base || "job"}-${suffix}`;
+};
 
 export const getAllJobs = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -133,6 +147,16 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       return next(new AppError("Only recruiters can post jobs", 403));
     }
 
+    // A job must belong to a Company (required FK). Recruiters get one
+    // created and linked via CompanyMember at registration time.
+    const membership = await prisma.companyMember.findFirst({
+      where: { recruiterId: user.recruiterProfile.id },
+      include: { company: true },
+    });
+    if (!membership) {
+      return next(new AppError("No company associated with this recruiter account", 400));
+    }
+
     const plan = await getRecruiterPlan(req.user.id);
     const existingJobsCount = await prisma.job.count({
       where: { recruiterId: user.recruiterProfile.id }
@@ -146,7 +170,26 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       return next(new AppError("Premium plan limit reached (20 jobs). Please upgrade to Corporate.", 403));
     }
 
-    const { title, description, location, type, salary, category, requirements, responsibilities, featured } = req.body;
+    const {
+      title,
+      description,
+      location,
+      wilaya,
+      country,
+      remote,
+      type,
+      experienceLevel,
+      vacancies,
+      salaryMin,
+      salaryMax,
+      currency,
+      categoryId,
+      featured,
+    } = req.body;
+
+    if (!title || !description || !location || !type || !experienceLevel) {
+      return next(new AppError("title, description, location, type and experienceLevel are required", 400));
+    }
 
     // Featured job limits
     let isFeatured = featured || false;
@@ -165,15 +208,24 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
     const job = await prisma.job.create({
       data: {
         title,
+        slug: slugify(title),
         description,
         location,
+        wilaya,
+        country,
+        remote: remote ?? false,
         type,
-        salary,
-        category,
-        requirements,
-        responsibilities,
+        experienceLevel,
+        vacancies: vacancies ?? 1,
+        salaryMin,
+        salaryMax,
+        currency: currency ?? "DZD",
+        categoryId: categoryId || undefined,
         featured: isFeatured,
         recruiterId: user.recruiterProfile.id,
+        companyId: membership.companyId,
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
       },
     });
 
@@ -184,7 +236,7 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
           where: {
             jobMatchNotifications: true,
             skills: {
-              hasSome: [category, ...(title.split(' '))]
+              hasSome: title.split(' ')
             }
           },
           include: { user: true }
@@ -194,7 +246,7 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
           await sendJobMatchEmail(
             candidate.user.email, 
             job.title, 
-            user.recruiterProfile!.companyName, 
+            membership.company.name, 
             job.id
           );
           
@@ -203,7 +255,7 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
             data: {
               userId: candidate.userId,
               title: 'New Job Match!',
-              message: `A new job matches your profile: ${job.title} at ${user.recruiterProfile!.companyName}`,
+              message: `A new job matches your profile: ${job.title} at ${membership.company.name}`,
               type: 'job_match'
             }
           });

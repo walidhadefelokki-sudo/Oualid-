@@ -53,6 +53,23 @@ import AuthModal from './components/AuthModal';
 import { translations, Language } from './translations';
 import { WILAYAS, JOB_KEYWORDS } from './constants';
 
+// The backend (Prisma enum) sends roles as "CANDIDATE" | "RECRUITER" | "ADMIN".
+// The rest of the frontend (Dashboard.tsx, sidebar, routing, etc.) was written
+// against a separate "user" | "employer" | "admin" vocabulary. Every place that
+// takes a role fresh from the API must normalize it through here, or recruiters
+// silently land on the candidate dashboard (and vice versa).
+const normalizeRole = (backendRole: string | undefined | null): 'user' | 'employer' | 'admin' => {
+  switch ((backendRole || '').toUpperCase()) {
+    case 'RECRUITER':
+      return 'employer';
+    case 'ADMIN':
+      return 'admin';
+    case 'CANDIDATE':
+    default:
+      return 'user';
+  }
+};
+
 const COLORS = [
   'bg-[#173E7D]', // Primary Blue
   'bg-[#F68D58]', // Secondary Orange
@@ -476,7 +493,7 @@ export default function App() {
         uid: data.data.user.id,
         email: data.data.user.email,
         displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
-        role: data.data.user.role,
+        role: normalizeRole(data.data.user.role),
         recruiterTier: data.data.user.recruiterTier,
       });
 
@@ -503,7 +520,7 @@ export default function App() {
           uid: data.data.user.id,
           email: data.data.user.email,
           displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
-          role: data.data.user.role,
+          role: normalizeRole(data.data.user.role),
           recruiterTier: data.data.user.recruiterTier,
         });
 
@@ -570,7 +587,7 @@ export default function App() {
           uid: u.id,
           email: u.email,
           displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
-          role: u.role,
+          role: normalizeRole(u.role),
           recruiterTier: u.recruiterTier,
         });
       } catch (err) {
@@ -628,7 +645,7 @@ export default function App() {
     );
   }
 
-  if (user && view === 'dashboard' && (user.role === 'ADMIN' || user.role === 'admin')) {
+  if (user && view === 'dashboard' && user.role === 'admin') {
     return <AdminDashboard onGoHome={() => setView('landing')} />;
   }
 
@@ -1977,7 +1994,7 @@ export default function App() {
             uid: u.id,
             email: u.email,
             displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
-            role: u.role,
+            role: normalizeRole(u.role),
             recruiterTier: u.recruiterTier,
           });
           setView('dashboard');

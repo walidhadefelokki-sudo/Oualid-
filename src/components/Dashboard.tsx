@@ -538,7 +538,7 @@ export default function Dashboard({
   );
 
   useEffect(() => {
-    if (!isDemo) {
+    if (!isDemo && user?.role === 'employer') {
       loadCandidates();
       loadAICandidates();
     }
@@ -1270,10 +1270,10 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    if (!isDemo) {
+    if (!isDemo && user?.role === 'employer') {
       loadPostedJobs();
     }
-  }, [isDemo]);
+  }, [isDemo, user?.role]);
 
   // Display-label (French UI) -> backend enum maps. See prisma/schema.prisma.
   const JOB_TYPE_MAP: Record<string, string> = {

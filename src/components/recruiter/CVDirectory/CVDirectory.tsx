@@ -56,7 +56,7 @@ interface CVDirectoryProps {
 /* -------------------------------------------------------------------------- */
 
 const EXPERIENCE_FILTERS = [
-  "All",
+  "Tous",
   "0-2",
   "3-5",
   "5-10",
@@ -66,15 +66,15 @@ const EXPERIENCE_FILTERS = [
 const SORT_OPTIONS = [
   {
     id: "ai",
-    label: "AI Score",
+    label: "Score IA",
   },
   {
     id: "experience",
-    label: "Experience",
+    label: "Expérience",
   },
   {
     id: "recent",
-    label: "Newest",
+    label: "Plus récent",
   },
 ];
 
@@ -96,10 +96,10 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   const [search, setSearch] = useState("");
 
   const [locationFilter, setLocationFilter] =
-    useState("All");
+    useState("Tous");
 
   const [experienceFilter, setExperienceFilter] =
-    useState("All");
+    useState("Tous");
 
   const [sortBy, setSortBy] =
     useState("ai");
@@ -118,7 +118,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
       new Set(candidates.map((c) => c.location))
     );
 
-    return ["All", ...values];
+    return ["Tous", ...values];
   }, [candidates]);
 
   /* ---------------------------------------------------------------------- */
@@ -149,7 +149,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
     /* Location */
 
-    if (locationFilter !== "All") {
+    if (locationFilter !== "Tous") {
       data = data.filter(
         (candidate) =>
           candidate.location === locationFilter
@@ -158,7 +158,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
     /* Experience */
 
-    if (experienceFilter !== "All") {
+    if (experienceFilter !== "Tous") {
       data = data.filter((candidate) => {
         const exp = candidate.experience;
 
@@ -292,19 +292,19 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
             <h1 className="text-3xl font-black text-slate-900">
 
-              CV Directory
+              Répertoire de CV
 
             </h1>
 
             {recruiterPlan === "corporate" && (
-              <GoldenBadge />
+              <GoldenBadge visible />
             )}
 
           </div>
 
           <p className="text-slate-500 mt-2">
 
-            Browse, filter and rank every received CV.
+Parcourez, filtrez et classez chaque CV reçu.
 
           </p>
 
@@ -316,7 +316,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
         >
           <RefreshCw size={18} />
 
-          Refresh
+          Actualiser
         </button>
 
       </div>
@@ -328,25 +328,25 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
 
         <StatCard
-          title="Candidates"
+          title="Candidats"
           value={stats.total}
           icon={<Users size={20} />}
         />
 
         <StatCard
-          title="Preselected"
+          title="Présélectionnés"
           value={stats.preselected}
           icon={<Star size={20} />}
         />
 
         <StatCard
-          title="Average AI"
+          title="Moyenne IA"
           value={`${stats.averageAI}%`}
           icon={<Sparkles size={20} />}
         />
 
         <StatCard
-          title="Excellent"
+          title="Excellents"
           value={stats.excellent}
           icon={<Trophy size={20} />}
         />
@@ -375,7 +375,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
               onChange={(e) =>
                 setSearch(e.target.value)
               }
-              placeholder="Search candidate..."
+              placeholder="Rechercher un candidat..."
               className="w-full rounded-xl border pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
             />
 
@@ -457,7 +457,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
             />
 
             <p className="text-slate-500 font-semibold">
-              Loading candidates...
+              Chargement des candidats...
             </p>
 
           </div>
@@ -477,13 +477,13 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
           <h2 className="text-2xl font-black mt-6">
 
-            No Candidates Found
+            Aucun candidat trouvé
 
           </h2>
 
           <p className="text-slate-500 mt-2">
 
-            Try changing your search filters.
+Essayez de modifier vos filtres de recherche.
 
           </p>
 
@@ -505,27 +505,27 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                 <tr className="text-left">
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    Candidate
+                    Candidat
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    Position
+                    Poste
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    Experience
+                    Expérience
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    Location
+                    Localisation
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    AI
+                    IA
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest">
-                    Status
+                    Statut
                   </th>
 
                   <th className="px-6 py-5 text-xs font-black uppercase tracking-widest text-right">
@@ -610,7 +610,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
                     <td className="px-6 py-5">
 
-                      {candidate.experience} years
+                      {candidate.experience} ans
 
                     </td>
 
@@ -659,7 +659,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
                           <Star size={12} />
 
-                          Preselected
+                          Présélectionné
 
                         </span>
 
@@ -667,7 +667,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
                         <span className="inline-flex items-center rounded-full bg-slate-100 px-4 py-2 text-xs font-black text-slate-600">
 
-                          Pending
+                          En attente
 
                         </span>
 
@@ -687,7 +687,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                           }
                           className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition"
                         >
-                          Open CV
+                          Voir le CV
                         </button>
 
                       </div>
@@ -749,7 +749,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                   </div>
 
                   {candidate.isPreselected && (
-                    <GoldenBadge />
+                    <GoldenBadge visible />
                   )}
 
                 </div>
@@ -757,17 +757,17 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                 <div className="grid grid-cols-2 gap-5 mt-6">
 
                   <InfoItem
-                    label="Experience"
-                    value={`${candidate.experience} years`}
+                    label="Expérience"
+                    value={`${candidate.experience} ans`}
                   />
 
                   <InfoItem
-                    label="Location"
+                    label="Localisation"
                     value={candidate.location}
                   />
 
                   <InfoItem
-                    label="AI Score"
+                    label="Score IA"
                     value={`${candidate.aiScore}%`}
                   />
 
@@ -784,7 +784,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                   }
                   className="mt-6 w-full rounded-xl bg-slate-900 py-3 font-bold text-white hover:bg-blue-700 transition"
                 >
-                  View CV
+                  Voir le CV
                 </button>
 
               </motion.div>
@@ -811,7 +811,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
             <div className="flex items-center justify-between rounded-2xl border bg-white p-5">
 
               <p className="text-sm text-slate-500">
-                Showing{" "}
+                Affichage{" "}
                 <span className="font-bold">
                   {(currentPage - 1) * PAGE_SIZE + 1}
                 </span>
@@ -822,11 +822,11 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                     filteredCandidates.length
                   )}
                 </span>
-                {" of "}
+                {" sur "}
                 <span className="font-bold">
                   {filteredCandidates.length}
                 </span>
-                {" candidates"}
+                {" candidats"}
               </p>
 
               <div className="flex items-center gap-2">
@@ -844,7 +844,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                       : "bg-slate-900 text-white hover:bg-blue-700"
                   }`}
                 >
-                  Previous
+                  Précédent
                 </button>
 
                 {Array.from(
@@ -884,7 +884,7 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
                       : "bg-slate-900 text-white hover:bg-blue-700"
                   }`}
                 >
-                  Next
+                  Suivant
                 </button>
 
               </div>

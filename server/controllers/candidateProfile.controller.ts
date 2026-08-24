@@ -72,6 +72,96 @@ export const uploadCV = async (
 };
 
 /**
+ * Candidate: Update own profile (basic info on User + candidate-specific
+ * fields on CandidateProfile). Called when the candidate saves changes
+ * from their profile page.
+ */
+export const updateMyProfile = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      include: { candidateProfile: true },
+    });
+
+    if (!user?.candidateProfile) {
+      return next(new AppError("Candidate profile not found.", 404));
+    }
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      headline,
+      bio,
+      city,
+      wilaya,
+      country,
+      currentJobTitle,
+      yearsExperience,
+      desiredSalary,
+      availableImmediately,
+      skills,
+      linkedinUrl,
+      githubUrl,
+      portfolioUrl,
+    } = req.body;
+
+    // Fields that live on the User row
+    const userData: Record<string, unknown> = {};
+    if (firstName !== undefined) userData.firstName = firstName;
+    if (lastName !== undefined) userData.lastName = lastName;
+
+    // Fields that live on the CandidateProfile row
+    const profileFieldData: Record<string, unknown> = {};
+    if (phone !== undefined) profileFieldData.phone = phone;
+    if (headline !== undefined) profileFieldData.headline = headline;
+    if (bio !== undefined) profileFieldData.bio = bio;
+    if (city !== undefined) profileFieldData.city = city;
+    if (wilaya !== undefined) profileFieldData.wilaya = wilaya;
+    if (country !== undefined) profileFieldData.country = country;
+    if (currentJobTitle !== undefined) profileFieldData.currentJobTitle = currentJobTitle;
+    if (yearsExperience !== undefined) profileFieldData.yearsExperience = yearsExperience;
+    if (desiredSalary !== undefined) profileFieldData.desiredSalary = desiredSalary;
+    if (availableImmediately !== undefined) profileFieldData.availableImmediately = availableImmediately;
+    if (skills !== undefined) profileFieldData.skills = skills;
+    if (linkedinUrl !== undefined) profileFieldData.linkedinUrl = linkedinUrl;
+    if (githubUrl !== undefined) profileFieldData.githubUrl = githubUrl;
+    if (portfolioUrl !== undefined) profileFieldData.portfolioUrl = portfolioUrl;
+
+    const [updatedUser, updatedProfile] = await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: userData,
+      }),
+      prisma.candidateProfile.update({
+        where: { id: user.candidateProfile.id },
+        data: profileFieldData,
+        include: { resume: true },
+      }),
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          firstName: updatedUser.firstName,
+          lastName: updatedUser.lastName,
+        },
+        candidateProfile: updatedProfile,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * Candidate: Get own CV info.
  */
 export const getMyCV = async (

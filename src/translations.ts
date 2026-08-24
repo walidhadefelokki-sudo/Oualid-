@@ -3,6 +3,8 @@ export const translations = {
     dashboard: "Tableau de bord",
     jobs: "Offres d'emploi",
     cvMaker: "CV Maker",
+    "ai-quiz": "Quiz IA",
+    "ai-filter": "Filtre IA",
     saved: "Sauvegardés",
     notifications: "Notifications",
     settings: "Paramètres",
@@ -225,12 +227,24 @@ export const translations = {
       innovationText: "Notre technologie de pointe, développée pour répondre aux défis nationaux, redéfinit le recrutement en Algérie. Nous offrons des solutions intelligentes et adaptées à chaque wilaya, garantissant un avantage concurrentiel majeur pour les recruteurs locaux.",
       expertiseTitle: "Flexibilité & Accessibilité",
       expertiseText: "Bien que nous couvrions l'ensemble des métiers, nous nous distinguons par notre expertise unique dans le travail à temps partiel et flexible. Dar L'emploi est le pont entre l'agilité recherchée par les entreprises et la liberté souhaitée par les candidats."
+    },
+    contact: {
+      title: "Contactez-nous",
+      subtitle: "Une question ? Notre équipe vous répond rapidement.",
+      email: "Adresse Email",
+      subject: "Sujet",
+      message: "Message",
+      send: "Envoyer",
+      success: "Votre message a bien été envoyé. Nous vous répondrons sous peu.",
+      error: "Une erreur est survenue lors de l'envoi. Veuillez réessayer."
     }
   },
   ar: {
     dashboard: "لوحة التحكم",
     jobs: "وظائف",
     cvMaker: "منشئ السيرة الذاتية",
+    "ai-quiz": "اختبار الذكاء الاصطناعي",
+    "ai-filter": "فلتر الذكاء الاصطناعي",
     saved: "المحفوظة",
     notifications: "التنبيهات",
     settings: "الإعدادات",
@@ -453,6 +467,16 @@ export const translations = {
       innovationText: "تقنياتنا المتطورة، التي تم تطويرها للاستجابة للتحديات الوطنية، تعيد تعريف التوظيف في الجزائر. نحن نقدم حلولاً ذكية ومتكيفة مع كل ولاية، مما يضمن ميزة تنافسية كبرى للموظفين المحليين.",
       expertiseTitle: "مرونة وسهولة الوصول",
       expertiseText: "بينما نغطي جميع المهن، نتميز بخبرتنا الفريدة في العمل بدوام جزئي ومرن. دار التشغيل هي الجسر بين الرشاقة التي تبحث عنها الشركات والحرية التي يطمح إليها المترشحون."
+    },
+    contact: {
+      title: "اتصل بنا",
+      subtitle: "لديك سؤال؟ فريقنا يرد عليك بسرعة.",
+      email: "البريد الإلكتروني",
+      subject: "الموضوع",
+      message: "الرسالة",
+      send: "إرسال",
+      success: "تم إرسال رسالتك بنجاح. سنرد عليك في أقرب وقت.",
+      error: "حدث خطأ أثناء الإرسال. يرجى المحاولة مرة أخرى."
     }
   }
 };

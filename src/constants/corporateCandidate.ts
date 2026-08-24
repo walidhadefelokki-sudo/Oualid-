@@ -26,27 +26,27 @@ export const DEFAULT_CORPORATE_FILTERS: CorporateCandidateFilters =
 export const CORPORATE_CANDIDATE_STATUSES = [
   {
     value: "",
-    label: "All",
+    label: "Tous",
   },
   {
     value: "pending",
-    label: "Pending",
+    label: "En attente",
   },
   {
     value: "reviewing",
-    label: "Reviewing",
+    label: "En cours d'examen",
   },
   {
     value: "preselected",
-    label: "Preselected",
+    label: "Présélectionné",
   },
   {
     value: "approved",
-    label: "Approved",
+    label: "Approuvé",
   },
   {
     value: "rejected",
-    label: "Rejected",
+    label: "Rejeté",
   },
 ] as const;
 
@@ -56,23 +56,23 @@ export const CORPORATE_CANDIDATE_STATUSES = [
 export const CORPORATE_SORT_OPTIONS = [
   {
     value: "priority",
-    label: "⭐ Preselected First",
+    label: "⭐ Présélectionnés d'abord",
   },
   {
     value: "aiScore",
-    label: "Highest AI Score",
+    label: "Meilleur score IA",
   },
   {
     value: "name",
-    label: "Candidate Name",
+    label: "Nom du candidat",
   },
   {
     value: "experience",
-    label: "Experience",
+    label: "Expérience",
   },
   {
     value: "newest",
-    label: "Newest Applications",
+    label: "Candidatures les plus récentes",
   },
 ] as const;
 
@@ -118,44 +118,44 @@ export const DEFAULT_AI_SCORE = 70;
  * Dashboard labels.
  */
 export const CORPORATE_STAT_LABELS = {
-  total: "Total Candidates",
+  total: "Total des candidats",
 
-  preselected: "Preselected",
+  preselected: "Présélectionnés",
 
-  pending: "Pending",
+  pending: "En attente",
 
-  approved: "Approved",
+  approved: "Approuvés",
 
-  rejected: "Rejected",
+  rejected: "Rejetés",
 
-  averageAIScore: "Average AI Score",
+  averageAIScore: "Score IA moyen",
 } as const;
 
 /**
  * Empty state.
  */
 export const CORPORATE_EMPTY_STATE = {
-  title: "No Candidates Found",
+  title: "Aucun candidat trouvé",
 
   description:
-    "There are currently no candidates matching the selected filters.",
+    "Aucun candidat ne correspond actuellement aux filtres sélectionnés.",
 };
 
 /**
  * Loading message.
  */
 export const CORPORATE_LOADING_MESSAGE =
-  "Loading candidates...";
+  "Chargement des candidats...";
 
 /**
  * Success messages.
  */
 export const CORPORATE_SUCCESS_MESSAGES = {
   refreshed:
-    "Candidate list refreshed successfully.",
+    "Liste des candidats actualisée avec succès.",
 
   sorted:
-    "Candidates sorted successfully.",
+    "Candidats triés avec succès.",
 };
 
 /**
@@ -163,11 +163,11 @@ export const CORPORATE_SUCCESS_MESSAGES = {
  */
 export const CORPORATE_ERROR_MESSAGES = {
   load:
-    "Unable to load candidates.",
+    "Impossible de charger les candidats.",
 
   refresh:
-    "Unable to refresh candidate list.",
+    "Impossible d'actualiser la liste des candidats.",
 
   sort:
-    "Unable to sort candidates.",
+    "Impossible de trier les candidats.",
 };

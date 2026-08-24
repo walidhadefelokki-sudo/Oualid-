@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+  getUploadSignature,
   uploadPresentation,
   getMyPresentation,
   getPresentationByCandidateId,
@@ -14,7 +15,6 @@ import {
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 import { requireRecruiterTier } from "../middleware/tier.middleware";
-import { presentationUpload } from "../utils/cloudinary";
 
 const router = express.Router();
 
@@ -24,11 +24,19 @@ router.use(protect);
 /*                               Candidate Routes                             */
 /* -------------------------------------------------------------------------- */
 
-// Upload or replace own presentation (profile-level, not tied to an application)
+// Get a signature so the browser can upload the video file directly to
+// Cloudinary (bypasses our server's request body size limit)
+router.get(
+  "/upload-signature",
+  restrictTo("CANDIDATE"),
+  getUploadSignature
+);
+
+// Save the resulting video metadata after a direct-to-Cloudinary upload
+// (profile-level, not tied to an application)
 router.post(
   "/me",
   restrictTo("CANDIDATE"),
-  presentationUpload.single("video"),
   uploadPresentation
 );
 

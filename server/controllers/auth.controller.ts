@@ -163,6 +163,7 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
       include: {
         candidateProfile: true,
         recruiterProfile: true,
+        avatar: true,
       },
     });
 
@@ -256,6 +257,66 @@ export const googleAuth = async (req: Request, res: Response, next: NextFunction
           lastName: user.lastName,
           recruiterTier,
         },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Any authenticated user: upload or replace their profile picture.
+ */
+export const updateMyAvatar = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const file = req.file as
+      | { path?: string; filename?: string; mimetype?: string; size?: number }
+      | undefined;
+
+    if (!file?.path) {
+      return next(new AppError("Please upload an image.", 400));
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+    });
+
+    if (!user) {
+      return next(new AppError("User not found.", 404));
+    }
+
+    const avatarAsset = await prisma.fileAsset.create({
+      data: {
+        url: file.path,
+        provider: "cloudinary",
+        publicId: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+      },
+    });
+
+    const previousAvatarId = user.avatarId;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { avatarId: avatarAsset.id },
+      include: { avatar: true },
+    });
+
+    if (previousAvatarId && previousAvatarId !== avatarAsset.id) {
+      await prisma.fileAsset
+        .delete({ where: { id: previousAvatarId } })
+        .catch(() => null);
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        avatarUrl: updatedUser.avatar?.url,
       },
     });
   } catch (err) {

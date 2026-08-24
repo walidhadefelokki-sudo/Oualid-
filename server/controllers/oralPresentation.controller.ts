@@ -1,5 +1,48 @@
 import { Request, Response, NextFunction } from "express";
 import oralPresentationService from "../services/oralPresentation.service";
+import { cloudinary } from "../utils/cloudinary";
+
+/**
+ * Candidate: Generate a short-lived signature so the browser can upload
+ * the video FILE directly to Cloudinary, bypassing our own server
+ * entirely for the (potentially large) video bytes. This is required
+ * because our API runs as a Vercel serverless function, which enforces
+ * a hard ~4.5MB request body limit — most presentation videos exceed
+ * that, so routing the file through our server would fail outright.
+ */
+export const getUploadSignature = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const timestamp = Math.round(Date.now() / 1000);
+    const folder = "job-portal-presentations";
+
+    const paramsToSign: Record<string, string | number> = {
+      timestamp,
+      folder,
+    };
+
+    const signature = cloudinary.utils.api_sign_request(
+      paramsToSign,
+      process.env.CLOUDINARY_API_SECRET as string
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        timestamp,
+        folder,
+        signature,
+        apiKey: process.env.CLOUDINARY_API_KEY,
+        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const uploadPresentation = async (
   req: Request,
@@ -9,7 +52,7 @@ export const uploadPresentation = async (
   try {
     const presentation = await oralPresentationService.uploadPresentation(
       req.user!.id,
-      req.file as any
+      req.body
     );
 
     res.status(201).json({

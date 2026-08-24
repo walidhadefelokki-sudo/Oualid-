@@ -618,7 +618,6 @@ export default function RankingFilters({
 
           </div>
           
-        </div>
                   {/* Active Filters */}
 
           <div>

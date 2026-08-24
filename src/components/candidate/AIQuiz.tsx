@@ -40,7 +40,7 @@ export default function AIQuiz() {
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
-          "Unable to load your quiz. Please make sure you have uploaded a CV."
+          "Impossible de charger votre quiz. Assurez-vous d'avoir téléversé un CV."
       );
     } finally {
       setLoading(false);
@@ -62,7 +62,7 @@ export default function AIQuiz() {
       await loadQuiz();
     } catch (err: any) {
       setError(
-        err?.response?.data?.message || "Unable to submit your quiz."
+        err?.response?.data?.message || "Impossible de soumettre votre quiz."
       );
     } finally {
       setSubmitting(false);
@@ -77,7 +77,7 @@ export default function AIQuiz() {
       setCurrentIndex(0);
       await loadQuiz();
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Unable to reset your quiz.");
+      setError(err?.response?.data?.message || "Impossible de réinitialiser votre quiz.");
     } finally {
       setRetaking(false);
     }
@@ -95,10 +95,10 @@ export default function AIQuiz() {
           size={48}
         />
         <h2 className="text-xl font-bold text-[#173E7D] mt-6">
-          Preparing your quiz
+          Préparation de votre quiz
         </h2>
         <p className="text-gray-500 mt-2">
-          We're generating 5 personalised questions from your CV.
+          Nous générons 5 questions personnalisées à partir de votre CV.
         </p>
       </div>
     );
@@ -112,22 +112,22 @@ export default function AIQuiz() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">AI Quiz</h1>
+          <h1 className="text-3xl font-bold">Quiz IA</h1>
           <p className="text-gray-500 mt-2">
-            Personalized interview questions generated from your CV.
+            Questions d'entretien personnalisées générées à partir de votre CV.
           </p>
         </div>
 
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-red-600">
-            Unable to load quiz
+            Impossible de charger le quiz
           </h2>
           <p className="mt-3 text-gray-600">{error}</p>
           <button
             onClick={loadQuiz}
             className="mt-5 px-5 py-2.5 rounded-xl bg-[#173E7D] text-white font-semibold"
           >
-            Try again
+            Réessayer
           </button>
         </div>
       </div>
@@ -160,10 +160,10 @@ export default function AIQuiz() {
           </div>
 
           <h1 className="text-3xl font-black text-[#173E7D] mt-6">
-            Quiz Completed
+            Quiz terminé
           </h1>
           <p className="text-gray-500 mt-2">
-            Your answers have been evaluated by AI.
+            Vos réponses ont été évaluées par l'IA.
           </p>
 
           <div className="w-40 h-40 mx-auto mt-8 rounded-full border-[10px] border-[#173E7D] flex items-center justify-center">
@@ -183,7 +183,7 @@ export default function AIQuiz() {
             ) : (
               <RotateCcw size={18} />
             )}
-            Retake Quiz
+            Repasser le quiz
           </button>
         </div>
 
@@ -202,13 +202,13 @@ export default function AIQuiz() {
 
               <p className="text-gray-600 mt-3 whitespace-pre-wrap">
                 {a.answer || (
-                  <span className="italic text-gray-400">No answer</span>
+                  <span className="italic text-gray-400">Aucune réponse</span>
                 )}
               </p>
 
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-sm font-semibold text-[#173E7D]">
-                  Score: {Math.round(a.aiScore ?? 0)}/100
+                  Score : {Math.round(a.aiScore ?? 0)}/100
                 </span>
               </div>
 
@@ -230,7 +230,7 @@ export default function AIQuiz() {
 
   const questions = quiz.questions;
   const currentQuestion = questions[currentIndex];
-  const answeredCount = Object.values(answers).filter((a) => a.trim()).length;
+  const answeredCount = Object.values(answers).filter((a: string) => a.trim()).length;
   const isLast = currentIndex === questions.length - 1;
 
   return (
@@ -242,10 +242,10 @@ export default function AIQuiz() {
           </div>
           <div>
             <h1 className="text-2xl font-black text-[#173E7D]">
-              AI Candidate Quiz
+              Quiz IA candidat
             </h1>
             <p className="text-gray-500 mt-1">
-              5 questions generated from your CV. Answer in your own words.
+              5 questions générées à partir de votre CV. Répondez avec vos propres mots.
             </p>
           </div>
         </div>
@@ -257,7 +257,7 @@ export default function AIQuiz() {
             Question {currentIndex + 1}/{questions.length}
           </h2>
           <span className="text-sm text-gray-500">
-            {answeredCount}/{questions.length} answered
+            {answeredCount}/{questions.length} répondu(es)
           </span>
         </div>
         <div className="w-full h-3 rounded-full bg-gray-200 mt-5 overflow-hidden">
@@ -290,7 +290,7 @@ export default function AIQuiz() {
             }))
           }
           rows={6}
-          placeholder="Type your answer here..."
+          placeholder="Tapez votre réponse ici..."
           className="mt-6 w-full rounded-2xl border-2 border-gray-200 p-5 text-lg focus:border-[#173E7D] focus:outline-none resize-none"
         />
       </div>
@@ -303,7 +303,7 @@ export default function AIQuiz() {
             className="flex items-center gap-3 px-6 py-3 rounded-xl border border-gray-300 disabled:opacity-40"
           >
             <ChevronLeft size={20} />
-            Previous
+            Précédent
           </button>
 
           {!isLast ? (
@@ -313,7 +313,7 @@ export default function AIQuiz() {
               }
               className="flex items-center gap-3 px-8 py-3 rounded-xl bg-[#173E7D] text-white font-bold"
             >
-              Next
+              Suivant
               <ChevronRight size={20} />
             </button>
           ) : (
@@ -327,7 +327,7 @@ export default function AIQuiz() {
               ) : (
                 <CheckCircle2 size={20} />
               )}
-              Submit Quiz
+              Envoyer le quiz
             </button>
           )}
         </div>

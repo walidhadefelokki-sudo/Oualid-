@@ -40,7 +40,7 @@ class PreselectionService {
         include: {
           candidateScore: true,
           recruiter: true,
-          preselection: true,
+          preselections: true,
         },
       });
 
@@ -74,10 +74,12 @@ class PreselectionService {
     // Update existing preselection
     // ---------------------------------------
 
-    if (application.preselection) {
+    const existingPreselection = application.preselections[0];
+
+    if (existingPreselection) {
       return prisma.preselection.update({
         where: {
-          id: application.preselection.id,
+          id: existingPreselection.id,
         },
         data: {
           aiScore,
@@ -137,7 +139,7 @@ class PreselectionService {
             user.candidateProfile.id,
         },
         include: {
-          preselection: true,
+          preselections: true,
         },
       });
 
@@ -148,13 +150,13 @@ class PreselectionService {
       );
     }
 
-    if (!application.preselection) {
+    if (!application.preselections[0]) {
       return this.createOrUpdatePreselection(
         applicationId
       );
     }
 
-    return application.preselection;
+    return application.preselections[0];
   }
 
   // ============================================================
@@ -204,7 +206,7 @@ class PreselectionService {
         },
         include: {
           candidateScore: true,
-          preselection: true,
+          preselections: true,
         },
       });
 
@@ -225,7 +227,7 @@ class PreselectionService {
       );
     }
 
-    if (!application.preselection) {
+    if (!application.preselections[0]) {
       await this.createOrUpdatePreselection(
         applicationId
       );
@@ -330,7 +332,7 @@ class PreselectionService {
           id: applicationId,
         },
         include: {
-          preselection: {
+          preselections: {
             include: {
               application: {
                 include: {
@@ -354,7 +356,7 @@ class PreselectionService {
       );
     }
 
-    if (!application.preselection) {
+    if (!application.preselections[0]) {
       return this.createOrUpdatePreselection(
         applicationId
       );
@@ -389,7 +391,7 @@ class PreselectionService {
       }
     }
 
-    return application.preselection;
+    return application.preselections[0];
   }
 
   // ============================================================

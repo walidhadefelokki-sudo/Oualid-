@@ -33,4 +33,19 @@ export const presentationUpload = multer({
   storage: videoStorage,
 });
 
+const avatarStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "job-portal-avatars",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif"],
+    resource_type: "image",
+    transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
+  } as any,
+});
+
+export const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB — plenty for a profile photo
+});
+
 export { cloudinary };

@@ -31,7 +31,7 @@ const GoldenBadge: React.FC<Props> = ({
   return (
     <span
       title={tooltip ? GOLDEN_BADGE_TOOLTIP : undefined}
-      className={getBadgeClasses(size, className)}
+      className={getBadgeClasses(size as "sm" | "md" | "lg", className)}
     >
       <Award
         className={

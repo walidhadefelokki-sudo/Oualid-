@@ -25,6 +25,16 @@ import {
   CORPORATE_SORT_OPTIONS,
 } from "../../../constants/corporateCandidate";
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: "En attente",
+  reviewing: "En cours d'examen",
+  preselected: "Présélectionné",
+  approved: "Approuvé",
+  rejected: "Rejeté",
+};
+
+const statusLabel = (status: string) => STATUS_LABELS[status] || status;
+
 const CorporateCandidateList: React.FC<
   CorporateCandidateListProps
 > = ({
@@ -54,8 +64,8 @@ const CorporateCandidateList: React.FC<
   if (!candidateList.length) {
     return (
       <PreselectionEmpty
-        title="No Candidates"
-        description="No candidates match your filters."
+        title="Aucun candidat"
+        description="Aucun candidat ne correspond à vos filtres."
       />
     );
   }
@@ -72,12 +82,12 @@ const CorporateCandidateList: React.FC<
           <div>
 
             <h2 className="text-2xl font-bold text-slate-900">
-              Corporate Candidate List
+              Liste des candidats Corporate
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Preselected candidates are automatically
-              displayed first, followed by AI ranking.
+              Les candidats présélectionnés sont automatiquement
+              affichés en premier, suivis du classement IA.
             </p>
 
           </div>
@@ -89,7 +99,7 @@ const CorporateCandidateList: React.FC<
             </div>
 
             <div className="text-sm text-slate-500">
-              Candidates
+              Candidats
             </div>
 
           </div>
@@ -110,7 +120,7 @@ const CorporateCandidateList: React.FC<
               onChange={(e) =>
                 setSearch(e.target.value)
               }
-              placeholder="Search candidates..."
+              placeholder="Rechercher des candidats..."
               className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
             />
 
@@ -159,23 +169,23 @@ const CorporateCandidateList: React.FC<
             <tr>
 
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                Candidate
+                Candidat
               </th>
 
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                AI Score
+                Score IA
               </th>
 
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                Experience
+                Expérience
               </th>
 
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                Status
+                Statut
               </th>
 
               <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                Applied
+                Candidature
               </th>
 
             </tr>
@@ -292,7 +302,7 @@ const CorporateCandidateList: React.FC<
 
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
 
-                      {candidate.experience ?? 0} years
+                      {candidate.experience ?? 0} ans
 
                     </span>
 
@@ -315,7 +325,7 @@ const CorporateCandidateList: React.FC<
                           : "bg-slate-100 text-slate-700"
                       }`}
                     >
-                      {candidate.status}
+                      {statusLabel(candidate.status)}
                     </span>
 
                   </td>
@@ -418,7 +428,7 @@ const CorporateCandidateList: React.FC<
                     <Brain className="h-4 w-4 text-indigo-500" />
 
                     <span className="text-sm font-medium text-slate-700">
-                      AI Score
+                      Score IA
                     </span>
 
                   </div>
@@ -455,11 +465,11 @@ const CorporateCandidateList: React.FC<
                 <div>
 
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Experience
+                    Expérience
                   </p>
 
                   <p className="mt-1 font-medium text-slate-800">
-                    {candidate.experience ?? 0} years
+                    {candidate.experience ?? 0} ans
                   </p>
 
                 </div>
@@ -467,7 +477,7 @@ const CorporateCandidateList: React.FC<
                 <div>
 
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Status
+                    Statut
                   </p>
 
                   <span
@@ -483,7 +493,7 @@ const CorporateCandidateList: React.FC<
                         : "bg-slate-100 text-slate-700"
                     }`}
                   >
-                    {candidate.status}
+                    {statusLabel(candidate.status)}
                   </span>
 
                 </div>
@@ -511,7 +521,7 @@ const CorporateCandidateList: React.FC<
 
                   <Star className="h-4 w-4 fill-current" />
 
-                  Preselected Candidate
+                  Candidat présélectionné
 
                 </div>
               )}

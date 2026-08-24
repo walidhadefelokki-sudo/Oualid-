@@ -3,21 +3,25 @@ import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import candidateScoreService from "./candidateScore.service";
 
-interface UploadedFile {
-  path?: string;
-  filename?: string;
-  mimetype?: string;
+interface UploadedVideoMeta {
+  url?: string;
+  publicId?: string;
+  mimeType?: string;
+  extension?: string;
   size?: number;
-  originalname?: string;
 }
 
 class OralPresentationService {
   /**
    * Candidate: Upload or replace their profile presentation video.
    * One presentation per candidate profile (not per application).
+   *
+   * `meta` describes a video that the browser has already uploaded
+   * directly to Cloudinary (see getUploadSignature) — we only ever
+   * receive the resulting metadata here, never the file itself.
    */
-  async uploadPresentation(userId: string, file: UploadedFile) {
-    if (!file) {
+  async uploadPresentation(userId: string, meta: UploadedVideoMeta) {
+    if (!meta?.url) {
       throw new AppError("Please upload a video.", 400);
     }
 
@@ -34,12 +38,12 @@ class OralPresentationService {
 
     const fileAsset = await prisma.fileAsset.create({
       data: {
-        url: file.path || "",
+        url: meta.url,
         provider: "cloudinary",
-        publicId: file.filename,
-        mimeType: file.mimetype,
-        extension: file.originalname?.split(".").pop(),
-        size: file.size,
+        publicId: meta.publicId,
+        mimeType: meta.mimeType,
+        extension: meta.extension,
+        size: meta.size,
       },
     });
 

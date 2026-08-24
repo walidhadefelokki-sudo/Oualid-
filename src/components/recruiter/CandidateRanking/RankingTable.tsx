@@ -680,4 +680,3 @@ export default function RankingTable({
   );
 
 }
-          </tbody>

@@ -22,7 +22,7 @@ interface OralPresentation {
   updatedAt: string;
 }
 
-export default function OralPresentationCard() {
+export default function OralPresentationCard({ isDemo = false }: { isDemo?: boolean }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [presentation, setPresentation] =
@@ -30,10 +30,18 @@ export default function OralPresentationCard() {
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
+    if (isDemo) {
+      // Demo accounts don't have a real backend session/token, so calling
+      // the real API here would always fail with 401. Just show the
+      // empty state instead of a doomed network request.
+      setLoading(false);
+      return;
+    }
     loadPresentation();
-  }, []);
+  }, [isDemo]);
 
   async function loadPresentation() {
     try {
@@ -58,24 +66,39 @@ export default function OralPresentationCard() {
 
     if (!file) return;
 
+    if (isDemo) {
+      alert("Créez un compte pour téléverser une présentation orale.");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
     try {
       setUploading(true);
+      setUploadProgress(0);
 
-      await oralPresentationService.uploadPresentation(file);
+      await oralPresentationService.uploadPresentation(file, setUploadProgress);
 
       await loadPresentation();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Unable to upload presentation.");
+      alert(
+        `Impossible de téléverser la présentation.\n\n${err?.message || "Erreur inconnue."}`
+      );
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }
 
   async function handleDelete() {
     if (
       !window.confirm(
-        "Delete your oral presentation?"
+        "Supprimer votre présentation orale ?"
       )
     )
       return;
@@ -97,11 +120,11 @@ export default function OralPresentationCard() {
 
         <div>
           <h2 className="text-xl font-bold text-[#173E7D]">
-            Oral Presentation
+            Présentation orale
           </h2>
 
           <p className="text-sm text-gray-500">
-            Recruiters can watch this presentation from your profile.
+            Les recruteurs peuvent visionner cette présentation depuis votre profil.
           </p>
         </div>
       </div>
@@ -128,8 +151,20 @@ export default function OralPresentationCard() {
           <div className="flex items-center gap-2 mt-4 text-green-600 font-medium">
             <CheckCircle size={18} />
 
-            Presentation uploaded successfully
+            Présentation téléversée avec succès
           </div>
+
+          {uploading && (
+            <div className="mt-4">
+              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#173E7D] transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{uploadProgress}%</p>
+            </div>
+          )}
 
           <div className="flex gap-3 mt-6">
 
@@ -147,16 +182,17 @@ export default function OralPresentationCard() {
                 <RefreshCw size={18} />
               )}
 
-              Replace
+              Remplacer
             </button>
 
             <button
               onClick={handleDelete}
+              disabled={uploading}
               className="px-5 py-3 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 transition flex items-center gap-2"
             >
               <Trash2 size={18} />
 
-              Delete
+              Supprimer
             </button>
 
           </div>
@@ -171,12 +207,12 @@ export default function OralPresentationCard() {
             />
 
             <h3 className="font-bold text-lg">
-              No Oral Presentation
+              Aucune présentation orale
             </h3>
 
             <p className="text-gray-500 mt-2 mb-6">
-              Upload a short introduction video that recruiters
-              can watch from your profile.
+              Téléversez une courte vidéo de présentation que les recruteurs
+              pourront visionner depuis votre profil.
             </p>
 
             <button
@@ -193,8 +229,20 @@ export default function OralPresentationCard() {
                 <Upload size={18} />
               )}
 
-              Upload Presentation
+              Téléverser une présentation
             </button>
+
+            {uploading && (
+              <div className="mt-4 max-w-xs mx-auto">
+                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#173E7D] transition-all"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{uploadProgress}%</p>
+              </div>
+            )}
 
           </div>
         </>

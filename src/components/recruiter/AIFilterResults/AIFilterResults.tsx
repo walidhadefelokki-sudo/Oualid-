@@ -62,17 +62,17 @@ interface Props {
 const PAGE_SIZE = 8;
 
 const CATEGORY_FILTERS = [
-  "All",
+  "Tous",
   "Excellent match",
   "Bon match",
   "Match partiel",
 ];
 
 const SORT_OPTIONS = [
-  "Highest Match",
-  "Lowest Match",
-  "Most Experience",
-  "Name",
+  "Meilleur match",
+  "Plus faible match",
+  "Plus expérimenté",
+  "Nom",
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -87,8 +87,8 @@ const AIFilterResults: React.FC<Props> = ({
   onOpenCandidate,
 }) => {
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [sortBy, setSortBy] = useState("Highest Match");
+  const [category, setCategory] = useState("Tous");
+  const [sortBy, setSortBy] = useState("Meilleur match");
 
   const [expandedCandidate, setExpandedCandidate] =
     useState<number | string | null>(null);
@@ -113,22 +113,22 @@ const AIFilterResults: React.FC<Props> = ({
       );
     }
 
-    if (category !== "All") {
+    if (category !== "Tous") {
       list = list.filter(
         (candidate) => candidate.category === category
       );
     }
 
     switch (sortBy) {
-      case "Highest Match":
+      case "Meilleur match":
         list.sort((a, b) => b.match - a.match);
         break;
 
-      case "Lowest Match":
+      case "Plus faible match":
         list.sort((a, b) => a.match - b.match);
         break;
 
-      case "Most Experience":
+      case "Plus expérimenté":
         list.sort(
           (a, b) =>
             parseInt(b.exp) -
@@ -136,7 +136,7 @@ const AIFilterResults: React.FC<Props> = ({
         );
         break;
 
-      case "Name":
+      case "Nom":
         list.sort((a, b) =>
           a.name.localeCompare(b.name)
         );
@@ -205,11 +205,11 @@ const AIFilterResults: React.FC<Props> = ({
             <div>
 
               <h1 className="text-3xl font-black text-slate-900">
-                AI Filter Results
+                Résultats du filtre IA
               </h1>
 
               <p className="mt-1 text-slate-500">
-                AI ranking and candidate matching
+                Classement IA et correspondance des candidats
               </p>
 
             </div>
@@ -225,7 +225,7 @@ const AIFilterResults: React.FC<Props> = ({
             className="flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 font-bold text-white transition hover:bg-indigo-600"
           >
             <RefreshCw size={18} />
-            Refresh
+            Actualiser
           </button>
 
         </div>
@@ -239,25 +239,25 @@ const AIFilterResults: React.FC<Props> = ({
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
 
         <StatCard
-          title="Candidates"
+          title="Candidats"
           value={candidates.length}
           icon={<Users size={24} />}
         />
 
         <StatCard
-          title="Excellent Match"
+          title="Excellent match"
           value={excellent}
           icon={<Trophy size={24} />}
         />
 
         <StatCard
-          title="Interview Ready"
+          title="Prêt pour entretien"
           value={interviewReady}
           icon={<CheckCircle2 size={24} />}
         />
 
         <StatCard
-          title="Average Match"
+          title="Match moyen"
           value={`${average}%`}
           icon={<TrendingUp size={24} />}
         />
@@ -287,7 +287,7 @@ const AIFilterResults: React.FC<Props> = ({
                 setCurrentPage(1);
                 setSearch(e.target.value);
               }}
-              placeholder="Search candidate..."
+              placeholder="Rechercher un candidat..."
               className="w-full rounded-2xl border bg-slate-50 py-3 pl-11 pr-4 outline-none transition focus:border-indigo-500"
             />
 
@@ -351,10 +351,10 @@ const AIFilterResults: React.FC<Props> = ({
             className="mx-auto mb-5 animate-spin text-indigo-600"
           />
           <h3 className="text-xl font-bold text-slate-900">
-            AI is analyzing candidates...
+            L'IA analyse les candidats...
           </h3>
           <p className="mt-2 text-slate-500">
-            Please wait a moment.
+            Veuillez patienter un instant.
           </p>
         </div>
       )}
@@ -372,11 +372,11 @@ const AIFilterResults: React.FC<Props> = ({
           />
 
           <h3 className="text-2xl font-black text-slate-900">
-            No candidates found
+            Aucun candidat trouvé
           </h3>
 
           <p className="mt-3 text-slate-500">
-            Try changing the search filters.
+            Essayez de modifier les filtres de recherche.
           </p>
 
         </div>
@@ -396,7 +396,7 @@ const AIFilterResults: React.FC<Props> = ({
               <tr className="text-left text-sm font-bold text-slate-700">
 
                 <th className="px-6 py-5">
-                  Candidate
+                  Candidat
                 </th>
 
                 <th className="px-6 py-5">
@@ -404,15 +404,15 @@ const AIFilterResults: React.FC<Props> = ({
                 </th>
 
                 <th className="px-6 py-5">
-                  Experience
+                  Expérience
                 </th>
 
                 <th className="px-6 py-5">
-                  Location
+                  Localisation
                 </th>
 
                 <th className="px-6 py-5">
-                  Category
+                  Catégorie
                 </th>
 
                 <th className="px-6 py-5 text-center">
@@ -584,7 +584,7 @@ const AIFilterResults: React.FC<Props> = ({
                                       className="text-indigo-600"
                                     />
 
-                                    AI Summary
+                                    Résumé IA
 
                                   </h4>
 
@@ -602,22 +602,22 @@ const AIFilterResults: React.FC<Props> = ({
 
                                   <h4 className="mb-4 text-lg font-black">
 
-                                    AI Scores
+                                    Scores IA
 
                                   </h4>
 
                                   <InfoBar
-                                    title="Experience"
+                                    title="Expérience"
                                     value={candidate.scores.exp}
                                   />
 
                                   <InfoBar
-                                    title="Technical Skills"
+                                    title="Compétences techniques"
                                     value={candidate.scores.skills}
                                   />
 
                                   <InfoBar
-                                    title="Education"
+                                    title="Formation"
                                     value={candidate.scores.edu}
                                   />
 
@@ -629,7 +629,7 @@ const AIFilterResults: React.FC<Props> = ({
 
                                   <h4 className="mb-4 text-lg font-black">
 
-                                    Recommendation
+                                    Recommandation
 
                                   </h4>
 
@@ -638,7 +638,7 @@ const AIFilterResults: React.FC<Props> = ({
                                     {candidate.match >= 90 && (
                                       <div className="flex items-center gap-2 text-emerald-600 font-bold">
                                         <CheckCircle2 size={18} />
-                                        Excellent Candidate
+                                        Excellent candidat
                                       </div>
                                     )}
 
@@ -646,14 +646,14 @@ const AIFilterResults: React.FC<Props> = ({
                                       candidate.match < 90 && (
                                         <div className="flex items-center gap-2 text-blue-600 font-bold">
                                           <Star size={18} />
-                                          Worth Interviewing
+                                          Mérite un entretien
                                         </div>
                                       )}
 
                                     {candidate.match < 75 && (
                                       <div className="flex items-center gap-2 text-amber-600 font-bold">
                                         <AlertTriangle size={18} />
-                                        Keep as Backup
+                                        À garder en réserve
                                       </div>
                                     )}
 
@@ -671,7 +671,7 @@ const AIFilterResults: React.FC<Props> = ({
 
                                   <h4 className="mb-4 text-lg font-black text-emerald-700">
 
-                                    Strengths
+                                    Points forts
 
                                   </h4>
 
@@ -702,7 +702,7 @@ const AIFilterResults: React.FC<Props> = ({
 
                                   <h4 className="mb-4 text-lg font-black text-amber-700">
 
-                                    Weaknesses
+                                    Points faibles
 
                                   </h4>
 
@@ -802,7 +802,7 @@ const AIFilterResults: React.FC<Props> = ({
                     </div>
 
                     <div className="text-xs text-slate-500">
-                      AI Match
+                      Match IA
                     </div>
 
                   </div>
@@ -828,7 +828,7 @@ const AIFilterResults: React.FC<Props> = ({
                     }
                     className="flex-1 rounded-2xl bg-indigo-600 py-3 font-bold text-white"
                   >
-                    View
+                    Voir
                   </button>
 
                   <button
@@ -877,17 +877,17 @@ const AIFilterResults: React.FC<Props> = ({
                         <div className="mt-6">
 
                           <InfoBar
-                            title="Experience"
+                            title="Expérience"
                             value={candidate.scores.exp}
                           />
 
                           <InfoBar
-                            title="Technical Skills"
+                            title="Compétences techniques"
                             value={candidate.scores.skills}
                           />
 
                           <InfoBar
-                            title="Education"
+                            title="Formation"
                             value={candidate.scores.edu}
                           />
 
@@ -924,7 +924,7 @@ const AIFilterResults: React.FC<Props> = ({
               }
               className="rounded-xl border px-5 py-2 font-semibold disabled:opacity-40"
             >
-              Previous
+              Précédent
             </button>
 
             <div className="font-bold">
@@ -938,7 +938,7 @@ const AIFilterResults: React.FC<Props> = ({
               }
               className="rounded-xl border px-5 py-2 font-semibold disabled:opacity-40"
             >
-              Next
+              Suivant
             </button>
 
           </div>

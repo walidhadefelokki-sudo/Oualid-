@@ -82,7 +82,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
 import { useRef } from "react";
 import { supabase } from '../supabase';
@@ -538,11 +538,13 @@ export default function Dashboard({
   );
 
   useEffect(() => {
-    loadCandidates();
+    if (!isDemo) {
+      loadCandidates();
+      loadAICandidates();
+    }
     loadQuizResults();
     loadPresentations();
     loadPreselectedCandidates();
-    loadAICandidates();
 
     if (user && !isDemo) {
       candidateProfileService
@@ -550,6 +552,30 @@ export default function Dashboard({
         .then((resume) => {
           if (resume?.url) {
             setProfileData(prev => ({ ...prev, resumeUrl: resume.url }));
+          }
+        })
+        .catch(() => null);
+
+      // Load the candidate's real saved profile so the Profile page
+      // shows actual data instead of placeholders, and so Save
+      // Changes doesn't overwrite fields the user never touched.
+      candidateProfileService
+        .getMyProfile()
+        .then((fullUser) => {
+          const cp = fullUser?.candidateProfile;
+          setProfileData(prev => ({
+            ...prev,
+            name: [fullUser?.firstName, fullUser?.lastName].filter(Boolean).join(' ') || prev.name,
+            email: fullUser?.email || prev.email,
+            phone: cp?.phone ?? prev.phone,
+            wilaya: cp?.wilaya ?? prev.wilaya,
+            bio: cp?.bio ?? prev.bio,
+            jobTitle: cp?.currentJobTitle ?? prev.jobTitle,
+            location: cp?.city || cp?.wilaya || prev.location,
+            resumeUrl: cp?.resume?.url ?? prev.resumeUrl,
+          }));
+          if (fullUser?.avatar?.url) {
+            setAvatarUrl(fullUser.avatar.url);
           }
         })
         .catch(() => null);
@@ -949,7 +975,7 @@ export default function Dashboard({
         <div className="p-6 border-t border-gray-100">
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
             <img
-              src={user.photoURL || 'https://i.pravatar.cc/150?u=oualid'}
+              src={displayPhotoURL || 'https://i.pravatar.cc/150?u=oualid'}
               alt={user.displayName}
               className="w-10 h-10 rounded-xl object-cover"
               referrerPolicy="no-referrer"
@@ -1138,6 +1164,54 @@ export default function Dashboard({
     resumeUrl: user?.resumeUrl || user?.resume_url || ''
   });
 
+  // Locally overrides user.photoURL everywhere it's rendered once the
+  // candidate uploads a new profile picture, without needing App.tsx to
+  // expose a setUser callback down to this component.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const displayPhotoURL = avatarUrl || user?.photoURL;
+
+  const handleChangePhotoClick = () => {
+    if (isDemo) {
+      alert(lt(
+        'Create an account to change your profile picture.',
+        'Créez un compte pour changer votre photo de profil.',
+        'أنشئ حسابًا لتغيير صورة ملفك الشخصي.'
+      ));
+      return;
+    }
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert(lt('Please choose an image file.', 'Veuillez choisir un fichier image.', 'يرجى اختيار ملف صورة.'));
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setUploadingAvatar(true);
+      const url = await candidateProfileService.updateAvatar(file);
+      if (url) setAvatarUrl(url);
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      const message = error?.response?.data?.message || error?.message;
+      alert(lt(
+        `Unable to update your profile picture.${message ? ` (${message})` : ''}`,
+        `Impossible de mettre à jour la photo de profil.${message ? ` (${message})` : ''}`,
+        `تعذر تحديث صورة الملف الشخصي.${message ? ` (${message})` : ''}`
+      ));
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
   // CV Maker State
   const [cvModel, setCvModel] = useState('moderne');
   const [cvSection, setCvSection] = useState('info');
@@ -1196,8 +1270,10 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    loadPostedJobs();
-  }, []);
+    if (!isDemo) {
+      loadPostedJobs();
+    }
+  }, [isDemo]);
 
   // Display-label (French UI) -> backend enum maps. See prisma/schema.prisma.
   const JOB_TYPE_MAP: Record<string, string> = {
@@ -1384,20 +1460,35 @@ export default function Dashboard({
 
   const handleSaveProfile = async () => {
     if (!user) return;
+
+    if (isDemo) {
+      alert(lt('Profile updated successfully (Demo)!', 'Profil mis à jour avec succès (Démo) !', 'تم تحديث الملف الشخصي بنجاح (تجربة)!'));
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          uid: user.uid,
-          ...profileData,
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error) throw error;
+      const [firstName, ...rest] = (profileData.name || '').trim().split(' ');
+      const lastName = rest.join(' ');
+
+      await candidateProfileService.updateProfile({
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        phone: profileData.phone,
+        wilaya: profileData.wilaya,
+        city: profileData.location,
+        bio: profileData.bio,
+        currentJobTitle: profileData.jobTitle,
+      });
+
       alert(language === 'ar' ? 'تم تحديث الملف الشخصي بنجاح!' : 'Profil mis à jour avec succès !');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving profile:", error);
-      alert(language === 'ar' ? 'خطأ أثناء تحديث الملف الشخصي.' : 'Erreur lors de la mise à jour du profil.');
+      const message = error?.response?.data?.message;
+      alert(
+        language === 'ar'
+          ? `خطأ أثناء تحديث الملف الشخصي.${message ? ` (${message})` : ''}`
+          : `Erreur lors de la mise à jour du profil.${message ? ` (${message})` : ''}`
+      );
     }
   };
 
@@ -1697,9 +1788,131 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       success = await tryBuildPDF(false);
     }
     if (!success) {
-      await handlePrintCVElement(elementId);
+      // Last resort: skip the visual snapshot entirely and build a plain
+      // text PDF directly from the CV Maker's own data, so this always
+      // ends in a real downloaded file instead of opening the print dialog.
+      if (elementId === 'cv-preview-container') {
+        generateTextPDF(filename);
+      } else {
+        await handlePrintCVElement(elementId);
+      }
     }
   }
+  // Guaranteed-to-work fallback: builds the CV as a plain vector-text PDF
+  // straight from cvData (no screenshot, no fonts/colors that can fail).
+  // Used only if the visual html2canvas snapshot fails twice, so the user
+  // always gets a real downloaded .pdf file and never a print dialog.
+  function generateTextPDF(filename: string): void {
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const marginX = 18;
+    const pageWidth = 210;
+    const contentWidth = pageWidth - marginX * 2;
+    let y = 22;
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > 285) {
+        pdf.addPage();
+        y = 22;
+      }
+    };
+
+    const addHeading = (text: string) => {
+      ensureSpace(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(23, 62, 125); // #173E7D
+      pdf.text(text, marginX, y);
+      y += 2;
+      pdf.setDrawColor(230, 230, 230);
+      pdf.line(marginX, y, pageWidth - marginX, y);
+      y += 7;
+    };
+
+    const addParagraph = (text: string, size = 10.5, color: [number, number, number] = [55, 65, 81]) => {
+      if (!text) return;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(size);
+      pdf.setTextColor(...color);
+      const lines = pdf.splitTextToSize(text, contentWidth);
+      ensureSpace(lines.length * 5 + 2);
+      pdf.text(lines, marginX, y);
+      y += lines.length * 5 + 3;
+    };
+
+    // Name + contact header
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(22);
+    pdf.setTextColor(23, 62, 125);
+    pdf.text(cvData.name || 'CV', marginX, y);
+    y += 8;
+
+    const contactParts = [cvData.email, cvData.phone, cvData.address].filter(Boolean);
+    if (contactParts.length) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(contactParts.join('  •  '), marginX, y);
+      y += 10;
+    } else {
+      y += 4;
+    }
+
+    if (cvData.summary) {
+      addHeading(language === 'ar' ? 'نبذة' : 'Résumé');
+      addParagraph(cvData.summary);
+    }
+
+    if (cvData.experiences?.length) {
+      addHeading(language === 'ar' ? 'الخبرة المهنية' : 'Expérience professionnelle');
+      cvData.experiences.forEach((exp) => {
+        ensureSpace(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(17, 24, 39);
+        pdf.text(`${exp.role || ''}${exp.company ? ' — ' + exp.company : ''}`, marginX, y);
+        y += 5;
+        if (exp.period) {
+          pdf.setFont('helvetica', 'italic');
+          pdf.setFontSize(9.5);
+          pdf.setTextColor(107, 114, 128);
+          pdf.text(exp.period, marginX, y);
+          y += 5;
+        }
+        addParagraph(exp.desc || '');
+        y += 1;
+      });
+    }
+
+    if (cvData.education?.length) {
+      addHeading(language === 'ar' ? 'التعليم' : 'Formation');
+      cvData.education.forEach((edu) => {
+        ensureSpace(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(17, 24, 39);
+        pdf.text(edu.degree || '', marginX, y);
+        y += 5;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9.5);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(`${edu.school || ''}${edu.year ? ' — ' + edu.year : ''}`, marginX, y);
+        y += 7;
+      });
+    }
+
+    if (cvData.skills?.length) {
+      addHeading(language === 'ar' ? 'المهارات' : 'Compétences');
+      addParagraph(cvData.skills.join('  •  '));
+    }
+
+    if (cvData.languages?.length) {
+      addHeading(language === 'ar' ? 'اللغات' : 'Langues');
+      addParagraph(cvData.languages.map((l) => `${l.name} (${l.level})`).join('  •  '));
+    }
+
+    pdf.save(`${filename}.pdf`);
+  }
+
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);
     try {
@@ -2770,29 +2983,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button 
-                          onClick={() => setLanguage('en')}
-                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                            language === 'en' 
-                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
-                              : 'border-gray-100 hover:border-gray-200 bg-white'
-                          } ${isRTL ? 'flex-row-reverse' : ''}`}
-                        >
-                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
-                            <div className={isRTL ? 'text-right' : 'text-left'}>
-                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
-                              <div className="text-xs text-gray-400">English</div>
-                            </div>
-                          </div>
-                          {language === 'en' && (
-                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
-                              <CheckCircle2 size={14} />
-                            </div>
-                          )}
-                        </button>
-
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
@@ -3961,9 +4152,22 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <span className="px-4 py-1.5 bg-gray-50 text-gray-500 text-xs font-bold rounded-full">{profileData.location}</span>
                 </div>
               </div>
-              <button className="px-8 py-3.5 rounded-full border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-all">
-                {language === 'ar' ? 'تغيير الصورة' : 'Modifier la photo'}
+              <button
+                onClick={handleChangePhotoClick}
+                disabled={uploadingAvatar}
+                className="px-8 py-3.5 rounded-full border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-all disabled:opacity-60"
+              >
+                {uploadingAvatar
+                  ? (language === 'ar' ? 'جارٍ الرفع...' : 'Envoi en cours...')
+                  : (language === 'ar' ? 'تغيير الصورة' : 'Modifier la photo')}
               </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={handleAvatarFileChange}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
@@ -4045,7 +4249,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   {isUploading ? (language === 'ar' ? 'جاري الرفع...' : 'Téléchargement...') : (language === 'ar' ? 'رفع CV' : 'Uploader CV')}
                 </label>
               </div>
-              <OralPresentationCard/>
+              <OralPresentationCard isDemo={isDemo}/>
               <button 
                 onClick={handleSaveProfile}
                 className="px-12 py-4 bg-[#0A1118] text-white rounded-full font-bold hover:bg-[#173E7D] transition-all shadow-xl"
@@ -4450,8 +4654,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <div className="bg-[#173E7D] p-12 text-white relative">
                   <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <div className="w-40 h-40 rounded-[3rem] overflow-hidden border-4 border-white/20 shadow-2xl bg-white/10 flex items-center justify-center">
-                      {user?.photoURL ? (
-                        <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                      {displayPhotoURL ? (
+                        <img src={displayPhotoURL} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <User size={64} className="text-white/20" />
                       )}
@@ -4998,29 +5202,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <h3 className="text-xl font-bold text-[#173E7D]">{t('language')}</h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button 
-                          onClick={() => setLanguage('en')}
-                          className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
-                            language === 'en' 
-                              ? 'border-[#F68D58] bg-orange-50/50 shadow-lg shadow-orange-200/20' 
-                              : 'border-gray-100 hover:border-gray-200 bg-white'
-                          } ${isRTL ? 'flex-row-reverse' : ''}`}
-                        >
-                          <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-2xl">🇺🇸</div>
-                            <div className={isRTL ? 'text-right' : 'text-left'}>
-                              <div className="font-bold text-[#173E7D] text-lg">{t('english')}</div>
-                              <div className="text-xs text-gray-400">English</div>
-                            </div>
-                          </div>
-                          {language === 'en' && (
-                            <div className="w-6 h-6 bg-[#F68D58] rounded-full flex items-center justify-center text-white">
-                              <CheckCircle2 size={14} />
-                            </div>
-                          )}
-                        </button>
-
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button 
                           onClick={() => setLanguage('fr')}
                           className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all ${
@@ -5360,7 +5542,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   />
                   <SidebarItem 
                     icon={Cpu} 
-                    label="AI Filter" 
+                    label="Filtre IA" 
                     active={activeTab === 'ai-filter'} 
                     onClick={() => { setActiveTab('ai-filter'); setIsSidebarOpen(false); }} 
                   />
@@ -5420,7 +5602,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   />
                   <SidebarItem 
                     icon={Brain} 
-                    label="AI Quiz" 
+                    label="Quiz IA" 
                     active={activeTab === 'ai-quiz'} 
                     onClick={() => { 
                       setActiveTab('ai-quiz'); 
@@ -5497,7 +5679,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               />
               <SidebarItem 
                 icon={Cpu} 
-                label="AI Filter" 
+                label="Filtre IA" 
                 active={activeTab === 'ai-filter'} 
                 onClick={() => setActiveTab('ai-filter')} 
               />
@@ -5557,12 +5739,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               />
               <SidebarItem 
                 icon={Brain} 
-                label="AI Quiz" 
+                label="Quiz IA" 
                 active={activeTab === 'ai-quiz'} 
-                onClick={() => { 
-                  setActiveTab('ai-quiz'); 
-                  setIsSidebarOpen(false); 
-                }} 
+                onClick={() => setActiveTab('ai-quiz')} 
               />
               <SidebarItem 
                 icon={User} 
@@ -5634,7 +5813,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
               </div>
               <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-gray-100">
-                <img src={user?.photoURL || 'https://picsum.photos/seed/user/100/100'} alt="Profile" className="w-full h-full object-cover" />
+                <img src={displayPhotoURL || 'https://picsum.photos/seed/user/100/100'} alt="Profile" className="w-full h-full object-cover" />
               </div>
             </div>
           </div>

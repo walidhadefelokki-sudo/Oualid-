@@ -27,14 +27,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         </div>
 
         <nav className="flex flex-col gap-1">
-          <SidebarItem icon={<LayoutDashboard size={18} />} label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
-          <SidebarItem icon={<Building2 size={18} />} label="Recruiter Plans" active={tab === "plans"} onClick={() => setTab("plans")} />
-          <SidebarItem icon={<ClipboardCheck size={18} />} label="Corporate Preselection" active={tab === "preselection"} onClick={() => setTab("preselection")} />
+          <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => setTab("overview")} />
+          <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => setTab("plans")} />
+          <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => setTab("preselection")} />
         </nav>
 
         <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
           <LogOut size={16} />
-          <span className="text-sm">Back to site</span>
+          <span className="text-sm">Retour au site</span>
         </button>
       </aside>
 
@@ -77,24 +77,24 @@ const OverviewTab: React.FC = () => {
     adminService
       .getStats()
       .then(setStats)
-      .catch((e) => setError(e?.response?.data?.message || "Failed to load stats"));
+      .catch((e) => setError(e?.response?.data?.message || "Échec du chargement des statistiques"));
   }, []);
 
   if (error) return <ErrorBox message={error} />;
   if (!stats) return <LoadingBox />;
 
   const cards = [
-    { label: "Total Users", value: stats.totalUsers },
-    { label: "Recruiters", value: stats.totalRecruiters },
-    { label: "Candidates", value: stats.totalCandidates },
-    { label: "Companies", value: stats.totalCompanies },
-    { label: "Jobs Posted", value: stats.totalJobs },
-    { label: "Open Support Tickets", value: stats.pendingTickets },
+    { label: "Utilisateurs au total", value: stats.totalUsers },
+    { label: "Recruteurs", value: stats.totalRecruiters },
+    { label: "Candidats", value: stats.totalCandidates },
+    { label: "Entreprises", value: stats.totalCompanies },
+    { label: "Offres publiées", value: stats.totalJobs },
+    { label: "Tickets de support ouverts", value: stats.pendingTickets },
   ];
 
   return (
     <div>
-      <h1 className="text-2xl font-display mb-6">Overview</h1>
+      <h1 className="text-2xl font-display mb-6">Aperçu</h1>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl p-5 shadow-sm">
@@ -104,7 +104,7 @@ const OverviewTab: React.FC = () => {
         ))}
       </div>
 
-      <h2 className="text-lg font-semibold mb-3">Companies by plan</h2>
+      <h2 className="text-lg font-semibold mb-3">Entreprises par plan</h2>
       <div className="flex gap-4">
         {stats.planCounts.map((p) => (
           <div key={p.plan} className="bg-white rounded-xl px-5 py-4 shadow-sm">
@@ -132,7 +132,7 @@ const PlansTab: React.FC = () => {
     adminService
       .getCompanies()
       .then(setCompanies)
-      .catch((e) => setError(e?.response?.data?.message || "Failed to load companies"))
+      .catch((e) => setError(e?.response?.data?.message || "Échec du chargement des entreprises"))
       .finally(() => setLoading(false));
   };
 
@@ -144,7 +144,7 @@ const PlansTab: React.FC = () => {
       await adminService.updateCompanyPlan(companyId, plan);
       setCompanies((prev) => prev.map((c) => (c.id === companyId ? { ...c, plan } : c)));
     } catch (e: any) {
-      alert(e?.response?.data?.message || "Failed to update plan");
+      alert(e?.response?.data?.message || "Échec de la mise à jour du plan");
     } finally {
       setSavingId(null);
     }
@@ -154,22 +154,22 @@ const PlansTab: React.FC = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-display mb-6">Recruiter Plans</h1>
+      <h1 className="text-2xl font-display mb-6">Plans recruteurs</h1>
 
       {loading ? (
         <LoadingBox />
       ) : companies.length === 0 ? (
-        <EmptyBox message="No companies yet." />
+        <EmptyBox message="Aucune entreprise pour le moment." />
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-primary/5 text-left text-primary/60 uppercase text-xs">
               <tr>
-                <th className="px-4 py-3">Company</th>
-                <th className="px-4 py-3">Recruiters</th>
-                <th className="px-4 py-3">Jobs</th>
-                <th className="px-4 py-3">Current Plan</th>
-                <th className="px-4 py-3">Change Plan</th>
+                <th className="px-4 py-3">Entreprise</th>
+                <th className="px-4 py-3">Recruteurs</th>
+                <th className="px-4 py-3">Offres</th>
+                <th className="px-4 py-3">Plan actuel</th>
+                <th className="px-4 py-3">Changer de plan</th>
               </tr>
             </thead>
             <tbody>
@@ -229,20 +229,20 @@ const PreselectionTab: React.FC = () => {
     adminService
       .getCorporatePendingPreselections()
       .then(setApps)
-      .catch((e) => setError(e?.response?.data?.message || "Failed to load applications"))
+      .catch((e) => setError(e?.response?.data?.message || "Échec du chargement des candidatures"))
       .finally(() => setLoading(false));
   };
 
   useEffect(load, []);
 
   const decide = async (applicationId: string, status: "SHORTLISTED" | "REJECTED") => {
-    const comment = window.prompt("Optional comment for this decision:") || undefined;
+    const comment = window.prompt("Commentaire facultatif pour cette décision :") || undefined;
     setActingId(applicationId);
     try {
       await adminService.adminPreselect(applicationId, { status, comment });
       setApps((prev) => prev.filter((a) => a.id !== applicationId));
     } catch (e: any) {
-      alert(e?.response?.data?.message || "Failed to record decision");
+      alert(e?.response?.data?.message || "Échec de l'enregistrement de la décision");
     } finally {
       setActingId(null);
     }
@@ -252,15 +252,15 @@ const PreselectionTab: React.FC = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-display mb-2">Corporate Preselection</h1>
+      <h1 className="text-2xl font-display mb-2">Présélection Corporate</h1>
       <p className="text-sm text-primary/60 mb-6">
-        Applications from CORPORATE-plan companies awaiting an admin decision.
+        Candidatures des entreprises au plan CORPORATE en attente d'une décision admin.
       </p>
 
       {loading ? (
         <LoadingBox />
       ) : apps.length === 0 ? (
-        <EmptyBox message="Nothing pending — all caught up." />
+        <EmptyBox message="Rien en attente — tout est à jour." />
       ) : (
         <div className="flex flex-col gap-3">
           {apps.map((a) => (
@@ -273,7 +273,7 @@ const PreselectionTab: React.FC = () => {
                 <p className="text-sm text-primary/70">
                   {a.job.title} @ {a.job.company.name}
                 </p>
-                <p className="text-xs text-primary/40 mt-1">Applied {new Date(a.appliedAt).toLocaleDateString()}</p>
+                <p className="text-xs text-primary/40 mt-1">Candidature déposée le {new Date(a.appliedAt).toLocaleDateString()}</p>
               </div>
               <div className="flex gap-2">
                 <button
@@ -281,14 +281,14 @@ const PreselectionTab: React.FC = () => {
                   onClick={() => decide(a.id, "SHORTLISTED")}
                   className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50"
                 >
-                  Shortlist
+                  Présélectionner
                 </button>
                 <button
                   disabled={actingId === a.id}
                   onClick={() => decide(a.id, "REJECTED")}
                   className="px-3 py-1.5 rounded-lg bg-white border border-primary/20 text-primary text-sm font-semibold disabled:opacity-50"
                 >
-                  Reject
+                  Rejeter
                 </button>
               </div>
             </div>
@@ -303,7 +303,7 @@ const PreselectionTab: React.FC = () => {
 // SHARED
 // ============================================================
 
-const LoadingBox: React.FC = () => <div className="text-primary/50 text-sm">Loading…</div>;
+const LoadingBox: React.FC = () => <div className="text-primary/50 text-sm">Chargement…</div>;
 const ErrorBox: React.FC<{ message: string }> = ({ message }) => (
   <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{message}</div>
 );

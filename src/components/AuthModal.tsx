@@ -416,16 +416,16 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                     </div>
                     <h4 className="text-2xl font-display font-black text-white mb-4 leading-tight tracking-tight uppercase">
                       {role === 'user' ? (
-                        language === 'en' ? "Boost your career" : language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
+                        language === 'fr' ? "Propulsez votre carrière" : "ادفع مسيرتك المهنية"
                       ) : (
-                        language === 'en' ? "Find your future talent" : language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
+                        language === 'fr' ? "Trouvez vos futurs talents" : "جد مواهبك المستقبلية"
                       )}
                     </h4>
                     <p className="text-white/60 text-base font-medium leading-relaxed max-w-sm mx-auto">
                       {role === 'user' ? (
-                        language === 'en' ? "Access thousands of exclusive offers in Algeria." : language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
+                        language === 'fr' ? "Accédez à des milliers d'offres exclusives en Algérie." : "الوصول إلى آلاف العروض الحصرية في الجزائر."
                       ) : (
-                        language === 'en' ? "Use our AI to filter the best candidates." : language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
+                        language === 'fr' ? "Utilisez notre IA pour filtrer les meilleurs candidats." : "استخدم ذكاءنا الاصطناعي لتصفية أفضل المترشحين."
                       )}
                     </p>
                   </div>

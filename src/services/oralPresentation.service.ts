@@ -24,23 +24,102 @@ export interface OralPresentation {
 class OralPresentationService {
   /**
    * Candidate
-   * Upload or replace my presentation
+   * Upload or replace my presentation.
+   *
+   * The video is uploaded directly from the browser to Cloudinary
+   * (using a short-lived signature from our backend), never through
+   * our own API server. Our API runs as a Vercel serverless function,
+   * which enforces a hard ~4.5MB request body limit — routing a real
+   * presentation video through it would fail almost every time. Once
+   * Cloudinary has the file, we send it only the small resulting
+   * metadata (url, publicId, etc.) to save.
    */
-  async uploadPresentation(file: File): Promise<OralPresentation> {
-    const formData = new FormData();
-    formData.append("video", file);
+  async uploadPresentation(
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<OralPresentation> {
+    // 1. Get a signed upload signature from our backend
+    let timestamp, folder, signature, apiKey, cloudName;
+    try {
+      const sigResponse = await api.get("/oral-presentations/upload-signature");
+      ({ timestamp, folder, signature, apiKey, cloudName } = sigResponse.data.data);
+    } catch (err: any) {
+      const detail = err?.response?.data?.message || err?.message || String(err);
+      throw new Error(`[signature] ${detail}`);
+    }
 
-    const response = await api.post(
-      "/oral-presentations/me",
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
-    );
+    if (!cloudName || !apiKey) {
+      throw new Error(
+        "[signature] Le serveur n'a pas renvoyé de configuration Cloudinary valide (cloudName/apiKey manquant)."
+      );
+    }
 
-    return response.data.data.presentation;
+    // 2. Upload the file directly to Cloudinary
+    const cloudinaryForm = new FormData();
+    cloudinaryForm.append("file", file);
+    cloudinaryForm.append("api_key", apiKey);
+    cloudinaryForm.append("timestamp", timestamp);
+    cloudinaryForm.append("signature", signature);
+    cloudinaryForm.append("folder", folder);
+
+    const cloudinaryResponse = await new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(
+        "POST",
+        `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`
+      );
+
+      xhr.upload.onprogress = (event) => {
+        if (onProgress && event.lengthComputable) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        let data: any = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          // response wasn't JSON — fall through, data stays null
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && data) {
+          resolve(data);
+        } else {
+          reject(
+            new Error(
+              `[cloudinary ${xhr.status}] ${data?.error?.message || xhr.responseText || "Échec du téléversement vers Cloudinary."}`
+            )
+          );
+        }
+      };
+
+      xhr.onerror = () =>
+        reject(
+          new Error(
+            "[cloudinary] Erreur réseau pendant le téléversement (CORS, connexion, ou domaine bloqué)."
+          )
+        );
+
+      xhr.send(cloudinaryForm);
+    });
+
+    // 3. Save the resulting metadata (not the file) on our backend
+    try {
+      const response = await api.post("/oral-presentations/me", {
+        url: cloudinaryResponse.secure_url,
+        publicId: cloudinaryResponse.public_id,
+        mimeType: cloudinaryResponse.resource_type
+          ? `${cloudinaryResponse.resource_type}/${cloudinaryResponse.format}`
+          : undefined,
+        extension: cloudinaryResponse.format,
+        size: cloudinaryResponse.bytes,
+      });
+
+      return response.data.data.presentation;
+    } catch (err: any) {
+      const detail = err?.response?.data?.message || err?.message || String(err);
+      throw new Error(`[save] ${detail}`);
+    }
   }
 
   /**

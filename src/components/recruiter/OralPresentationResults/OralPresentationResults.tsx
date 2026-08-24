@@ -60,7 +60,7 @@ interface OralPresentationResultsProps {
 /* -------------------------------------------------------------------------- */
 
 const SCORE_FILTERS = [
-  "All",
+  "Tous",
   "90+",
   "80-89",
   "70-79",
@@ -71,15 +71,15 @@ const SCORE_FILTERS = [
 const SORT_OPTIONS = [
   {
     id: "score",
-    label: "Presentation Score",
+    label: "Score de présentation",
   },
   {
     id: "duration",
-    label: "Shortest",
+    label: "Plus courte",
   },
   {
     id: "recent",
-    label: "Newest",
+    label: "Plus récent",
   },
 ];
 
@@ -105,10 +105,10 @@ const OralPresentationResults: React.FC<
     useState("");
 
   const [locationFilter, setLocationFilter] =
-    useState("All");
+    useState("Tous");
 
   const [scoreFilter, setScoreFilter] =
-    useState("All");
+    useState("Tous");
 
   const [sortBy, setSortBy] =
     useState("score");
@@ -134,7 +134,7 @@ const OralPresentationResults: React.FC<
     );
 
     return [
-      "All",
+      "Tous",
       ...values,
     ];
 
@@ -174,7 +174,7 @@ const OralPresentationResults: React.FC<
       /* Location */
 
       if (
-        locationFilter !== "All"
+        locationFilter !== "Tous"
       ) {
 
         data = data.filter(
@@ -188,7 +188,7 @@ const OralPresentationResults: React.FC<
       /* Score */
 
       if (
-        scoreFilter !== "All"
+        scoreFilter !== "Tous"
       ) {
 
         data = data.filter(
@@ -369,23 +369,20 @@ const OralPresentationResults: React.FC<
 
             <h1 className="text-3xl font-black text-slate-900">
 
-              Oral Presentation Results
+              Résultats des présentations orales
 
             </h1>
 
             {recruiterPlan ===
               "corporate" && (
-              <GoldenBadge />
+              <GoldenBadge visible />
             )}
 
           </div>
 
           <p className="mt-2 text-slate-500">
 
-            Review candidates'
-            oral presentations,
-            communication skills
-            and confidence.
+Consultez les présentations orales, les compétences en communication et la confiance des candidats.
 
           </p>
 
@@ -401,7 +398,7 @@ const OralPresentationResults: React.FC<
 
           <RefreshCw size={18} />
 
-          Refresh
+          Actualiser
 
         </button>
 
@@ -414,25 +411,25 @@ const OralPresentationResults: React.FC<
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
 
         <StatCard
-          title="Candidates"
+          title="Candidats"
           value={stats.candidates}
           icon={<Users size={20} />}
         />
 
         <StatCard
-          title="Average Score"
+          title="Score moyen"
           value={`${stats.average}%`}
           icon={<Star size={20} />}
         />
 
         <StatCard
-          title="Excellent"
+          title="Excellents"
           value={stats.excellent}
           icon={<Sparkles size={20} />}
         />
 
         <StatCard
-          title="Completed"
+          title="Terminées"
           value={stats.completed}
           icon={<CheckCircle2 size={20} />}
         />
@@ -463,7 +460,7 @@ const OralPresentationResults: React.FC<
                   e.target.value
                 )
               }
-              placeholder="Search candidate..."
+              placeholder="Rechercher un candidat..."
               className="w-full rounded-xl border pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
             />
 
@@ -563,7 +560,7 @@ const OralPresentationResults: React.FC<
 
             <p className="font-semibold text-slate-500">
 
-              Loading presentations...
+              Chargement des présentations...
 
             </p>
 
@@ -582,13 +579,13 @@ const OralPresentationResults: React.FC<
 
           <h2 className="mt-6 text-2xl font-black">
 
-            No Presentations Found
+            Aucune présentation trouvée
 
           </h2>
 
           <p className="mt-2 text-slate-500">
 
-            Try changing your filters.
+Essayez de modifier vos filtres.
 
           </p>
 
@@ -612,19 +609,19 @@ const OralPresentationResults: React.FC<
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
 
-                    Candidate
+                    Candidat
 
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
 
-                    Position
+                    Poste
 
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
 
-                    Presentation Score
+                    Score de présentation
 
                   </th>
 
@@ -636,13 +633,13 @@ const OralPresentationResults: React.FC<
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
 
-                    Confidence
+                    Confiance
 
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
 
-                    Duration
+                    Durée
 
                   </th>
 
@@ -805,7 +802,7 @@ const OralPresentationResults: React.FC<
 
                           <PlayCircle size={18} />
 
-                          Watch
+                          Regarder
 
                         </button>
 
@@ -869,7 +866,7 @@ const OralPresentationResults: React.FC<
 
                   {recruiterPlan ===
                     "corporate" && (
-                    <GoldenBadge />
+                    <GoldenBadge visible />
                   )}
 
                 </div>
@@ -877,7 +874,7 @@ const OralPresentationResults: React.FC<
                 <div className="mt-6 grid grid-cols-2 gap-5">
 
                   <InfoItem
-                    label="Presentation"
+                    label="Présentation"
                     value={`${candidate.presentationScore}%`}
                   />
 
@@ -887,12 +884,12 @@ const OralPresentationResults: React.FC<
                   />
 
                   <InfoItem
-                    label="Confidence"
+                    label="Confiance"
                     value={`${candidate.confidence}%`}
                   />
 
                   <InfoItem
-                    label="Duration"
+                    label="Durée"
                     value={`${candidate.duration} min`}
                   />
 
@@ -912,7 +909,7 @@ const OralPresentationResults: React.FC<
 
                   <PlayCircle size={18} />
 
-                  Watch Presentation
+                  Regarder la présentation
 
                 </button>
 
@@ -929,7 +926,7 @@ const OralPresentationResults: React.FC<
             <div className="flex items-center justify-between rounded-2xl border bg-white p-5">
 
               <p className="text-sm text-slate-500">
-                Showing{" "}
+                Affichage{" "}
                 <span className="font-bold">
                   {(currentPage - 1) * PAGE_SIZE + 1}
                 </span>
@@ -940,11 +937,11 @@ const OralPresentationResults: React.FC<
                     filteredCandidates.length
                   )}
                 </span>
-                {" of "}
+                {" sur "}
                 <span className="font-bold">
                   {filteredCandidates.length}
                 </span>
-                {" candidates"}
+                {" candidats"}
               </p>
 
               <div className="flex items-center gap-2">
@@ -962,7 +959,7 @@ const OralPresentationResults: React.FC<
                       : "bg-slate-900 text-white hover:bg-indigo-700"
                   }`}
                 >
-                  Previous
+                  Précédent
                 </button>
 
                 {Array.from(
@@ -1002,7 +999,7 @@ const OralPresentationResults: React.FC<
                       : "bg-slate-900 text-white hover:bg-indigo-700"
                   }`}
                 >
-                  Next
+                  Suivant
                 </button>
 
               </div>

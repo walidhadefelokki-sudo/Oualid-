@@ -234,7 +234,6 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       try {
         const matchingCandidates = await prisma.candidateProfile.findMany({
           where: {
-            jobMatchNotifications: true,
             skills: {
               hasSome: title.split(' ')
             }
@@ -256,7 +255,7 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
               userId: candidate.userId,
               title: 'New Job Match!',
               message: `A new job matches your profile: ${job.title} at ${membership.company.name}`,
-              type: 'job_match'
+              type: 'INFO'
             }
           });
         }

@@ -89,18 +89,28 @@ const STATUS_FILTERS = [
   "rejected",
 ];
 
+const STATUS_LABELS: Record<string, string> = {
+  All: "Tous",
+  pending: "En attente",
+  interview: "Entretien",
+  hired: "Embauché",
+  rejected: "Rejeté",
+};
+
+const statusLabel = (status: string) => STATUS_LABELS[status] || status;
+
 const SORT_OPTIONS = [
   {
     id: "ai",
-    label: "AI Score",
+    label: "Score IA",
   },
   {
     id: "experience",
-    label: "Experience",
+    label: "Expérience",
   },
   {
     id: "recent",
-    label: "Newest",
+    label: "Plus récent",
   },
 ];
 
@@ -358,23 +368,20 @@ const PreselectedCandidates: React.FC<
 
             <h1 className="text-3xl font-black text-slate-900">
 
-              Preselected Candidates
+              Candidats présélectionnés
 
             </h1>
 
             {recruiterPlan ===
               "corporate" && (
-              <GoldenBadge />
+              <GoldenBadge visible />
             )}
 
           </div>
 
           <p className="mt-2 text-slate-500">
 
-            Manage your shortlisted
-            candidates, schedule
-            interviews and complete
-            your hiring process.
+Gérez vos candidats présélectionnés, planifiez des entretiens et finalisez votre processus de recrutement.
 
           </p>
 
@@ -390,7 +397,7 @@ const PreselectedCandidates: React.FC<
 
           <RefreshCw size={18} />
 
-          Refresh
+          Actualiser
 
         </button>
 
@@ -403,25 +410,25 @@ const PreselectedCandidates: React.FC<
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
 
         <StatCard
-          title="Candidates"
+          title="Candidats"
           value={stats.total}
           icon={<Users size={20} />}
         />
 
         <StatCard
-          title="Interviews"
+          title="Entretiens"
           value={stats.interview}
           icon={<Calendar size={20} />}
         />
 
         <StatCard
-          title="Hired"
+          title="Embauchés"
           value={stats.hired}
           icon={<CheckCircle2 size={20} />}
         />
 
         <StatCard
-          title="Average AI"
+          title="Moyenne IA"
           value={`${stats.averageAI}%`}
           icon={<Sparkles size={20} />}
         />
@@ -452,7 +459,7 @@ const PreselectedCandidates: React.FC<
                   e.target.value
                 )
               }
-              placeholder="Search candidate..."
+              placeholder="Rechercher un candidat..."
               className="w-full rounded-xl border pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500"
             />
 
@@ -475,7 +482,7 @@ const PreselectedCandidates: React.FC<
                   key={status}
                   value={status}
                 >
-                  {status}
+                  {statusLabel(status)}
                 </option>
               )
             )}
@@ -705,7 +712,7 @@ const PreselectedCandidates: React.FC<
 
                     <td className="px-6 py-5">
 
-                      {candidate.experience} years
+                      {candidate.experience} ans
 
                     </td>
 
@@ -745,7 +752,7 @@ const PreselectedCandidates: React.FC<
 
                         <span className="rounded-full bg-yellow-100 px-4 py-2 text-xs font-black text-yellow-700">
 
-                          Pending
+                          En attente
 
                         </span>
 
@@ -756,7 +763,7 @@ const PreselectedCandidates: React.FC<
 
                         <span className="rounded-full bg-blue-100 px-4 py-2 text-xs font-black text-blue-700">
 
-                          Interview
+                          Entretien
 
                         </span>
 
@@ -767,7 +774,7 @@ const PreselectedCandidates: React.FC<
 
                         <span className="rounded-full bg-green-100 px-4 py-2 text-xs font-black text-green-700">
 
-                          Hired
+                          Embauché
 
                         </span>
 
@@ -778,7 +785,7 @@ const PreselectedCandidates: React.FC<
 
                         <span className="rounded-full bg-red-100 px-4 py-2 text-xs font-black text-red-700">
 
-                          Rejected
+                          Rejeté
 
                         </span>
 
@@ -820,7 +827,7 @@ const PreselectedCandidates: React.FC<
 
                         >
 
-                          Interview
+                          Entretien
 
                         </button>
 
@@ -836,7 +843,7 @@ const PreselectedCandidates: React.FC<
 
                         >
 
-                          Hire
+                          Embaucher
 
                         </button>
 
@@ -852,7 +859,7 @@ const PreselectedCandidates: React.FC<
 
                         >
 
-                          Reject
+                          Rejeter
 
                         </button>
 
@@ -916,7 +923,7 @@ const PreselectedCandidates: React.FC<
 
                   {recruiterPlan ===
                     "corporate" && (
-                    <GoldenBadge />
+                    <GoldenBadge visible />
                   )}
 
                 </div>
@@ -924,23 +931,23 @@ const PreselectedCandidates: React.FC<
                 <div className="mt-6 grid grid-cols-2 gap-5">
 
                   <InfoItem
-                    label="Experience"
-                    value={`${candidate.experience} years`}
+                    label="Expérience"
+                    value={`${candidate.experience} ans`}
                   />
 
                   <InfoItem
-                    label="AI Score"
+                    label="Score IA"
                     value={`${candidate.aiScore}%`}
                   />
 
                   <InfoItem
-                    label="Location"
+                    label="Localisation"
                     value={candidate.location}
                   />
 
                   <InfoItem
-                    label="Status"
-                    value={candidate.status}
+                    label="Statut"
+                    value={statusLabel(candidate.status)}
                   />
 
                 </div>
@@ -955,7 +962,7 @@ const PreselectedCandidates: React.FC<
                     }
                     className="rounded-xl bg-blue-600 py-3 font-bold text-white hover:bg-blue-700 transition"
                   >
-                    Interview
+                    Entretien
                   </button>
 
                   <button
@@ -966,7 +973,7 @@ const PreselectedCandidates: React.FC<
                     }
                     className="rounded-xl bg-green-600 py-3 font-bold text-white hover:bg-green-700 transition"
                   >
-                    Hire
+                    Embaucher
                   </button>
 
                   <button
@@ -977,7 +984,7 @@ const PreselectedCandidates: React.FC<
                     }
                     className="rounded-xl bg-red-600 py-3 font-bold text-white hover:bg-red-700 transition"
                   >
-                    Reject
+                    Rejeter
                   </button>
 
                   <button
@@ -988,7 +995,7 @@ const PreselectedCandidates: React.FC<
                     }
                     className="rounded-xl border py-3 font-bold hover:bg-slate-100 transition"
                   >
-                    View CV
+                    Voir le CV
                   </button>
 
                 </div>
@@ -1007,7 +1014,7 @@ const PreselectedCandidates: React.FC<
             <div className="flex items-center justify-between rounded-2xl border bg-white p-5">
 
               <p className="text-sm text-slate-500">
-                Showing{" "}
+                Affichage{" "}
                 <span className="font-bold">
                   {(currentPage - 1) * PAGE_SIZE + 1}
                 </span>
@@ -1018,11 +1025,11 @@ const PreselectedCandidates: React.FC<
                     filteredCandidates.length
                   )}
                 </span>
-                {" of "}
+                {" sur "}
                 <span className="font-bold">
                   {filteredCandidates.length}
                 </span>
-                {" candidates"}
+                {" candidats"}
               </p>
 
               <div className="flex items-center gap-2">
@@ -1040,7 +1047,7 @@ const PreselectedCandidates: React.FC<
                       : "bg-slate-900 text-white hover:bg-emerald-700"
                   }`}
                 >
-                  Previous
+                  Précédent
                 </button>
 
                 {Array.from(
@@ -1080,7 +1087,7 @@ const PreselectedCandidates: React.FC<
                       : "bg-slate-900 text-white hover:bg-emerald-700"
                   }`}
                 >
-                  Next
+                  Suivant
                 </button>
 
               </div>

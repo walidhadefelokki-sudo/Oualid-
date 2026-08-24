@@ -59,20 +59,20 @@ interface QuizResultsProps {
 const SORT_OPTIONS = [
   {
     id: "score",
-    label: "Quiz Score",
+    label: "Score du quiz",
   },
   {
     id: "duration",
-    label: "Fastest",
+    label: "Plus rapide",
   },
   {
     id: "recent",
-    label: "Newest",
+    label: "Plus récent",
   },
 ];
 
 const SCORE_FILTERS = [
-  "All",
+  "Tous",
   "90+",
   "80-89",
   "70-79",
@@ -101,10 +101,10 @@ const QuizResults: React.FC<
     useState("");
 
   const [scoreFilter, setScoreFilter] =
-    useState("All");
+    useState("Tous");
 
   const [locationFilter, setLocationFilter] =
-    useState("All");
+    useState("Tous");
 
   const [sortBy, setSortBy] =
     useState("score");
@@ -127,7 +127,7 @@ const QuizResults: React.FC<
       )
     );
 
-    return ["All", ...values];
+    return ["Tous", ...values];
   }, [candidates]);
 
   /* ---------------------------------------------------------------------- */
@@ -160,7 +160,7 @@ const QuizResults: React.FC<
 
       /* Location */
 
-      if (locationFilter !== "All") {
+      if (locationFilter !== "Tous") {
         data = data.filter(
           (candidate) =>
             candidate.location ===
@@ -170,7 +170,7 @@ const QuizResults: React.FC<
 
       /* Score */
 
-      if (scoreFilter !== "All") {
+      if (scoreFilter !== "Tous") {
         data = data.filter(
           (candidate) => {
             const score =
@@ -331,22 +331,19 @@ const QuizResults: React.FC<
             <Award className="text-amber-500" />
 
             <h1 className="text-3xl font-black text-slate-900">
-              Quiz Results
+              Résultats des quiz
             </h1>
 
             {recruiterPlan ===
               "corporate" && (
-              <GoldenBadge />
+              <GoldenBadge visible />
             )}
 
           </div>
 
           <p className="mt-2 text-slate-500">
 
-            Review candidates'
-            assessment results,
-            rankings and
-            performance.
+Consultez les résultats d'évaluation, les classements et les performances des candidats.
 
           </p>
 
@@ -358,7 +355,7 @@ const QuizResults: React.FC<
         >
           <RefreshCw size={18} />
 
-          Refresh
+          Actualiser
         </button>
 
       </div>
@@ -370,7 +367,7 @@ const QuizResults: React.FC<
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
 
         <StatCard
-          title="Candidates"
+          title="Candidats"
           value={
             stats.candidates
           }
@@ -380,7 +377,7 @@ const QuizResults: React.FC<
         />
 
         <StatCard
-          title="Average"
+          title="Moyenne"
           value={`${stats.average}%`}
           icon={
             <BarChart3
@@ -390,7 +387,7 @@ const QuizResults: React.FC<
         />
 
         <StatCard
-          title="Excellent"
+          title="Excellents"
           value={
             stats.excellent
           }
@@ -402,7 +399,7 @@ const QuizResults: React.FC<
         />
 
         <StatCard
-          title="Passed"
+          title="Réussi"
           value={stats.passed}
           icon={
             <CheckCircle2
@@ -437,7 +434,7 @@ const QuizResults: React.FC<
                   e.target.value
                 )
               }
-              placeholder="Search candidate..."
+              placeholder="Rechercher un candidat..."
               className="w-full rounded-xl border pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
             />
 
@@ -550,7 +547,7 @@ const QuizResults: React.FC<
             />
 
             <p className="font-semibold text-slate-500">
-              Loading quiz results...
+              Chargement des résultats...
             </p>
 
           </div>
@@ -566,11 +563,11 @@ const QuizResults: React.FC<
           />
 
           <h2 className="mt-6 text-2xl font-black">
-            No Quiz Results Found
+            Aucun résultat de quiz trouvé
           </h2>
 
           <p className="mt-2 text-slate-500">
-            Try changing your search or filters.
+            Essayez de modifier votre recherche ou vos filtres.
           </p>
 
         </div>
@@ -592,15 +589,15 @@ const QuizResults: React.FC<
                 <tr>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
-                    Candidate
+                    Candidat
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
-                    Position
+                    Poste
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
-                    Quiz Score
+                    Score du quiz
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
@@ -608,11 +605,11 @@ const QuizResults: React.FC<
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
-                    Duration
+                    Durée
                   </th>
 
                   <th className="px-6 py-5 text-left text-xs font-black uppercase tracking-widest">
-                    Rank
+                    Classement
                   </th>
 
                   <th className="px-6 py-5 text-right text-xs font-black uppercase tracking-widest">
@@ -754,7 +751,7 @@ const QuizResults: React.FC<
                         {index === 0 && (
                           <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 px-4 py-2 text-xs font-black text-yellow-700">
 
-                            🥇 Top
+                            🥇 Premier
 
                           </span>
                         )}
@@ -762,7 +759,7 @@ const QuizResults: React.FC<
                         {index === 1 && (
                           <span className="inline-flex items-center gap-2 rounded-full bg-slate-200 px-4 py-2 text-xs font-black">
 
-                            🥈 Second
+                            🥈 Deuxième
 
                           </span>
                         )}
@@ -770,7 +767,7 @@ const QuizResults: React.FC<
                         {index === 2 && (
                           <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-4 py-2 text-xs font-black text-orange-700">
 
-                            🥉 Third
+                            🥉 Troisième
 
                           </span>
                         )}
@@ -803,7 +800,7 @@ const QuizResults: React.FC<
 
                           >
 
-                            View Details
+                            Voir les détails
 
                           </button>
 
@@ -869,7 +866,7 @@ const QuizResults: React.FC<
 
                     {recruiterPlan ===
                       "corporate" && (
-                      <GoldenBadge />
+                      <GoldenBadge visible />
                     )}
 
                   </div>
@@ -887,12 +884,12 @@ const QuizResults: React.FC<
                     />
 
                     <InfoItem
-                      label="Duration"
+                      label="Durée"
                       value={`${candidate.duration} min`}
                     />
 
                     <InfoItem
-                      label="Location"
+                      label="Localisation"
                       value={candidate.location}
                     />
 
@@ -910,7 +907,7 @@ const QuizResults: React.FC<
 
                   >
 
-                    View Candidate
+                    Voir le candidat
 
                   </button>
 
@@ -928,7 +925,7 @@ const QuizResults: React.FC<
             <div className="flex items-center justify-between rounded-2xl border bg-white p-5">
 
               <p className="text-sm text-slate-500">
-                Showing{" "}
+                Affichage{" "}
                 <span className="font-bold">
                   {(currentPage - 1) * PAGE_SIZE + 1}
                 </span>
@@ -939,11 +936,11 @@ const QuizResults: React.FC<
                     filteredCandidates.length
                   )}
                 </span>
-                {" of "}
+                {" sur "}
                 <span className="font-bold">
                   {filteredCandidates.length}
                 </span>
-                {" candidates"}
+                {" candidats"}
               </p>
 
               <div className="flex items-center gap-2">
@@ -961,7 +958,7 @@ const QuizResults: React.FC<
                       : "bg-slate-900 text-white hover:bg-blue-700"
                   }`}
                 >
-                  Previous
+                  Précédent
                 </button>
 
                 {Array.from(
@@ -1001,7 +998,7 @@ const QuizResults: React.FC<
                       : "bg-slate-900 text-white hover:bg-blue-700"
                   }`}
                 >
-                  Next
+                  Suivant
                 </button>
 
               </div>

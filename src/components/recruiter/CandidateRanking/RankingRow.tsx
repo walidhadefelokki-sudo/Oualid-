@@ -481,5 +481,3 @@ export default function RankingRow({
   );
 
 }
-        </div>
-    </tr>

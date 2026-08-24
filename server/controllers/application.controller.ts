@@ -8,6 +8,14 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
     const { jobId, coverLetter } = req.body;
     const candidateId = req.user!.id;
 
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+    });
+
+    if (!job) {
+      return next(new AppError("Job not found", 404));
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: candidateId },
       include: { candidateProfile: true },
@@ -39,6 +47,7 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
       data: {
         jobId,
         candidateId: user.candidateProfile.id,
+        recruiterId: job.recruiterId,
         coverLetter,
         cvId: user.candidateProfile.resumeId,
       },

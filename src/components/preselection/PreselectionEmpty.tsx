@@ -10,10 +10,10 @@ interface PreselectionEmptyProps {
 }
 
 const PreselectionEmpty: React.FC<PreselectionEmptyProps> = ({
-  title = "No Candidates Found",
-  description = "No candidates match the current filters. Try adjusting your search criteria or reset the filters.",
+  title = "Aucun candidat trouvé",
+  description = "Aucun candidat ne correspond aux filtres actuels. Essayez d'ajuster vos critères de recherche ou de réinitialiser les filtres.",
   showReset = true,
-  resetLabel = "Reset Filters",
+  resetLabel = "Réinitialiser les filtres",
   onReset,
 }) => {
   return (

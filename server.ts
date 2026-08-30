@@ -11,7 +11,7 @@ async function startServer() {
   // plain `node dist/server.cjs` production run (e.g. Render/Railway).
   // Not used on Vercel — there the built frontend is served as static
   // files directly by Vercel, and this whole file isn't invoked at all
-  // (see api/index.ts for the serverless entry point).
+  // (see server/vercel-entry.ts for the serverless entry point).
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

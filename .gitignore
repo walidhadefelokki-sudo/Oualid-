@@ -6,7 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-
-# Generated at build time by vercel.json's buildCommand (esbuild bundle
-# of server/vercel-entry.ts). Never edit or commit.
-api/index.js

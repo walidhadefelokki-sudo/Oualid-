@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && vite build && esbuild server/vercel-entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js",
+  "buildCommand": "prisma generate && vite build && npm run build:api",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },

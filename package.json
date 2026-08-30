@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "build:api": "esbuild server/vercel-entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js --banner:js=\"// GENERATED FILE - DO NOT EDIT. Run: npm run build:api\""
   },
   "dependencies": {
     "@google/genai": "^1.52.0",

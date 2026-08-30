@@ -33,14 +33,17 @@
 CREATE TYPE "QuizDifficulty" AS ENUM ('EASY', 'MEDIUM', 'HARD');
 
 -- AlterEnum
+-- FIXED: Prisma generated three `ALTER TABLE "Quiz" ALTER COLUMN "status" ...` statements
+-- here, but migration 20260721114457 already dropped Quiz.status. They failed with
+-- `column "status" does not exist`, which aborted the transaction and caused every
+-- later statement in this file to be skipped. Nothing references QuizStatus at this
+-- point, so the type is swapped directly; Quiz.status is re-created with the new enum
+-- further down in this same migration.
 BEGIN;
 CREATE TYPE "QuizStatus_new" AS ENUM ('PENDING', 'GENERATED', 'IN_PROGRESS', 'SUBMITTED', 'REVIEWED');
-ALTER TABLE "Quiz" ALTER COLUMN "status" DROP DEFAULT;
-ALTER TABLE "Quiz" ALTER COLUMN "status" TYPE "QuizStatus_new" USING ("status"::text::"QuizStatus_new");
 ALTER TYPE "QuizStatus" RENAME TO "QuizStatus_old";
 ALTER TYPE "QuizStatus_new" RENAME TO "QuizStatus";
 DROP TYPE "public"."QuizStatus_old";
-ALTER TABLE "Quiz" ALTER COLUMN "status" SET DEFAULT 'PENDING';
 COMMIT;
 
 -- DropForeignKey

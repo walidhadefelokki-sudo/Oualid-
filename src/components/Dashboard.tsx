@@ -1244,9 +1244,14 @@ export default function Dashboard({
   const [cvLastSavedAt, setCvLastSavedAt] = useState<string | null>(null);
   const [cvData, setCvData] = useState({
     name: user?.displayName || 'Votre nom',
+    // Shown under the name in the generated CV. Falls back to the most recent
+    // job title when left empty.
+    title: '',
     email: user?.email || '',
     phone: '',
     address: '',
+    linkedin: '',
+    portfolio: '',
     summary: '',
     experiences: [
       { 
@@ -2008,6 +2013,331 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
   // straight from cvData (no screenshot, no fonts/colors that can fail).
   // Used only if the visual html2canvas snapshot fails twice, so the user
   // always gets a real downloaded .pdf file and never a print dialog.
+  // Loads an image URL and returns it as a circular PNG data URL, so the photo
+  // can be placed in the PDF as a circle (jsPDF's addImage is rectangle-only).
+  // Returns null on any failure — a CORS-blocked avatar must not break the
+  // download, the caller falls back to drawing initials.
+  async function loadCircularPhoto(url: string, px = 320): Promise<string | null> {
+    try {
+      const blob = await (await fetch(url, { mode: 'cors' })).blob();
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = px;
+      canvas.height = px;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.beginPath();
+      ctx.arc(px / 2, px / 2, px / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      // Cover-fit the source into the square so faces aren't distorted.
+      const side = Math.min(bitmap.width, bitmap.height);
+      ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, px, px);
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Builds the candidate's CV as a real vector-text PDF.
+   *
+   * Deliberately NOT an html2canvas screenshot: an image of text is invisible
+   * to applicant tracking systems. Everything here is selectable, searchable
+   * text in a single logical reading order.
+   *
+   * Layout: navy sidebar (~31% width) carrying photo, contact, skills and
+   * languages; white main column carrying name, title, profile, experience and
+   * education. One accent colour (the brand navy), generous white space, dates
+   * right-aligned — per the agreed design brief.
+   */
+  async function generateProfessionalCvPDF(filename: string): Promise<void> {
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+
+    const PAGE_W = 210;
+    const PAGE_H = 297;
+    const SIDEBAR_W = 66;
+    const SIDE_PAD = 10;
+    const SIDE_X = SIDE_PAD;
+    const SIDE_W = SIDEBAR_W - SIDE_PAD * 2;
+    const MAIN_X = SIDEBAR_W + 12;
+    const MAIN_W = PAGE_W - MAIN_X - 15;
+    const BOTTOM = 280;
+
+    const NAVY: [number, number, number] = [23, 62, 125];
+    const INK: [number, number, number] = [38, 45, 58];
+    const BODY: [number, number, number] = [72, 82, 96];
+    const MUTED: [number, number, number] = [130, 140, 153];
+    const RULE: [number, number, number] = [223, 227, 233];
+    const SIDE_TEXT: [number, number, number] = [214, 224, 238];
+    const SIDE_MUTED: [number, number, number] = [150, 170, 200];
+
+    const paintSidebar = () => {
+      pdf.setFillColor(...NAVY);
+      pdf.rect(0, 0, SIDEBAR_W, PAGE_H, 'F');
+    };
+
+    paintSidebar();
+
+    let y = 0; // main column cursor
+    let sy = 0; // sidebar cursor
+
+    const ensureMain = (needed: number) => {
+      if (y + needed > BOTTOM) {
+        pdf.addPage();
+        paintSidebar();
+        y = 24;
+      }
+    };
+
+    // ---------- Sidebar ----------
+    sy = 18;
+
+    const photo = displayPhotoURL ? await loadCircularPhoto(displayPhotoURL) : null;
+    const photoSize = 34;
+    const photoX = (SIDEBAR_W - photoSize) / 2;
+    if (photo) {
+      pdf.addImage(photo, 'PNG', photoX, sy, photoSize, photoSize);
+    } else {
+      pdf.setFillColor(255, 255, 255);
+      pdf.circle(SIDEBAR_W / 2, sy + photoSize / 2, photoSize / 2, 'F');
+      pdf.setTextColor(...NAVY);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(24);
+      pdf.text((cvData.name || 'CV').trim().charAt(0).toUpperCase(), SIDEBAR_W / 2, sy + photoSize / 2 + 3.2, {
+        align: 'center',
+      });
+    }
+    sy += photoSize + 14;
+
+    const sideHeading = (label: string) => {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(label.toUpperCase(), SIDE_X, sy, { charSpace: 0.6 });
+      sy += 2.2;
+      pdf.setDrawColor(90, 120, 165);
+      pdf.setLineWidth(0.3);
+      pdf.line(SIDE_X, sy, SIDE_X + SIDE_W, sy);
+      sy += 5.5;
+    };
+
+    const sideLine = (text: string, muted = false) => {
+      if (!text) return;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.4);
+      pdf.setTextColor(...(muted ? SIDE_MUTED : SIDE_TEXT));
+      const lines = pdf.splitTextToSize(text, SIDE_W);
+      pdf.text(lines, SIDE_X, sy);
+      sy += lines.length * 3.7 + 1.6;
+    };
+
+    const contactItems = [
+      cvData.phone,
+      cvData.email,
+      cvData.address,
+      (cvData as any).linkedin,
+      (cvData as any).portfolio,
+    ].filter(Boolean) as string[];
+
+    if (contactItems.length) {
+      sideHeading(language === 'ar' ? 'الاتصال' : 'Contact');
+      contactItems.forEach((c) => sideLine(c));
+      sy += 4;
+    }
+
+    if (cvData.skills?.length) {
+      sideHeading(language === 'ar' ? 'المهارات' : 'Compétences');
+      cvData.skills.filter(Boolean).forEach((s) => sideLine(`· ${s}`));
+      sy += 4;
+    }
+
+    if (cvData.languages?.length) {
+      sideHeading(language === 'ar' ? 'اللغات' : 'Langues');
+      cvData.languages.filter((l) => l.name).forEach((l) => {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8.4);
+        pdf.setTextColor(255, 255, 255);
+        pdf.text(l.name, SIDE_X, sy);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(7.4);
+        pdf.setTextColor(...SIDE_MUTED);
+        pdf.text(l.level || '', SIDE_X + SIDE_W, sy, { align: 'right' });
+        sy += 2.4;
+        pdf.setFillColor(60, 88, 132);
+        pdf.roundedRect(SIDE_X, sy, SIDE_W, 1.3, 0.6, 0.6, 'F');
+        pdf.setFillColor(255, 255, 255);
+        pdf.roundedRect(SIDE_X, sy, (SIDE_W * languageLevelPercent(l.level)) / 100, 1.3, 0.6, 0.6, 'F');
+        sy += 6;
+      });
+    }
+
+    // ---------- Main column ----------
+    y = 26;
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(25);
+    pdf.setTextColor(...NAVY);
+    const nameLines = pdf.splitTextToSize((cvData.name || 'Votre Nom').toUpperCase(), MAIN_W);
+    pdf.text(nameLines, MAIN_X, y, { charSpace: 0.3 });
+    y += nameLines.length * 9;
+
+    const professionalTitle = (cvData as any).title || cvData.experiences?.[0]?.role || '';
+    if (professionalTitle) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(...MUTED);
+      pdf.text(professionalTitle.toUpperCase(), MAIN_X, y, { charSpace: 1.1 });
+      y += 6;
+    }
+
+    pdf.setDrawColor(...NAVY);
+    pdf.setLineWidth(0.7);
+    pdf.line(MAIN_X, y, MAIN_X + 18, y);
+    y += 9;
+
+    const mainHeading = (label: string) => {
+      ensureMain(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(...NAVY);
+      pdf.text(label.toUpperCase(), MAIN_X, y, { charSpace: 0.8 });
+      y += 2.4;
+      pdf.setDrawColor(...RULE);
+      pdf.setLineWidth(0.3);
+      pdf.line(MAIN_X, y, MAIN_X + MAIN_W, y);
+      y += 6;
+    };
+
+    const paragraph = (text: string) => {
+      if (!text) return;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.6);
+      pdf.setTextColor(...BODY);
+      const lines = pdf.splitTextToSize(text, MAIN_W);
+      ensureMain(lines.length * 4.4 + 3);
+      pdf.text(lines, MAIN_X, y);
+      y += lines.length * 4.4 + 3;
+    };
+
+    // One bullet per line, or per sentence when the candidate wrote a block of
+    // prose — achievement bullets read far better than a paragraph.
+    const bullets = (text: string) => {
+      if (!text) return;
+      const parts = text.includes('\n')
+        ? text.split('\n')
+        : text.split(/(?<=\.)\s+/);
+      parts
+        .map((p) => p.trim().replace(/^[-•·]\s*/, ''))
+        .filter(Boolean)
+        .forEach((p) => {
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(9.4);
+          pdf.setTextColor(...BODY);
+          const lines = pdf.splitTextToSize(p, MAIN_W - 4.5);
+          ensureMain(lines.length * 4.3 + 1.5);
+          pdf.setTextColor(...NAVY);
+          pdf.text('•', MAIN_X, y);
+          pdf.setTextColor(...BODY);
+          pdf.text(lines, MAIN_X + 4.5, y);
+          y += lines.length * 4.3 + 1.5;
+        });
+      y += 2;
+    };
+
+    // Title on the left, dates right-aligned on the same baseline.
+    const entryHeader = (title: string, right: string, subtitle: string) => {
+      ensureMain(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10.6);
+      pdf.setTextColor(...INK);
+      pdf.text(title, MAIN_X, y);
+      if (right) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.6);
+        pdf.setTextColor(...MUTED);
+        pdf.text(right, MAIN_X + MAIN_W, y, { align: 'right' });
+      }
+      y += 4.6;
+      if (subtitle) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9.2);
+        pdf.setTextColor(...NAVY);
+        pdf.text(subtitle, MAIN_X, y);
+        y += 5;
+      }
+    };
+
+    if (cvData.summary) {
+      mainHeading(language === 'ar' ? 'الملف الشخصي' : 'Profil');
+      paragraph(cvData.summary);
+      y += 3;
+    }
+
+    const realExperiences = (cvData.experiences || []).filter((e) => e.role || e.company);
+    if (realExperiences.length) {
+      mainHeading(language === 'ar' ? 'الخبرة المهنية' : 'Expérience Professionnelle');
+      realExperiences.forEach((exp) => {
+        entryHeader(exp.role || '', exp.period || '', exp.company || '');
+        bullets([exp.missions, exp.desc].filter(Boolean).join('\n'));
+      });
+      y += 1;
+    }
+
+    const realEducation = (cvData.education || []).filter((e) => e.degree || e.school);
+    if (realEducation.length) {
+      mainHeading(language === 'ar' ? 'التعليم' : 'Formation');
+      realEducation.forEach((edu) => {
+        entryHeader(edu.degree || '', edu.year || '', edu.school || '');
+        y += 2;
+      });
+      y += 1;
+    }
+
+    // Rendered only when the CV Maker gains editors for them; the layout is
+    // ready so no PDF change is needed when that data starts arriving.
+    const projects = (cvData as any).projects as
+      | { name?: string; description?: string; tech?: string; link?: string }[]
+      | undefined;
+    if (projects?.length) {
+      mainHeading(language === 'ar' ? 'المشاريع' : 'Projets');
+      projects.filter((p) => p.name).forEach((p) => {
+        entryHeader(p.name || '', p.tech || '', '');
+        paragraph([p.description, p.link].filter(Boolean).join(' — '));
+      });
+    }
+
+    const certifications = (cvData as any).certifications as
+      | { name?: string; issuer?: string; year?: string }[]
+      | undefined;
+    if (certifications?.length) {
+      mainHeading(language === 'ar' ? 'الشهادات' : 'Certifications');
+      certifications.filter((c) => c.name).forEach((c) => {
+        ensureMain(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9.6);
+        pdf.setTextColor(...INK);
+        pdf.text(c.name || '', MAIN_X, y);
+        if (c.year) {
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8.6);
+          pdf.setTextColor(...MUTED);
+          pdf.text(c.year, MAIN_X + MAIN_W, y, { align: 'right' });
+        }
+        y += 4.2;
+        if (c.issuer) {
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8.8);
+          pdf.setTextColor(...BODY);
+          pdf.text(c.issuer, MAIN_X, y);
+          y += 5;
+        }
+      });
+    }
+
+    pdf.save(`${filename}.pdf`);
+  }
+
   function generateTextPDF(filename: string): void {
     const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
     const marginX = 18;
@@ -2154,9 +2484,27 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);
     try {
-      await generatePDFDirectly('cv-preview-container', cvData.name || 'CV');
+      // Arabic still goes through the screenshot path: the vector generator
+      // uses jsPDF's built-in Helvetica, which has no Arabic glyphs and no RTL
+      // shaping, so real-text output would come out as boxes. Latin-script CVs
+      // get the designed, ATS-readable vector layout.
+      if (language === 'ar') {
+        await generatePDFDirectly('cv-preview-container', cvData.name || 'CV');
+      } else {
+        await generateProfessionalCvPDF(cvData.name || 'CV');
+      }
     } catch (error) {
       console.error('Error generating PDF:', error);
+      // Never leave the user without a file: fall back to the snapshot path.
+      try {
+        await generatePDFDirectly('cv-preview-container', cvData.name || 'CV');
+      } catch (fallbackError) {
+        console.error('Fallback PDF generation also failed:', fallbackError);
+        showToast(
+          lt('Could not generate the PDF.', 'Impossible de générer le PDF.', 'تعذر إنشاء ملف PDF.'),
+          'error'
+        );
+      }
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -4577,6 +4925,52 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
                             <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('phone')}</label>
                             <input type="tel" value={cvData.phone} onChange={(e) => setCvData({...cvData, phone: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
+                          </div>
+                          <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">
+                              {language === 'ar' ? 'المسمى المهني' : 'Titre professionnel'}
+                            </label>
+                            <input
+                              type="text"
+                              value={cvData.title}
+                              onChange={(e) => setCvData({ ...cvData, title: e.target.value })}
+                              placeholder={language === 'ar' ? 'مثال: مهندس برمجيات' : 'ex : Ingénieur Logiciel'}
+                              className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                            />
+                          </div>
+                          <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">
+                              {language === 'ar' ? 'العنوان' : 'Localisation'}
+                            </label>
+                            <input
+                              type="text"
+                              value={cvData.address}
+                              onChange={(e) => setCvData({ ...cvData, address: e.target.value })}
+                              placeholder={language === 'ar' ? 'الجزائر، الجزائر' : 'Alger, Algérie'}
+                              className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                            />
+                          </div>
+                          <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">LinkedIn</label>
+                            <input
+                              type="text"
+                              value={cvData.linkedin}
+                              onChange={(e) => setCvData({ ...cvData, linkedin: e.target.value })}
+                              placeholder="linkedin.com/in/…"
+                              className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                            />
+                          </div>
+                          <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">
+                              {language === 'ar' ? 'المحفظة / GitHub' : 'Portfolio / GitHub'}
+                            </label>
+                            <input
+                              type="text"
+                              value={cvData.portfolio}
+                              onChange={(e) => setCvData({ ...cvData, portfolio: e.target.value })}
+                              placeholder="github.com/…"
+                              className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`}
+                            />
                           </div>
                           <div className={`md:col-span-2 space-y-3 ${isRTL ? 'text-right' : ''}`}>
                             <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{t('professionalSummary')}</label>

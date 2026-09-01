@@ -699,7 +699,11 @@ export default function App() {
   }
 
   if ((user || isDemo) && view === 'dashboard') {
-    return <Dashboard user={user} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />;
+    // isDemo must be forwarded: the dashboard guards every backend call with
+    // it. Without it the prop defaulted to false, so demo sessions — which
+    // have no JWT — called the real API and got back
+    // "Not authorized to access this route".
+    return <Dashboard user={user} isDemo={isDemo} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />;
   }
 
   return (

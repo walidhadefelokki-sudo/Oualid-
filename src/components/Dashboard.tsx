@@ -1471,6 +1471,21 @@ export default function Dashboard({
 
   const handlePostJob = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Demo sessions carry no JWT, so posting would fail at `protect` with an
+    // opaque "Not authorized to access this route". Say so plainly instead.
+    if (isDemo || !user) {
+      showToast(
+        lt(
+          'Demo mode: sign in with a recruiter account to publish a real offer.',
+          'Mode démo : connectez-vous avec un compte recruteur pour publier une vraie offre.',
+          'وضع التجربة: سجّل الدخول بحساب موظِّف لنشر عرض حقيقي.'
+        ),
+        'error'
+      );
+      return;
+    }
+
     if (!newJobData.title || !newJobData.description) {
       alert(language === 'ar' ? 'يرجى ملء جميع الحقول المطلوبة.' : 'Veuillez remplir tous les champs obligatoires.');
       return;

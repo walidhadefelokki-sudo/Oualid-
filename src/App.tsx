@@ -257,17 +257,44 @@ function TierLockedScreen({
     </div>
   );
 }
+// Commercial pricing shown on the home page only. Kept separate from
+// RECRUITER_PLANS (which describes what each tier *does*) so the login form's
+// demo chooser stays price-free.
+const HOME_PLAN_PRICING: Record<
+  RecruiterTier,
+  { price: string; suffix?: string; cta: string; ctaAr: string }
+> = {
+  free: { price: '0', suffix: 'DA', cta: 'Commencer', ctaAr: 'ابدأ الآن' },
+  paid: { price: '5 900', suffix: 'DA', cta: 'Commencer', ctaAr: 'ابدأ الآن' },
+  corporate: { price: 'Sur mesure', cta: 'Contactez-nous', ctaAr: 'اتصل بنا' },
+};
+
+// Used in two places, driven by the same RECRUITER_PLANS data so the two
+// stay in sync: the compact plan chooser in the login form's recruiter demo,
+// and the pricing section on the home page. The home page passes `price`
+// and `ctaLabel` and sets size="lg"; the demo chooser passes neither.
 function RecruiterPlanCard({
   plan,
   language,
   onSelect,
+  price,
+  priceSuffix,
+  ctaLabel,
+  featuredLabel,
+  size = 'sm',
 }: {
   plan: RecruiterPlan;
   language: 'fr' | 'ar';
   onSelect: (tier: RecruiterTier) => void;
+  price?: string;
+  priceSuffix?: string;
+  ctaLabel?: string;
+  featuredLabel?: string;
+  size?: 'sm' | 'lg';
 }) {
   const isCorporate = plan.tier === 'corporate';
   const isPaid = plan.tier === 'paid';
+  const isLarge = size === 'lg';
   const textPrimary = isCorporate ? 'text-white' : 'text-[#173E7D]';
   const textSecondary = isCorporate ? 'text-white/60' : 'text-gray-400';
 
@@ -275,8 +302,15 @@ function RecruiterPlanCard({
     <motion.div
       whileHover={{ y: -6 }}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-      className={`relative flex flex-col rounded-[1.75rem] border ${plan.accent.border} ${plan.accent.hoverBorder} ${plan.accent.cardBg} ${plan.accent.glow} p-6 transition-colors duration-300 overflow-hidden`}
+      className={`relative flex flex-col rounded-[1.75rem] border ${plan.accent.border} ${plan.accent.hoverBorder} ${plan.accent.cardBg} ${plan.accent.glow} ${
+        isLarge ? 'p-9 rounded-[2.25rem]' : 'p-6'
+      } transition-colors duration-300 overflow-hidden`}
     >
+      {featuredLabel && (
+        <div className="absolute top-0 right-0 bg-[#F68D58] text-white px-4 py-1.5 rounded-bl-2xl text-[9px] font-black uppercase tracking-[0.2em] shadow-lg z-20">
+          {featuredLabel}
+        </div>
+      )}
       {isCorporate && (
         <div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#D4AF37]/20 blur-3xl" />
       )}
@@ -300,6 +334,19 @@ function RecruiterPlanCard({
       <p className={`mt-1 text-xs font-medium ${textSecondary}`}>
         {language === 'fr' ? plan.tagline : plan.taglineAr}
       </p>
+
+      {price && (
+        <div className="mt-6 flex items-baseline gap-2">
+          <span className={`font-display font-black tracking-tighter ${textPrimary} ${isLarge ? 'text-5xl' : 'text-3xl'}`}>
+            {price}
+          </span>
+          {priceSuffix && (
+            <span className={`font-bold uppercase tracking-widest ${textSecondary} ${isLarge ? 'text-base' : 'text-sm'}`}>
+              {priceSuffix}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className={`my-5 h-px w-full ${isCorporate ? 'bg-white/10' : 'bg-gray-100'}`} />
 
@@ -347,9 +394,11 @@ function RecruiterPlanCard({
 
       <button
         onClick={() => onSelect(plan.tier)}
-        className={`mt-6 w-full rounded-xl py-3 text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 ${plan.accent.button}`}
+        className={`mt-6 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 ${
+          isLarge ? 'py-5 rounded-2xl' : 'py-3'
+        } ${plan.accent.button}`}
       >
-        {language === 'fr' ? plan.cta : plan.ctaAr}
+        {ctaLabel ?? (language === 'fr' ? plan.cta : plan.ctaAr)}
       </button>
     </motion.div>
   );
@@ -1448,14 +1497,8 @@ export default function App() {
                       <div className="flex items-center gap-2"><Clock size={16} className="text-[#F68D58]" /> 2j</div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-8 border-t border-gray-50">
-                      <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                          {language === 'ar' ? 'الراتب المتوقع' : 'Salaire Estimé'}
-                        </p>
-                        <p className="text-2xl font-black text-[#173E7D]">{job.salary}</p>
-                      </div>
-                      <button 
+                    <div className="flex items-center justify-end pt-8 border-t border-gray-50">
+                      <button
                         className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-[#173E7D] group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-500 shadow-sm"
                       >
                         <ChevronRight size={28} className={language === 'ar' ? 'rotate-180' : ''} />
@@ -1494,154 +1537,26 @@ export default function App() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Plan Gratuit */}
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="group relative bg-white p-12 rounded-[4rem] flex flex-col border border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)] transition-all duration-700 hover:-translate-y-4"
-            >
-              <div className="w-20 h-20 rounded-3xl bg-gray-50 text-gray-400 flex items-center justify-center mb-10 shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-all duration-700">
-                <Zap size={32} />
-              </div>
-              <div className="mb-8">
-                <h3 className="text-3xl font-black text-[#173E7D] mb-2">Gratuit</h3>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Pour tester nos services</p>
-              </div>
-              <div className="mb-12">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-6xl font-black text-[#173E7D] tracking-tighter">0</span>
-                  <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>
-                </div>
-              </div>
-              <div className="space-y-4 mb-16 flex-1">
-                <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Ce qui est inclus</p>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">1 offre d'emploi gratuite</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Filtrage par IA Gemini</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Gestionnaire d'équipe</span>
-                </li>
-              </div>
-              <button className="w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-white text-[#173E7D] border-2 border-[#173E7D] hover:bg-[#173E7D] hover:text-white transition-all duration-500">
-                Commencer
-              </button>
-            </motion.div>
-
-            {/* Plan Annonces */}
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="group relative bg-white p-12 rounded-[4rem] flex flex-col border-2 border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.2)] scale-105 z-10 transition-all duration-700 hover:-translate-y-4"
-            >
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#F68D58] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap z-20">
-                MEILLEUR CHOIX
-              </div>
-              <div className="w-20 h-20 rounded-3xl bg-orange-50 text-[#F68D58] flex items-center justify-center mb-10 shadow-[inset_0_4px_12px_rgba(246,141,88,0.1)] group-hover:scale-110 group-hover:rotate-3 transition-all duration-700">
-                <Briefcase size={32} />
-              </div>
-              <div className="mb-8">
-                <h3 className="text-3xl font-black text-[#173E7D] mb-2">Annonces</h3>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Packs 2, 5 ou 10 disponibles</p>
-              </div>
-              <div className="mb-12 min-h-[100px]">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-6xl font-black text-[#173E7D] tracking-tighter">5 900</span>
-                  <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>
-                </div>
-                <div className="mt-3 inline-flex px-4 py-1.5 bg-orange-100/50 text-[#F68D58] rounded-full text-[9px] font-black uppercase tracking-[0.2em] border border-orange-200/30">
-                  PAR OFFRE
-                </div>
-              </div>
-              <div className="space-y-4 mb-16 flex-1">
-                <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Ce qui est inclus</p>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Publication d'offres payantes</span>
-                </li>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Multi-comptes (Gestionnaire)</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Filtrage par IA Gemini</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Répertoire CV</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Présélection de candidats</span>
-                </li>
-                <li className="flex items-start gap-4 list-none opacity-50">
-                  <div className="w-6 h-6 bg-red-50 text-red-400/60 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-red-100/50"><XCircle size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-300 line-through decoration-red-200">Support Prioritaire</span>
-                </li>
-              </div>
-              <button className="w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47]">
-                Choisir ce plan
-              </button>
-            </motion.div>
-
-            {/* Plan Corporate */}
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="group relative bg-white p-12 rounded-[4rem] flex flex-col border-2 border-[#173E7D]/20 shadow-[0_40px_100px_-20px_rgba(23,62,125,0.1)] transition-all duration-700 hover:-translate-y-4"
-            >
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#173E7D] text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-xl whitespace-nowrap z-20">
-                ÉLITE
-              </div>
-              <div className="w-20 h-20 rounded-3xl bg-blue-50 text-[#173E7D] flex items-center justify-center mb-10 shadow-[inset_0_4px_12px_rgba(23,62,125,0.1)] group-hover:scale-110 group-hover:rotate-3 transition-all duration-700">
-                <Building2 size={32} />
-              </div>
-              <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-3xl font-black text-[#173E7D]">Corporate</h3>
-                  <Zap size={16} className="text-[#F68D58] animate-pulse" fill="#F68D58" />
-                </div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Solution annuelle illimitée</p>
-              </div>
-              <div className="mb-12 min-h-[100px] flex items-center">
-                <span className="text-4xl font-black text-[#173E7D] tracking-tighter uppercase">Sur mesure</span>
-              </div>
-              <div className="space-y-4 mb-16 flex-1">
-                <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Suite complète</p>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Publication illimitée</span>
-                </li>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Filtrage par IA Gemini</span>
-                </li>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Présélection decandidats</span>
-                </li>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Répertoire CV & Support</span>
-                </li>
-                <li className="flex items-start gap-4 list-none group/item">
-                  <div className="w-6 h-6 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5 border border-emerald-100 shadow-sm transition-transform group-hover/item:scale-110"><CheckCircle2 size={12} strokeWidth={3} /></div>
-                  <span className="text-sm font-bold text-gray-600">Gestionnaire d'équipe</span>
-                </li>
-              </div>
-              <button className="w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-[#173E7D] text-white shadow-[0_20px_40px_-5px_rgba(23,62,125,0.3)] hover:bg-[#1f4a8f]">
-                Contactez-nous
-              </button>
-            </motion.div>
+            {/* Same card component as the recruiter demo plan chooser in the
+                login form, driven by the same RECRUITER_PLANS data, with the
+                home page's pricing and CTAs layered on top. */}
+            {RECRUITER_PLANS.map((plan) => (
+              <RecruiterPlanCard
+                key={plan.tier}
+                plan={plan}
+                language={language}
+                size="lg"
+                price={HOME_PLAN_PRICING[plan.tier].price}
+                priceSuffix={HOME_PLAN_PRICING[plan.tier].suffix}
+                ctaLabel={language === 'fr' ? HOME_PLAN_PRICING[plan.tier].cta : HOME_PLAN_PRICING[plan.tier].ctaAr}
+                featuredLabel={
+                  plan.tier === 'paid' ? (language === 'fr' ? 'Meilleur choix' : 'الأفضل') : undefined
+                }
+                onSelect={() =>
+                  plan.tier === 'corporate' ? scrollToSection('contact') : setIsAuthModalOpen(true)
+                }
+              />
+            ))}
           </div>
         </div>
       </section>

@@ -79,6 +79,7 @@ import {
   Volume2,
   Brain,
   Crown,
+  Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
@@ -106,6 +107,22 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+
+// Language proficiency, shared by the CV preview and the PDF export so the
+// bar in the on-screen CV and the bar in the downloaded file always agree.
+// Keyed by both the French and Arabic labels offered in the CV editor's
+// level dropdown.
+const LANGUAGE_LEVELS: { labels: string[]; percent: number }[] = [
+  { labels: ['Natif', 'أصلي'], percent: 100 },
+  { labels: ['Courant', 'بطلاقة'], percent: 85 },
+  { labels: ['Intermédiaire', 'متوسط'], percent: 60 },
+  { labels: ['Débutant', 'مبتدئ'], percent: 30 },
+];
+
+// Falls back to the Intermédiaire weighting for anything unrecognised (the
+// language name is free text, but the level always comes from the dropdown).
+export const languageLevelPercent = (level: string): number =>
+  LANGUAGE_LEVELS.find((l) => l.labels.includes(level))?.percent ?? 60;
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -628,7 +645,20 @@ export default function Dashboard({
     }
   };
 
-  const [activeTab, setActiveTab] = useState(user?.role === 'employer' ? 'employer-dashboard' : 'dashboard');
+  const [activeTab, setActiveTab] = useState(user?.role === 'employer' ? 'employer-dashboard' : 'jobs');
+
+  // Lightweight in-app toast, used instead of window.alert() for outcomes the
+  // user should see without a blocking popup (e.g. publishing a job offer).
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') =>
+    setToast({ message, type });
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const [sourcingJobFilter, setSourcingJobFilter] = useState('Tous les postes');
   const [settingsTab, setSettingsTab] = useState('general');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -1119,14 +1149,8 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Footer: Salary & Action */}
-        <div className="relative z-10 flex items-center justify-between pt-8 mt-8 border-t border-gray-50">
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-              {lt('Estimated Salary', 'Salaire Estimé', 'الراتب المتوقع')}
-            </p>
-            <p className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{job.salary}</p>
-          </div>
+        {/* Footer: Actions (estimated salary intentionally not shown) */}
+        <div className="relative z-10 flex items-center justify-end pt-8 mt-8 border-t border-gray-50">
           <div className="flex items-center gap-3">
             <button 
               onClick={(e) => {
@@ -1215,6 +1239,9 @@ export default function Dashboard({
   // CV Maker State
   const [cvModel, setCvModel] = useState('moderne');
   const [cvSection, setCvSection] = useState('info');
+  const [isSavingCV, setIsSavingCV] = useState(false);
+  const [isLoadingCV, setIsLoadingCV] = useState(false);
+  const [cvLastSavedAt, setCvLastSavedAt] = useState<string | null>(null);
   const [cvData, setCvData] = useState({
     name: user?.displayName || 'Votre nom',
     email: user?.email || '',
@@ -1244,6 +1271,37 @@ export default function Dashboard({
       { name: 'Anglais', level: language === 'ar' ? 'متوسط' : 'Intermédiaire' }
     ]
   });
+
+  // Reopen the CV Maker with whatever the candidate saved last time. Runs once
+  // per signed-in candidate; demo accounts keep the sample CV. Fields absent
+  // from an older save fall back to the current defaults, so adding a field to
+  // the CV Maker later cannot break existing saves.
+  useEffect(() => {
+    if (!user || isDemo || user.role === 'employer') return;
+
+    let cancelled = false;
+    setIsLoadingCV(true);
+
+    candidateProfileService
+      .getCvBuilder()
+      .then((saved) => {
+        if (cancelled || !saved) return;
+        setCvData((prev) => ({ ...prev, ...saved }));
+        setCvLastSavedAt(null);
+      })
+      .catch((error) => {
+        // Never block the CV Maker on a failed load — the candidate can still
+        // build a CV from scratch and save it.
+        console.error('Could not load saved CV:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingCV(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, isDemo]);
 
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
 
@@ -1289,6 +1347,112 @@ export default function Dashboard({
     'Confirmé (3-5 ans)': 'MID',
     'Senior (5-10 ans)': 'SENIOR',
     'Expert (10+ ans)': 'LEAD',
+  };
+
+  // Backend enum -> French label, for pre-filling the edit form's selects.
+  // Not simply the inverse of the maps above: both 'Temps plein' and 'CDI'
+  // encode to FULL_TIME, so decoding has to pick one canonical label.
+  const JOB_TYPE_LABEL: Record<string, string> = {
+    FULL_TIME: 'CDI',
+    PART_TIME: 'Temps partiel',
+    FREELANCE: 'Freelance',
+    INTERNSHIP: 'Stage',
+    CONTRACT: 'CDD',
+    TEMPORARY: 'CDD',
+  };
+  const EXPERIENCE_LABEL: Record<string, string> = {
+    INTERN: 'Débutant (0-2 ans)',
+    JUNIOR: 'Débutant (0-2 ans)',
+    MID: 'Confirmé (3-5 ans)',
+    SENIOR: 'Senior (5-10 ans)',
+    LEAD: 'Expert (10+ ans)',
+    MANAGER: 'Expert (10+ ans)',
+  };
+
+  // --- Editing an existing job offer -------------------------------------
+  // The recruiter's job cards (postedJobs) only carry summary fields, so
+  // opening the editor fetches the full record via GET /jobs/:id first.
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [isLoadingEditJob, setIsLoadingEditJob] = useState(false);
+  const [isSavingJob, setIsSavingJob] = useState(false);
+  const [editJobData, setEditJobData] = useState({
+    title: '',
+    description: '',
+    wilaya: 'Alger',
+    type: 'CDI',
+    experience: 'Confirmé (3-5 ans)',
+    salaryMin: '',
+    salaryMax: '',
+    status: 'PUBLISHED',
+  });
+
+  const openEditJob = async (jobId: string) => {
+    setEditingJobId(jobId);
+    setIsLoadingEditJob(true);
+    try {
+      const job = await jobService.getJob(jobId);
+      setEditJobData({
+        title: job.title || '',
+        description: job.description || '',
+        wilaya: job.wilaya || job.location || 'Alger',
+        type: JOB_TYPE_LABEL[job.type] || 'CDI',
+        experience: EXPERIENCE_LABEL[job.experienceLevel || ''] || 'Confirmé (3-5 ans)',
+        salaryMin: job.salaryMin != null ? String(job.salaryMin) : '',
+        salaryMax: job.salaryMax != null ? String(job.salaryMax) : '',
+        status: job.status || 'PUBLISHED',
+      });
+    } catch (error: any) {
+      console.error('Failed to load job for editing:', error);
+      showToast(
+        lt('Could not load this offer.', "Impossible de charger cette offre.", 'تعذر تحميل هذا العرض.'),
+        'error'
+      );
+      setEditingJobId(null);
+    } finally {
+      setIsLoadingEditJob(false);
+    }
+  };
+
+  const handleUpdateJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingJobId) return;
+    if (!editJobData.title.trim() || !editJobData.description.trim()) {
+      showToast(
+        lt(
+          'Please fill in all required fields.',
+          'Veuillez remplir tous les champs obligatoires.',
+          'يرجى ملء جميع الحقول المطلوبة.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    setIsSavingJob(true);
+    try {
+      await jobService.updateJob(editingJobId, {
+        title: editJobData.title,
+        description: editJobData.description,
+        location: editJobData.wilaya,
+        wilaya: editJobData.wilaya,
+        type: (JOB_TYPE_MAP[editJobData.type] || 'FULL_TIME') as any,
+        experienceLevel: (EXPERIENCE_MAP[editJobData.experience] || 'MID') as any,
+        salaryMin: editJobData.salaryMin ? Number(editJobData.salaryMin) : undefined,
+        salaryMax: editJobData.salaryMax ? Number(editJobData.salaryMax) : undefined,
+        status: editJobData.status,
+      });
+      await loadPostedJobs();
+      setEditingJobId(null);
+      showToast(
+        lt('Offer updated successfully!', 'Offre mise à jour avec succès !', 'تم تحديث العرض بنجاح!')
+      );
+    } catch (error: any) {
+      console.error('Failed to update job:', error);
+      const message = error?.response?.data?.message || error.message;
+      showToast(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`), 'error');
+    } finally {
+      setIsSavingJob(false);
+    }
   };
 
   const [newJobData, setNewJobData] = useState({
@@ -1340,12 +1504,18 @@ export default function Dashboard({
         experience: 'Confirmé (3-5 ans)'
       } as any);
 
-      alert(language === 'ar' ? 'تم نشر العرض بنجاح!' : 'Offre publiée avec succès !');
+      showToast(
+        lt(
+          'Your job offer has been published successfully!',
+          'Votre offre a été publiée avec succès !',
+          'تم نشر عرضك بنجاح!'
+        )
+      );
       setActiveTab('manage-jobs');
     } catch (error: any) {
       console.error('Error posting job:', error);
       const message = error?.response?.data?.message || error.message;
-      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
+      showToast(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`), 'error');
     }
   };
   const cvPreviewRef = useRef<HTMLDivElement>(null);
@@ -1492,22 +1662,43 @@ export default function Dashboard({
     }
   };
 
+  // Saves the CV Maker document to our own backend (CandidateProfile.
+  // cvBuilderData). Previously this wrote to a Supabase `cvs` table belonging
+  // to a different, legacy project, so nothing the candidate typed actually
+  // came back when they returned.
   const handleSaveCV = async () => {
-    if (!user) return;
+    if (!user || isDemo) {
+      showToast(
+        lt(
+          'Sign in to save your CV.',
+          'Connectez-vous pour sauvegarder votre CV.',
+          'سجّل الدخول لحفظ سيرتك الذاتية.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    setIsSavingCV(true);
     try {
-      const { error } = await supabase
-        .from('cvs')
-        .upsert({
-          user_id: user.uid,
-          ...cvData,
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error) throw error;
-      alert(language === 'ar' ? 'تم حفظ السيرة الذاتية بنجاح!' : 'CV sauvegardé avec succès !');
-    } catch (error) {
-      console.error("Error saving CV:", error);
-      alert(language === 'ar' ? 'خطأ أثناء حفظ السيرة الذاتية.' : 'Erreur lors de la sauvegarde du CV.');
+      const updatedAt = await candidateProfileService.saveCvBuilder(cvData);
+      setCvLastSavedAt(updatedAt);
+      showToast(
+        lt('CV saved successfully!', 'CV sauvegardé avec succès !', 'تم حفظ السيرة الذاتية بنجاح!')
+      );
+    } catch (error: any) {
+      console.error('Error saving CV:', error);
+      const message = error?.response?.data?.message || error.message;
+      showToast(
+        lt(
+          `Could not save your CV: ${message}`,
+          `Impossible de sauvegarder le CV : ${message}`,
+          `تعذر حفظ السيرة الذاتية: ${message}`
+        ),
+        'error'
+      );
+    } finally {
+      setIsSavingCV(false);
     }
   };
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -1907,7 +2098,39 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
     if (cvData.languages?.length) {
       addHeading(language === 'ar' ? 'اللغات' : 'Langues');
-      addParagraph(cvData.languages.map((l) => `${l.name} (${l.level})`).join('  •  '));
+      // Mirrors the proficiency bars in the on-screen preview: label + level on
+      // one line, then a track with an orange fill sized by languageLevelPercent.
+      const barWidth = contentWidth * 0.45;
+      const barHeight = 1.6;
+      cvData.languages.forEach((l) => {
+        if (!l.name) return;
+        ensureSpace(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10.5);
+        pdf.setTextColor(23, 62, 125);
+        pdf.text(l.name, marginX, y);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(l.level || '', marginX + barWidth, y, { align: 'right' });
+        y += 2.5;
+
+        pdf.setFillColor(233, 235, 238);
+        pdf.roundedRect(marginX, y, barWidth, barHeight, 0.8, 0.8, 'F');
+        pdf.setFillColor(246, 141, 88); // #F68D58
+        pdf.roundedRect(
+          marginX,
+          y,
+          (barWidth * languageLevelPercent(l.level)) / 100,
+          barHeight,
+          0.8,
+          0.8,
+          'F'
+        );
+        y += barHeight + 5;
+      });
+      y += 2;
     }
 
     pdf.save(`${filename}.pdf`);
@@ -2229,7 +2452,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       >
                         {lt('Manage', 'Gérer', 'عمليات')}
                       </button>
-                      <button 
+                      <button
+                        className="w-14 h-14 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-[#173E7D] hover:border-blue-100 hover:bg-blue-50 transition-all"
+                        onClick={() => openEditJob(job.id)}
+                        title={lt('Edit', 'Modifier', 'تعديل')}
+                      >
+                        <Pencil size={20} />
+                      </button>
+                      <button
                         className="w-14 h-14 bg-white border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all"
                         onClick={async () => {
                           if (!confirm(lt('Delete this job?', 'Supprimer cette offre ?', 'حذف هذا العرض؟'))) return;
@@ -4624,14 +4854,35 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </h3>
                   <p className="text-gray-500 mt-1 font-medium">Voici à quoi ressemblera votre CV pour les recruteurs.</p>
                 </div>
-                <div className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  {/* <button 
+                <div className={`flex flex-wrap items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  {isLoadingCV && (
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      {lt('Loading your CV…', 'Chargement de votre CV…', 'جار تحميل سيرتك…')}
+                    </span>
+                  )}
+                  {cvLastSavedAt && !isSavingCV && (
+                    <span className={`flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <CheckCircle2 size={14} />
+                      {lt('Saved', 'Sauvegardé', 'تم الحفظ')}
+                    </span>
+                  )}
+                  <button
                     onClick={handleSaveCV}
-                    className="bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:bg-emerald-600 transition-all flex items-center gap-3"
+                    disabled={isSavingCV}
+                    className={`bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:bg-emerald-600 transition-all flex items-center gap-3 ${isSavingCV ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
-                    <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
-                  </button> */}
-                  <button 
+                    {isSavingCV ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        {lt('Saving…', 'Sauvegarde…', 'جار الحفظ…')}
+                      </>
+                    ) : (
+                      <>
+                        <Save size={20} /> {language === 'ar' ? 'حفظ السيرة الذاتية' : 'Sauvegarder CV'}
+                      </>
+                    )}
+                  </button>
+                  <button
                     onClick={handleDownloadPDF}
                     disabled={isGeneratingPDF}
                     className={`bg-[#173E7D] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20 hover:bg-[#0A1118] transition-all flex items-center gap-3 ${isGeneratingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}
@@ -4650,76 +4901,78 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 ref={cvPreviewRef}
                 className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
               >
-                {/* CV Header */}
-                <div className="bg-[#173E7D] p-12 text-white relative">
-                  <div className={`flex items-center gap-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <div className="w-40 h-40 rounded-[3rem] overflow-hidden border-4 border-white/20 shadow-2xl bg-white/10 flex items-center justify-center">
+                {/* CV Header — deliberately compact: this sits at the top of
+                    page 1 of the printed CV, so every millimetre it takes is
+                    a millimetre of experience the recruiter doesn't see. */}
+                <div className="bg-[#173E7D] px-10 py-8 text-white relative">
+                  <div className={`flex items-center gap-7 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-28 h-28 shrink-0 rounded-[1.75rem] overflow-hidden border-[3px] border-white/20 shadow-xl bg-white/10 flex items-center justify-center">
                       {displayPhotoURL ? (
                         <img src={displayPhotoURL} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <User size={64} className="text-white/20" />
+                        <User size={44} className="text-white/25" />
                       )}
                     </div>
-                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                      <h1 className="text-5xl font-display font-black tracking-tight">{cvData.name || 'Votre Nom'}</h1>
-                      <p className="text-blue-200 text-2xl font-medium tracking-wide uppercase">{cvData.experiences[0]?.role || 'Votre Poste Actuel'}</p>
-                      <div className={`flex gap-4 mt-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <span className="px-5 py-2 bg-white/10 rounded-full text-xs font-bold border border-white/10">Profil Candidat</span>
-                        <span className="px-5 py-2 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold border border-emerald-500/20">Vérifié</span>
+                    <div className={`min-w-0 space-y-1.5 ${isRTL ? 'text-right' : ''}`}>
+                      <h1 className="text-4xl font-display font-black tracking-tight leading-tight">{cvData.name || 'Votre Nom'}</h1>
+                      <p className="text-blue-200 text-base font-semibold tracking-[0.18em] uppercase">{cvData.experiences[0]?.role || 'Votre Poste Actuel'}</p>
+                      <div className={`flex flex-wrap gap-2 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <span className="px-3.5 py-1 bg-white/10 rounded-full text-[10px] font-bold border border-white/10">Profil Candidat</span>
+                        <span className="px-3.5 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold border border-emerald-500/20">Vérifié</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* CV Content */}
-                <div className={`p-16 space-y-16 ${isRTL ? 'text-right' : ''}`}>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
+                <div className={`px-12 py-11 ${isRTL ? 'text-right' : ''}`}>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-11">
                     {/* Left Column */}
-                    <div className="lg:col-span-2 space-y-16">
+                    <div className="lg:col-span-2 space-y-10">
                       {cvData.summary && (
-                        <section className="space-y-8">
-                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <User size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'الملف الشخصي' : 'Résumé Professionnel'}
+                        <section className="space-y-4 break-inside-avoid">
+                          <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <User size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'الملف الشخصي' : 'Résumé Professionnel'}
                           </h4>
-                          <p className="text-gray-600 leading-relaxed text-xl font-medium">
+                          <p className="text-gray-600 leading-relaxed text-[15px] font-medium">
                             {cvData.summary}
                           </p>
                         </section>
                       )}
 
-                      <section className="space-y-10">
-                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <Briefcase size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'الخبرة' : 'Expériences Professionnelles'}
+                      <section className="space-y-5">
+                        <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <Briefcase size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'الخبرة' : 'Expériences Professionnelles'}
                         </h4>
-                        <div className="space-y-12">
+                        <div className="space-y-7">
                           {cvData.experiences.map((exp, i) => (
-                            <div key={i} className={`relative pl-10 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-10 border-l-0 border-r-2' : ''}`}>
-                              <div className={`absolute top-0 w-5 h-5 bg-[#F68D58] rounded-full border-4 border-white shadow-sm ${isRTL ? '-right-[11px]' : '-left-[11px]'}`} />
-                              <div className={`flex justify-between items-start mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <h5 className="text-2xl font-black text-[#173E7D]">{exp.role || 'Poste'}</h5>
-                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-4 py-2 rounded-xl">{exp.period || 'Période'}</span>
+                            <div key={i} className={`relative break-inside-avoid pl-7 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-7 border-l-0 border-r-2' : ''}`}>
+                              <div className={`absolute top-1 w-3.5 h-3.5 bg-[#F68D58] rounded-full border-[3px] border-white shadow-sm ${isRTL ? '-right-[8px]' : '-left-[8px]'}`} />
+                              <div className={`flex justify-between items-start gap-4 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <h5 className="text-lg font-black text-[#173E7D] leading-snug">{exp.role || 'Poste'}</h5>
+                                <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg whitespace-nowrap">{exp.period || 'Période'}</span>
                               </div>
-                              <p className="text-[#F68D58] text-lg font-bold mb-4">{exp.company || 'Entreprise'}</p>
-                              {exp.missions && <p className="text-gray-600 text-sm font-medium mb-3">{exp.missions}</p>}
-                              <p className="text-gray-500 text-sm leading-relaxed">{exp.desc}</p>
+                              <p className="text-[#F68D58] text-sm font-bold mb-2">{exp.company || 'Entreprise'}</p>
+                              {exp.missions && <p className="text-gray-600 text-[13px] font-medium mb-1.5 leading-relaxed">{exp.missions}</p>}
+                              <p className="text-gray-500 text-[13px] leading-relaxed">{exp.desc}</p>
                             </div>
                           ))}
                         </div>
                       </section>
 
-                      <section className="space-y-10">
-                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <FileText size={20} className="text-[#F68D58]" /> {language === 'ar' ? 'التكوين' : 'Formation & Éducation'}
+                      <section className="space-y-5">
+                        <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <FileText size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'التكوين' : 'Formation & Éducation'}
                         </h4>
-                        <div className="space-y-8">
+                        <div className="space-y-5">
                           {cvData.education.map((edu, i) => (
-                            <div key={i} className={`relative pl-10 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-10 border-l-0 border-r-2' : ''}`}>
-                              <div className={`absolute top-0 w-5 h-5 bg-blue-400 rounded-full border-4 border-white shadow-sm ${isRTL ? '-right-[11px]' : '-left-[11px]'}`} />
-                              <div className={`flex justify-between items-start mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <h5 className="text-xl font-black text-[#173E7D]">{edu.degree || 'Diplôme'}</h5>
-                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-4 py-2 rounded-xl">{edu.year || 'Année'}</span>
+                            <div key={i} className={`relative break-inside-avoid pl-7 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-7 border-l-0 border-r-2' : ''}`}>
+                              <div className={`absolute top-1 w-3.5 h-3.5 bg-blue-400 rounded-full border-[3px] border-white shadow-sm ${isRTL ? '-right-[8px]' : '-left-[8px]'}`} />
+                              <div className={`flex justify-between items-start gap-4 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <h5 className="text-base font-black text-[#173E7D] leading-snug">{edu.degree || 'Diplôme'}</h5>
+                                <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg whitespace-nowrap">{edu.year || 'Année'}</span>
                               </div>
-                              <p className="text-gray-500 font-bold">{edu.school || 'École'}</p>
+                              <p className="text-gray-500 text-[13px] font-bold">{edu.school || 'École'}</p>
                             </div>
                           ))}
                         </div>
@@ -4727,31 +4980,31 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     </div>
 
                     {/* Right Column */}
-                    <div className="space-y-16">
-                      <section className="space-y-8">
-                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Compétences</h4>
-                        <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className="space-y-9">
+                      <section className="space-y-4 break-inside-avoid">
+                        <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-[0.28em]">Compétences</h4>
+                        <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                           {cvData.skills.map((skill, i) => (
-                            <span key={i} className="px-5 py-3 bg-gray-50 text-[#173E7D] text-xs font-black rounded-2xl border border-gray-100">
+                            <span key={i} className="px-3.5 py-2 bg-gray-50 text-[#173E7D] text-[11px] font-black rounded-xl border border-gray-100">
                               {skill}
                             </span>
                           ))}
                         </div>
                       </section>
 
-                      <section className="space-y-8">
-                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Langues</h4>
-                        <div className="space-y-6">
+                      <section className="space-y-4 break-inside-avoid">
+                        <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-[0.28em]">Langues</h4>
+                        <div className="space-y-3.5">
                           {cvData.languages.map((lang, i) => (
-                            <div key={i} className="space-y-3">
-                              <div className={`flex justify-between text-sm font-black ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div key={i} className="space-y-1.5">
+                              <div className={`flex justify-between items-baseline gap-3 text-[13px] font-black ${isRTL ? 'flex-row-reverse' : ''}`}>
                                 <span className="text-[#173E7D]">{lang.name}</span>
-                                <span className="text-gray-400 uppercase tracking-widest text-[10px]">{lang.level}</span>
+                                <span className="text-gray-400 uppercase tracking-widest text-[9px]">{lang.level}</span>
                               </div>
-                              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-[#F68D58] rounded-full" 
-                                  style={{ width: lang.level === 'Natif' || lang.level === 'أصلي' ? '100%' : lang.level === 'Courant' || lang.level === 'بطلاقة' ? '90%' : '70%' }} 
+                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-[#F68D58] rounded-full transition-all duration-500"
+                                  style={{ width: `${languageLevelPercent(lang.level)}%` }}
                                 />
                               </div>
                             </div>
@@ -4759,12 +5012,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         </div>
                       </section>
 
-                      <section className="p-8 bg-orange-50 rounded-[3rem] border border-orange-100 space-y-6">
-                        <h4 className="text-sm font-black text-[#F68D58] uppercase tracking-widest">Contact</h4>
-                        <div className="space-y-4 text-sm font-bold text-gray-600">
-                          <p className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={18} className="text-[#F68D58]" /> {language === 'ar' ? 'الجزائر، الجزائر' : 'Alger, Algérie'}</p>
-                          <p className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}><Mail size={18} className="text-[#F68D58]" /> {cvData.email || 'votre@email.com'}</p>
-                          <p className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}><Phone size={18} className="text-[#F68D58]" /> {cvData.phone || '+213 000 00 00 00'}</p>
+                      <section className="p-6 bg-orange-50 rounded-[1.75rem] border border-orange-100 space-y-3.5 break-inside-avoid">
+                        <h4 className="text-[11px] font-black text-[#F68D58] uppercase tracking-[0.2em]">Contact</h4>
+                        <div className="space-y-2.5 text-[13px] font-bold text-gray-600 break-words">
+                          {/* Uses the address the candidate actually typed; the
+                              Alger fallback is only a placeholder. */}
+                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.address || (language === 'ar' ? 'الجزائر، الجزائر' : 'Alger, Algérie')}</p>
+                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><Mail size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.email || 'votre@email.com'}</p>
+                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><Phone size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.phone || '+213 000 00 00 00'}</p>
                         </div>
                       </section>
                     </div>
@@ -4772,8 +5027,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
 
                 {/* CV Footer */}
-                <div className="p-12 bg-gray-50 border-t border-gray-100 flex justify-center">
-                  <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.3em]">Généré par Dz-Jobs</p>
+                <div className="px-10 py-6 bg-gray-50 border-t border-gray-100 flex justify-center">
+                  <p className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.3em]">Généré par Dar L'emploi</p>
                 </div>
               </div>
             </div>
@@ -5489,6 +5744,229 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
   return (
     <div className="min-h-screen bg-[#F8FAFB] flex" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* In-app toast (see showToast) */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-3rem)] max-w-md"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className={`flex items-center gap-4 rounded-[1.5rem] px-6 py-5 shadow-2xl border backdrop-blur-sm ${
+                toast.type === 'success'
+                  ? 'bg-white border-emerald-100 shadow-emerald-900/10'
+                  : 'bg-white border-red-100 shadow-red-900/10'
+              } ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+            >
+              <div
+                className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center ${
+                  toast.type === 'success' ? 'bg-emerald-50 text-emerald-500' : 'bg-red-50 text-red-500'
+                }`}
+              >
+                {toast.type === 'success' ? <CheckCircle2 size={22} /> : <X size={22} />}
+              </div>
+              <p className="flex-1 font-bold text-[#173E7D] leading-snug">{toast.message}</p>
+              <button
+                onClick={() => setToast(null)}
+                className="shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+                aria-label={lt('Close', 'Fermer', 'إغلاق')}
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit job offer modal (opened from the Manage Jobs cards) */}
+      <AnimatePresence>
+        {editingJobId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm flex items-start md:items-center justify-center p-4 md:p-8 overflow-y-auto"
+            onClick={() => !isSavingJob && setEditingJobId(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-[2rem] shadow-2xl border border-gray-100 w-full max-w-3xl my-auto overflow-hidden"
+              dir={isRTL ? 'rtl' : 'ltr'}
+            >
+              <div className={`flex items-center justify-between gap-6 p-8 border-b border-gray-100 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-[#173E7D]">
+                    <Pencil size={26} />
+                  </div>
+                  <div className={isRTL ? 'text-right' : ''}>
+                    <h2 className="text-2xl font-display font-black text-[#173E7D] tracking-tight">
+                      {lt('Edit job offer', "Modifier l'offre", 'تعديل العرض')}
+                    </h2>
+                    <p className="text-gray-500 text-sm font-medium mt-0.5">
+                      {lt(
+                        'Your changes are visible to candidates immediately.',
+                        'Vos modifications sont visibles immédiatement par les candidats.',
+                        'تظهر تعديلاتك للمرشحين فورًا.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingJobId(null)}
+                  disabled={isSavingJob}
+                  className="shrink-0 w-11 h-11 rounded-2xl bg-gray-50 text-gray-400 hover:text-[#173E7D] hover:bg-gray-100 transition-all flex items-center justify-center disabled:opacity-40"
+                  aria-label={lt('Close', 'Fermer', 'إغلاق')}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {isLoadingEditJob ? (
+                <div className="p-20 flex flex-col items-center justify-center gap-4 text-gray-400">
+                  <div className="w-10 h-10 border-4 border-gray-100 border-t-[#F68D58] rounded-full animate-spin" />
+                  <p className="font-bold text-sm uppercase tracking-widest">
+                    {lt('Loading…', 'Chargement…', 'جار التحميل…')}
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleUpdateJob} className="p-8 space-y-8 max-h-[65vh] overflow-y-auto">
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-bold text-gray-900">{t('position')} *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editJobData.title}
+                      onChange={(e) => setEditJobData({ ...editJobData, title: e.target.value })}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">Wilaya *</label>
+                      <select
+                        value={editJobData.wilaya}
+                        onChange={(e) => setEditJobData({ ...editJobData, wilaya: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      >
+                        {WILAYAS.map((w) => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">{t('contractType')} *</label>
+                      <select
+                        value={editJobData.type}
+                        onChange={(e) => setEditJobData({ ...editJobData, type: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      >
+                        <option>Temps plein</option>
+                        <option>Temps partiel</option>
+                        <option>Freelance</option>
+                        <option>Stage</option>
+                        <option>CDI</option>
+                        <option>CDD</option>
+                      </select>
+                    </div>
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">Niveau d'expérience *</label>
+                      <select
+                        value={editJobData.experience}
+                        onChange={(e) => setEditJobData({ ...editJobData, experience: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      >
+                        <option>Débutant (0-2 ans)</option>
+                        <option>Confirmé (3-5 ans)</option>
+                        <option>Senior (5-10 ans)</option>
+                        <option>Expert (10+ ans)</option>
+                      </select>
+                    </div>
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">{lt('Status', 'Statut', 'الحالة')}</label>
+                      <select
+                        value={editJobData.status}
+                        onChange={(e) => setEditJobData({ ...editJobData, status: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      >
+                        <option value="PUBLISHED">{lt('Active', 'Active', 'نشط')}</option>
+                        <option value="CLOSED">{lt('Closed', 'Fermée', 'مغلقة')}</option>
+                      </select>
+                    </div>
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">{lt('Min salary (DZD)', 'Salaire min (DZD)', 'الحد الأدنى للراتب')}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editJobData.salaryMin}
+                        onChange={(e) => setEditJobData({ ...editJobData, salaryMin: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      />
+                    </div>
+                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-sm font-bold text-gray-900">{lt('Max salary (DZD)', 'Salaire max (DZD)', 'الحد الأقصى للراتب')}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editJobData.salaryMax}
+                        onChange={(e) => setEditJobData({ ...editJobData, salaryMax: e.target.value })}
+                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-bold text-gray-900">{t('description')} *</label>
+                    <textarea
+                      required
+                      rows={7}
+                      value={editJobData.description}
+                      onChange={(e) => setEditJobData({ ...editJobData, description: e.target.value })}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 resize-y ${isRTL ? 'text-right' : ''}`}
+                    />
+                  </div>
+
+                  <div className={`flex items-center gap-4 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="submit"
+                      disabled={isSavingJob}
+                      className="flex-1 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    >
+                      {isSavingJob ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          {lt('Saving…', 'Enregistrement…', 'جار الحفظ…')}
+                        </>
+                      ) : (
+                        <>
+                          <Save size={18} />
+                          {lt('Save changes', 'Enregistrer', 'حفظ التعديلات')}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingJobId(null)}
+                      disabled={isSavingJob}
+                      className="px-8 py-5 rounded-[1.5rem] bg-gray-50 text-gray-500 font-black text-[11px] uppercase tracking-[0.2em] hover:bg-gray-100 transition-all disabled:opacity-40"
+                    >
+                      {lt('Cancel', 'Annuler', 'إلغاء')}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
         {!isSidebarOpen && (

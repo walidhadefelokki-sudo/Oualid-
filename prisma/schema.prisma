@@ -845,6 +845,13 @@ model CandidateProfile {
   resumeId String?
   resume   FileAsset? @relation("CandidateResume", fields: [resumeId], references: [id])
 
+  // Structured data behind the in-app CV Maker (name, summary, experiences,
+  // education, skills, languages + levels). Stored as JSON rather than
+  // normalised tables because it is a document the candidate edits as a
+  // whole, and its shape is owned by the CV Maker UI. Distinct from
+  // `resume` above, which is an uploaded PDF file.
+  cvBuilderData Json?
+
   skills               String[]
   yearsExperience      Int?
   currentJobTitle      String?

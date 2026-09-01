@@ -187,3 +187,84 @@ export const getMyCV = async (
     next(err);
   }
 };
+
+/**
+ * Candidate: Get their saved CV Maker document.
+ *
+ * Returns `null` (not 404) when nothing has been saved yet, so the frontend
+ * can simply fall back to its default/empty CV without special-casing errors.
+ */
+export const getMyCvBuilder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { cvBuilderData: true, updatedAt: true },
+    });
+
+    if (!profile) {
+      return next(new AppError("Candidate profile not found.", 404));
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        cvBuilderData: profile.cvBuilderData ?? null,
+        updatedAt: profile.updatedAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Candidate: Save (create or replace) their CV Maker document.
+ *
+ * The whole document is replaced on every save — the CV Maker edits it as a
+ * single unit, so there is no partial-update semantics to preserve.
+ */
+export const saveMyCvBuilder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { cvBuilderData } = req.body;
+
+    if (cvBuilderData === undefined || cvBuilderData === null) {
+      return next(new AppError("cvBuilderData is required.", 400));
+    }
+
+    // Guard against a client sending a primitive/array: the CV Maker always
+    // stores an object, and a wrong shape here would break loading later.
+    if (typeof cvBuilderData !== "object" || Array.isArray(cvBuilderData)) {
+      return next(new AppError("cvBuilderData must be an object.", 400));
+    }
+
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+
+    if (!profile) {
+      return next(new AppError("Candidate profile not found.", 404));
+    }
+
+    const updated = await prisma.candidateProfile.update({
+      where: { id: profile.id },
+      data: { cvBuilderData },
+      select: { cvBuilderData: true, updatedAt: true },
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: { cvBuilderData: updated.cvBuilderData, updatedAt: updated.updatedAt },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

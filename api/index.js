@@ -4596,6 +4596,55 @@ var getMyCV = async (req, res, next) => {
     next(err);
   }
 };
+var getMyCvBuilder = async (req, res, next) => {
+  try {
+    const profile = await prisma_default.candidateProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { cvBuilderData: true, updatedAt: true }
+    });
+    if (!profile) {
+      return next(new AppError("Candidate profile not found.", 404));
+    }
+    res.status(200).json({
+      status: "success",
+      data: {
+        cvBuilderData: profile.cvBuilderData ?? null,
+        updatedAt: profile.updatedAt
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var saveMyCvBuilder = async (req, res, next) => {
+  try {
+    const { cvBuilderData } = req.body;
+    if (cvBuilderData === void 0 || cvBuilderData === null) {
+      return next(new AppError("cvBuilderData is required.", 400));
+    }
+    if (typeof cvBuilderData !== "object" || Array.isArray(cvBuilderData)) {
+      return next(new AppError("cvBuilderData must be an object.", 400));
+    }
+    const profile = await prisma_default.candidateProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true }
+    });
+    if (!profile) {
+      return next(new AppError("Candidate profile not found.", 404));
+    }
+    const updated = await prisma_default.candidateProfile.update({
+      where: { id: profile.id },
+      data: { cvBuilderData },
+      select: { cvBuilderData: true, updatedAt: true }
+    });
+    res.status(200).json({
+      status: "success",
+      data: { cvBuilderData: updated.cvBuilderData, updatedAt: updated.updatedAt }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/candidateProfile.routes.ts
 var router10 = express3.Router();
@@ -4603,6 +4652,8 @@ router10.use(protect, restrictTo("CANDIDATE"));
 router10.patch("/me", updateMyProfile);
 router10.post("/me/cv", upload.single("cv"), uploadCV);
 router10.get("/me/cv", getMyCV);
+router10.get("/me/cv-builder", getMyCvBuilder);
+router10.put("/me/cv-builder", saveMyCvBuilder);
 var candidateProfile_routes_default = router10;
 
 // server/routes/candidateScore.routes.ts

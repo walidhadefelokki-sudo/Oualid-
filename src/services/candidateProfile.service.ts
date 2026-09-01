@@ -83,6 +83,24 @@ class CandidateProfileService {
     const response = await api.get("/candidates/me/cv");
     return response.data.data.resume;
   }
+
+  /**
+   * Candidate: Load the saved CV Maker document, so the builder reopens with
+   * everything they previously entered. Resolves to null when they have never
+   * saved one.
+   */
+  async getCvBuilder(): Promise<Record<string, any> | null> {
+    const response = await api.get("/candidates/me/cv-builder");
+    return response.data.data.cvBuilderData ?? null;
+  }
+
+  /**
+   * Candidate: Save the CV Maker document. Replaces any previous save.
+   */
+  async saveCvBuilder(cvBuilderData: Record<string, any>): Promise<string> {
+    const response = await api.put("/candidates/me/cv-builder", { cvBuilderData });
+    return response.data.data.updatedAt;
+  }
 }
 
 export default new CandidateProfileService();

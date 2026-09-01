@@ -12,6 +12,9 @@ export interface PublicJob {
   salaryMax?: number | null;
   currency: string;
   status: string;
+  // GET /jobs/:id returns the full Job record, so these are available when
+  // loading an existing offer into the recruiter's edit form.
+  experienceLevel?: string | null;
   createdAt: string;
   company: {
     name: string;
@@ -53,6 +56,13 @@ export interface CreateJobPayload {
   featured?: boolean;
 }
 
+// Every field is optional: the recruiter's edit form sends the whole form
+// state, but a caller may send only what changed. `status` is update-only
+// (a job is always created as-is, then opened/closed later).
+export interface UpdateJobPayload extends Partial<CreateJobPayload> {
+  status?: string;
+}
+
 class JobService {
   /**
    * Public: Get all published jobs (for candidate job browsing).
@@ -84,6 +94,18 @@ class JobService {
    */
   async createJob(payload: CreateJobPayload): Promise<PublicJob> {
     const response = await api.post("/jobs", payload);
+    return response.data.data.job;
+  }
+
+  /**
+   * Recruiter: Update one of their own job offers.
+   *
+   * The payload is partial — the backend spreads it into prisma.job.update,
+   * and Prisma ignores keys whose value is undefined, so sending only the
+   * changed fields leaves the rest of the record untouched.
+   */
+  async updateJob(jobId: string, payload: UpdateJobPayload): Promise<PublicJob> {
+    const response = await api.patch(`/jobs/${jobId}`, payload);
     return response.data.data.job;
   }
 

@@ -4533,8 +4533,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     { id: 'info', label: t('cv.personalInfo'), icon: User },
                     { id: 'exp', label: t('cv.experience'), icon: Briefcase },
                     { id: 'edu', label: t('cv.education'), icon: FileText },
-                    { id: 'skills', label: t('cv.skills'), icon: BarChart3 },
-                    { id: 'lang', label: t('languages'), icon: Search }
+                    // Skills and languages share one tab: the languages editor
+                    // renders inside the skills section (see cvSection ===
+                    // 'skills' below), so a separate 'lang' tab would just be a
+                    // second door onto the same fields.
+                    { id: 'skills', label: `${t('cv.skills')} & ${t('languages')}`, icon: BarChart3 }
                   ].map((s) => (
                     <button 
                       key={s.id}
@@ -4750,6 +4753,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                       {cvSection === 'skills' && (
                         <div className="space-y-8">
+                          <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] ${isRTL ? 'text-right' : ''}`}>
+                            {language === 'ar' ? 'المهارات' : 'Compétences'}
+                          </h4>
                           <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                             {cvData.skills.map((skill, i) => (
                               <div key={i} className={`px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm flex items-center gap-3 border border-emerald-100 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4785,10 +4791,23 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                               {language === 'ar' ? 'إضافة' : 'Ajouter'}
                             </button>
                           </form>
+
+                          {/* Languages live in this same section so the candidate
+                              fills in everything "skills-like" in one place. */}
+                          <div className="pt-4 border-t border-gray-100 space-y-2">
+                            <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] ${isRTL ? 'text-right' : ''}`}>
+                              {language === 'ar' ? 'اللغات ومستوياتها' : 'Langues & niveaux'}
+                            </h4>
+                            <p className={`text-sm text-gray-400 font-medium ${isRTL ? 'text-right' : ''}`}>
+                              {language === 'ar'
+                                ? 'اختر لغاتك ومستواك في كل لغة.'
+                                : 'Choisissez vos langues et votre niveau dans chacune.'}
+                            </p>
+                          </div>
                         </div>
                       )}
 
-                      {cvSection === 'lang' && (
+                      {(cvSection === 'skills' || cvSection === 'lang') && (
                         <div className="space-y-8">
                           {cvData.languages.map((lang, i) => (
                             <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-200/50 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>

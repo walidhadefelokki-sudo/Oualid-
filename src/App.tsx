@@ -1798,16 +1798,26 @@ export default function App() {
               <h4 className="text-xl font-black mb-10 uppercase tracking-widest text-[#F68D58]">{language === 'fr' ? 'Contact' : 'اتصل بنا'}</h4>
               <ul className="space-y-6 text-gray-400 font-bold text-lg">
                 <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                  <Mail size={20} className="text-[#F68D58]" />
-                  <span>contact@darlemploi.dz</span>
+                  <Mail size={20} className="text-[#F68D58] shrink-0" />
+                  <a href="mailto:contact@darlemploi.dz" className="hover:text-white transition-colors break-all">
+                    contact@darlemploi.dz
+                  </a>
                 </li>
                 <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                  <Phone size={20} className="text-[#F68D58]" />
-                  <span>+213 (0) 23 45 67 89</span>
+                  <Phone size={20} className="text-[#F68D58] shrink-0" />
+                  {/* tel: with no spaces or parentheses so mobile dialers parse
+                      it; the visible text keeps the readable formatting. */}
+                  <a href="tel:+213542982346" className="hover:text-white transition-colors" dir="ltr">
+                    +213 (0)542 98 23 46
+                  </a>
                 </li>
                 <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                  <MapPin size={20} className="text-[#F68D58]" />
-                  <span>Alger, Algérie</span>
+                  <MapPin size={20} className="text-[#F68D58] shrink-0" />
+                  <span>
+                    {language === 'fr'
+                      ? 'Saint Jean, Constantine, Algérie'
+                      : 'سان جان، قسنطينة، الجزائر'}
+                  </span>
                 </li>
               </ul>
             </div>

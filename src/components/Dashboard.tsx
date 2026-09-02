@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CVBuilder from "./cv/CVBuilder";
+import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
 import QuizResults from "./recruiter/QuizResults";
 import OralPresentationResults from "./recruiter/OralPresentationResults";
@@ -1311,6 +1312,83 @@ export default function Dashboard({
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
 
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
+
+  // --- Real CV behind the recruiter's candidate viewer --------------------
+  // The viewer used to render a hardcoded summary, experience list, skill set
+  // and language list, so every candidate looked identical. It now loads the
+  // candidate's actual CV document and renders it through the same CVDocument
+  // component the candidate sees.
+  const emptyCvDocument: CVDocumentData = {
+    name: '',
+    experiences: [],
+    education: [],
+    skills: [],
+    languages: [],
+  };
+  const [candidateCvDoc, setCandidateCvDoc] = useState<CVDocumentData | null>(null);
+  const [candidateCvPhoto, setCandidateCvPhoto] = useState<string | null>(null);
+  const [candidateCvHasBuilt, setCandidateCvHasBuilt] = useState(true);
+  const [candidateCvLoading, setCandidateCvLoading] = useState(false);
+  const [candidateCvError, setCandidateCvError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // The candidate's CandidateProfile id — what the CV endpoint is keyed on.
+    const candidateId =
+      selectedCandidateCV?.candidateId ??
+      selectedCandidateCV?.candidateProfileId ??
+      selectedCandidateCV?.id;
+
+    if (!selectedCandidateCV) {
+      setCandidateCvDoc(null);
+      setCandidateCvError(null);
+      return;
+    }
+
+    if (isDemo || !candidateId) {
+      // Demo sessions have no backend candidate to read; show whatever the
+      // demo row already carries rather than an error.
+      setCandidateCvDoc({
+        ...emptyCvDocument,
+        name: selectedCandidateCV.name ?? '',
+        title: selectedCandidateCV.role ?? '',
+        email: selectedCandidateCV.email ?? '',
+        phone: selectedCandidateCV.phone ?? '',
+        address: selectedCandidateCV.location ?? '',
+      });
+      setCandidateCvPhoto(selectedCandidateCV.avatar ?? null);
+      setCandidateCvHasBuilt(true);
+      return;
+    }
+
+    let cancelled = false;
+    setCandidateCvLoading(true);
+    setCandidateCvError(null);
+
+    candidateProfileService
+      .getCandidateCvDocument(candidateId)
+      .then((res) => {
+        if (cancelled) return;
+        setCandidateCvDoc(res.document as CVDocumentData);
+        setCandidateCvPhoto(res.photoUrl);
+        setCandidateCvHasBuilt(res.hasBuiltCv);
+      })
+      .catch((err) => {
+        console.error('Could not load candidate CV:', err);
+        if (!cancelled) {
+          setCandidateCvError(
+            err?.response?.data?.message ||
+              lt('Could not load this CV.', 'Impossible de charger ce CV.', 'تعذر تحميل هذه السيرة.')
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCandidateCvLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCandidateCV, isDemo]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   // Separate from `selectedJob` above on purpose: `selectedJob` drives the
   // candidate-facing job-details modal (expects full listing fields like
@@ -5323,142 +5401,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
               </div>
 
-              {/* CV Design matching Candidate Modal */}
-              <div
+              {/* One shared CV design. The recruiter's candidate viewer renders
+                  the same component from the same normalised shape, so demo
+                  and real data differ only in values — never in markup. */}
+              <CVDocument
                 id="cv-preview-container"
-                ref={cvPreviewRef}
-                className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-w-5xl mx-auto"
-              >
-                {/* CV Header — deliberately compact: this sits at the top of
-                    page 1 of the printed CV, so every millimetre it takes is
-                    a millimetre of experience the recruiter doesn't see. */}
-                <div className="bg-[#173E7D] px-10 py-8 text-white relative">
-                  <div className={`flex items-center gap-7 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <div className="w-28 h-28 shrink-0 rounded-[1.75rem] overflow-hidden border-[3px] border-white/20 shadow-xl bg-white/10 flex items-center justify-center">
-                      {displayPhotoURL ? (
-                        <img src={displayPhotoURL} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <User size={44} className="text-white/25" />
-                      )}
-                    </div>
-                    <div className={`min-w-0 space-y-1.5 ${isRTL ? 'text-right' : ''}`}>
-                      <h1 className="text-4xl font-display font-black tracking-tight leading-tight">{cvData.name || 'Votre Nom'}</h1>
-                      <p className="text-blue-200 text-base font-semibold tracking-[0.18em] uppercase">{cvData.experiences[0]?.role || 'Votre Poste Actuel'}</p>
-                      <div className={`flex flex-wrap gap-2 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <span className="px-3.5 py-1 bg-white/10 rounded-full text-[10px] font-bold border border-white/10">Profil Candidat</span>
-                        <span className="px-3.5 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold border border-emerald-500/20">Vérifié</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CV Content */}
-                <div className={`px-12 py-11 ${isRTL ? 'text-right' : ''}`}>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-11">
-                    {/* Left Column */}
-                    <div className="lg:col-span-2 space-y-10">
-                      {cvData.summary && (
-                        <section className="space-y-4 break-inside-avoid">
-                          <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <User size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'الملف الشخصي' : 'Résumé Professionnel'}
-                          </h4>
-                          <p className="text-gray-600 leading-relaxed text-[15px] font-medium">
-                            {cvData.summary}
-                          </p>
-                        </section>
-                      )}
-
-                      <section className="space-y-5">
-                        <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <Briefcase size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'الخبرة' : 'Expériences Professionnelles'}
-                        </h4>
-                        <div className="space-y-7">
-                          {cvData.experiences.map((exp, i) => (
-                            <div key={i} className={`relative break-inside-avoid pl-7 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-7 border-l-0 border-r-2' : ''}`}>
-                              <div className={`absolute top-1 w-3.5 h-3.5 bg-[#F68D58] rounded-full border-[3px] border-white shadow-sm ${isRTL ? '-right-[8px]' : '-left-[8px]'}`} />
-                              <div className={`flex justify-between items-start gap-4 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <h5 className="text-lg font-black text-[#173E7D] leading-snug">{exp.role || 'Poste'}</h5>
-                                <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg whitespace-nowrap">{exp.period || 'Période'}</span>
-                              </div>
-                              <p className="text-[#F68D58] text-sm font-bold mb-2">{exp.company || 'Entreprise'}</p>
-                              {exp.missions && <p className="text-gray-600 text-[13px] font-medium mb-1.5 leading-relaxed">{exp.missions}</p>}
-                              <p className="text-gray-500 text-[13px] leading-relaxed">{exp.desc}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-
-                      <section className="space-y-5">
-                        <h4 className={`text-[11px] font-black text-gray-400 uppercase tracking-[0.28em] flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <FileText size={16} className="text-[#F68D58]" /> {language === 'ar' ? 'التكوين' : 'Formation & Éducation'}
-                        </h4>
-                        <div className="space-y-5">
-                          {cvData.education.map((edu, i) => (
-                            <div key={i} className={`relative break-inside-avoid pl-7 border-l-2 border-gray-100 ${isRTL ? 'pl-0 pr-7 border-l-0 border-r-2' : ''}`}>
-                              <div className={`absolute top-1 w-3.5 h-3.5 bg-blue-400 rounded-full border-[3px] border-white shadow-sm ${isRTL ? '-right-[8px]' : '-left-[8px]'}`} />
-                              <div className={`flex justify-between items-start gap-4 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <h5 className="text-base font-black text-[#173E7D] leading-snug">{edu.degree || 'Diplôme'}</h5>
-                                <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg whitespace-nowrap">{edu.year || 'Année'}</span>
-                              </div>
-                              <p className="text-gray-500 text-[13px] font-bold">{edu.school || 'École'}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    </div>
-
-                    {/* Right Column */}
-                    <div className="space-y-9">
-                      <section className="space-y-4 break-inside-avoid">
-                        <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-[0.28em]">Compétences</h4>
-                        <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          {cvData.skills.map((skill, i) => (
-                            <span key={i} className="px-3.5 py-2 bg-gray-50 text-[#173E7D] text-[11px] font-black rounded-xl border border-gray-100">
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </section>
-
-                      <section className="space-y-4 break-inside-avoid">
-                        <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-[0.28em]">Langues</h4>
-                        <div className="space-y-3.5">
-                          {cvData.languages.map((lang, i) => (
-                            <div key={i} className="space-y-1.5">
-                              <div className={`flex justify-between items-baseline gap-3 text-[13px] font-black ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                <span className="text-[#173E7D]">{lang.name}</span>
-                                <span className="text-gray-400 uppercase tracking-widest text-[9px]">{lang.level}</span>
-                              </div>
-                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-[#F68D58] rounded-full transition-all duration-500"
-                                  style={{ width: `${languageLevelPercent(lang.level)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-
-                      <section className="p-6 bg-orange-50 rounded-[1.75rem] border border-orange-100 space-y-3.5 break-inside-avoid">
-                        <h4 className="text-[11px] font-black text-[#F68D58] uppercase tracking-[0.2em]">Contact</h4>
-                        <div className="space-y-2.5 text-[13px] font-bold text-gray-600 break-words">
-                          {/* Uses the address the candidate actually typed; the
-                              Alger fallback is only a placeholder. */}
-                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.address || (language === 'ar' ? 'الجزائر، الجزائر' : 'Alger, Algérie')}</p>
-                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><Mail size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.email || 'votre@email.com'}</p>
-                          <p className={`flex items-start gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}><Phone size={15} className="text-[#F68D58] shrink-0 mt-0.5" /> {cvData.phone || '+213 000 00 00 00'}</p>
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CV Footer */}
-                <div className="px-10 py-6 bg-gray-50 border-t border-gray-100 flex justify-center">
-                  <p className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.3em]">Généré par Dar L'emploi</p>
-                </div>
-              </div>
+                data={cvData}
+                language={language}
+                photoUrl={displayPhotoURL}
+              />
             </div>
           </div>
         );
@@ -6761,111 +6712,50 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
-              {/* CV Header */}
-              <div className="bg-[#173E7D] p-10 text-white relative">
-                <button 
-                  onClick={() => {
-                    setSelectedCandidateCV(null);
-                    setShowContactOptions(false);
-                  }}
-                  className="absolute top-8 right-8 text-white/60 hover:text-white transition-colors"
-                >
-                  <X size={28} />
-                </button>
-                <div className="flex items-center gap-8">
-                  <img src={selectedCandidateCV.avatar} alt={selectedCandidateCV.name} className="w-32 h-32 rounded-[2.5rem] object-cover border-4 border-white/20 shadow-2xl" />
-                  <div className="space-y-2">
-                    <h3 className="text-4xl font-display font-black tracking-tight">{selectedCandidateCV.name}</h3>
-                    <p className="text-blue-200 text-xl font-medium tracking-wide uppercase">{selectedCandidateCV.role}</p>
-                    <div className="flex gap-4 mt-4">
-                      <span className="px-4 py-1.5 bg-white/10 rounded-full text-xs font-bold border border-white/10">{selectedCandidateCV.exp} Expérience</span>
-                      <span className="px-4 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold border border-emerald-500/20">Profil Vérifié</span>
-                    </div>
+              {/* Close control sits outside the document so the CV itself is
+                  identical to what the candidate sees and what is exported. */}
+              <button
+                onClick={() => {
+                  setSelectedCandidateCV(null);
+                  setShowContactOptions(false);
+                }}
+                className="absolute top-8 right-8 z-20 text-white/70 hover:text-white transition-colors"
+                aria-label="Fermer"
+              >
+                <X size={28} />
+              </button>
+
+              <div className="flex-1 overflow-y-auto no-scrollbar">
+                {candidateCvLoading ? (
+                  <div className="py-24 flex flex-col items-center gap-4 text-gray-400">
+                    <div className="w-10 h-10 border-4 border-gray-100 border-t-[#F68D58] rounded-full animate-spin" />
+                    <p className="font-bold text-xs uppercase tracking-widest">Chargement du CV…</p>
                   </div>
-                </div>
-              </div>
-
-              {/* CV Content */}
-              <div className="flex-1 overflow-y-auto p-12 space-y-12 no-scrollbar">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-                  {/* Left Column */}
-                  <div className="md:col-span-2 space-y-12">
-                    <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <User size={16} className="text-[#F68D58]" /> Résumé Professionnel
-                      </h4>
-                      <p className="text-gray-600 leading-relaxed text-lg font-medium">
-                        Passionné par le développement de solutions innovantes et performantes. Expert en technologies modernes avec une forte capacité d'adaptation et un esprit d'équipe prononcé.
-                      </p>
-                    </section>
-
-                    <section className="space-y-8">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <Briefcase size={16} className="text-[#F68D58]" /> Expériences Professionnelles
-                      </h4>
-                      <div className="space-y-8">
-                        {[
-                          { company: 'Tech Solutions DZ', role: 'Senior Developer', period: '2021 - Présent', desc: 'Direction technique de projets web complexes.' },
-                          { company: 'Digital Agency', role: 'Fullstack Dev', period: '2019 - 2021', desc: 'Développement d\'applications mobiles et web.' }
-                        ].map((exp, i) => (
-                          <div key={i} className="relative pl-8 border-l-2 border-gray-100">
-                            <div className="absolute -left-[9px] top-0 w-4 h-4 bg-[#F68D58] rounded-full border-4 border-white shadow-sm" />
-                            <div className="flex justify-between items-start mb-2">
-                              <h5 className="text-xl font-black text-[#173E7D]">{exp.role}</h5>
-                              <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-lg">{exp.period}</span>
-                            </div>
-                            <p className="text-[#F68D58] font-bold mb-3">{exp.company}</p>
-                            <p className="text-gray-500 text-sm leading-relaxed">{exp.desc}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
+                ) : candidateCvError ? (
+                  <div className="py-24 px-10 text-center">
+                    <p className="text-xl font-black text-[#173E7D] mb-2">CV indisponible</p>
+                    <p className="text-gray-400 font-medium">{candidateCvError}</p>
                   </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-12">
-                    <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Compétences</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {['React', 'Node.js', 'TypeScript', 'Docker', 'AWS', 'UI/UX'].map((skill, i) => (
-                          <span key={i} className="px-4 py-2 bg-gray-50 text-[#173E7D] text-xs font-black rounded-xl border border-gray-100">
-                            {skill}
-                          </span>
-                        ))}
+                ) : (
+                  <>
+                    {candidateCvDoc && !candidateCvHasBuilt && (
+                      <div className="px-10 pt-8">
+                        <p className="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 uppercase tracking-widest">
+                          Ce candidat n'a pas encore complété son CV en ligne
+                        </p>
                       </div>
-                    </section>
-
-                    <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Langues</h4>
-                      <div className="space-y-4">
-                        {[
-                          { name: 'Arabe', level: 'Natif', progress: 100 },
-                          { name: 'Français', level: 'Courant', progress: 95 },
-                          { name: 'Anglais', level: 'Avancé', progress: 85 }
-                        ].map((lang, i) => (
-                          <div key={i} className="space-y-2">
-                            <div className="flex justify-between text-xs font-bold">
-                              <span className="text-[#173E7D]">{lang.name}</span>
-                              <span className="text-gray-400">{lang.level}</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-[#F68D58] rounded-full" style={{ width: `${lang.progress}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-
-                    <section className="p-6 bg-orange-50 rounded-[2rem] border border-orange-100">
-                      <h4 className="text-sm font-black text-[#F68D58] mb-4 uppercase tracking-widest">Contact</h4>
-                      <div className="space-y-3 text-xs font-bold text-gray-600">
-                        <p className="flex items-center gap-2"><MapPin size={14} /> {selectedCandidateCV.location || 'Alger, Algérie'}</p>
-                        <p className="flex items-center gap-2"><Mail size={14} /> {selectedCandidateCV.email || 'contact@email.dz'}</p>
-                        <p className="flex items-center gap-2"><Phone size={14} /> {selectedCandidateCV.phone || '+213 550 00 00 00'}</p>
-                      </div>
-                    </section>
-                  </div>
-                </div>
+                    )}
+                    {/* Same component, same design as the candidate's own CV. */}
+                    <CVDocument
+                      id="employer-cv-view-container"
+                      data={candidateCvDoc ?? emptyCvDocument}
+                      language={language}
+                      photoUrl={candidateCvPhoto ?? selectedCandidateCV.avatar}
+                      showFooter={false}
+                      className="shadow-none border-0 rounded-none max-w-none"
+                    />
+                  </>
+                )}
               </div>
 
               {/* CV Footer / Actions */}

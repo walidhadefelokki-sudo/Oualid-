@@ -101,6 +101,22 @@ class CandidateProfileService {
     const response = await api.put("/candidates/me/cv-builder", { cvBuilderData });
     return response.data.data.updatedAt;
   }
+
+  /**
+   * Recruiter/Admin: one candidate's CV in the same normalised shape the
+   * candidate's own builder produces, so both render through CVDocument.
+   *
+   * The backend rejects candidates who have not applied to this recruiter's
+   * jobs — the UI never decides who may be read.
+   */
+  async getCandidateCvDocument(candidateId: string): Promise<{
+    document: Record<string, any>;
+    photoUrl: string | null;
+    hasBuiltCv: boolean;
+  }> {
+    const response = await api.get(`/candidates/${candidateId}/cv-document`);
+    return response.data.data;
+  }
 }
 
 export default new CandidateProfileService();

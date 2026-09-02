@@ -5,6 +5,7 @@ import {
   updateMyProfile,
   getMyCvBuilder,
   saveMyCvBuilder,
+  getCandidateCvDocument,
 } from "../controllers/candidateProfile.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
@@ -12,7 +13,18 @@ import { upload } from "../utils/cloudinary";
 
 const router = express.Router();
 
-router.use(protect, restrictTo("CANDIDATE"));
+router.use(protect);
+
+// Recruiter-facing, so it must be declared before the CANDIDATE-only guard
+// below. Ownership (the candidate applied to this recruiter's job) is checked
+// inside the controller, not here, because it needs a database lookup.
+router.get(
+  "/:candidateId/cv-document",
+  restrictTo("RECRUITER", "ADMIN"),
+  getCandidateCvDocument
+);
+
+router.use(restrictTo("CANDIDATE"));
 
 router.patch("/me", updateMyProfile);
 router.post("/me/cv", upload.single("cv"), uploadCV);

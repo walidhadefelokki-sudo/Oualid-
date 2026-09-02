@@ -1,4 +1,4 @@
-import { Info, Clock, Camera, Mic } from "lucide-react";
+import { Info, Clock, Camera, Mic, Languages } from "lucide-react";
 
 export default function RecordingInstructions() {
   return (
@@ -12,11 +12,32 @@ export default function RecordingInstructions() {
 
         <div>
           <h2 className="text-lg font-bold text-[#173E7D]">
-            Oral Presentation Instructions
+            Instructions — Présentation orale
           </h2>
 
           <p className="text-sm text-gray-600">
-            Please read these instructions before recording.
+            Lisez ces consignes avant de commencer l'enregistrement.
+          </p>
+        </div>
+      </div>
+
+      {/* The language requirement leads the list on purpose: recording in the
+          wrong language means re-recording the whole presentation, so it must
+          be seen before the candidate presses record. */}
+      <div className="flex gap-4 items-start rounded-xl border border-[#F68D58]/30 bg-[#F68D58]/10 p-4 mb-5">
+        <Languages className="text-[#F68D58] mt-0.5 shrink-0" size={22} />
+
+        <div>
+          <h3 className="font-bold text-[#173E7D]">
+            Présentation vidéo en arabe
+          </h3>
+
+          <p className="text-gray-700 text-sm mt-0.5">
+            Votre présentation doit être enregistrée <span className="font-semibold">en arabe</span>.
+          </p>
+
+          <p className="text-gray-700 text-sm mt-1" dir="rtl" lang="ar">
+            يجب تسجيل عرضك التقديمي باللغة العربية.
           </p>
         </div>
       </div>

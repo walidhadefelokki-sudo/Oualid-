@@ -17,6 +17,8 @@ import {
   OralPresentationProps,
 } from "../../../types/oralPresentation";
 
+import oralPresentationService from "../../../services/oralPresentation.service";
+
 export default function OralPresentation({
   onUploaded,
   maxDuration = 120,
@@ -71,6 +73,16 @@ export default function OralPresentation({
 
   const [uploadedURL, setUploadedURL] = useState("");
 
+  // Surfaced in the UI instead of an alert(), so a failed upload explains
+  // itself in place — the service already reports which stage failed
+  // ([signature], [cloudinary], [save]).
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // True once we know whether a presentation already exists on the profile.
+  const [isLoadingExisting, setIsLoadingExisting] = useState(true);
+
   /////////////////////////////////////////////////////////////
   // Camera Initialization
   /////////////////////////////////////////////////////////////
@@ -83,6 +95,39 @@ export default function OralPresentation({
 
       stopCamera();
 
+    };
+
+  }, []);
+
+  /////////////////////////////////////////////////////////////
+  // Existing presentation
+  //
+  // The presentation belongs to the CandidateProfile, so a candidate who
+  // already recorded one should see it rather than an empty recorder.
+  /////////////////////////////////////////////////////////////
+
+  useEffect(() => {
+
+    let cancelled = false;
+
+    oralPresentationService
+      .getMyPresentation()
+      .then((presentation) => {
+        if (!cancelled && presentation?.video?.url) {
+          setUploadedURL(presentation.video.url);
+        }
+      })
+      .catch((err) => {
+        // A candidate with no presentation yet is the normal case; only real
+        // failures are worth logging, and none should block recording.
+        console.error("Could not load existing presentation:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingExisting(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
 
   }, []);
@@ -133,14 +178,8 @@ export default function OralPresentation({
 
   };
 
-  /////////////////////////////////////////////////////////////
-  // Upload (Cloudinary)
-  // Placeholder
-  // Phase 5
-  /////////////////////////////////////////////////////////////
-
-  /////////////////////////////////////////////////////////////
-// Upload
+/////////////////////////////////////////////////////////////
+// Upload (Cloudinary)
 /////////////////////////////////////////////////////////////
 
 const handleUpload = async () => {
@@ -148,33 +187,62 @@ const handleUpload = async () => {
 
   try {
     setIsUploading(true);
+    setUploadError(null);
     setUploadProgress(0);
 
-    ////////////////////////////////////////////////////////
-    // Phase 5
-    // Replace this fake upload by Cloudinary
-    ////////////////////////////////////////////////////////
+    // The recorder produces a Blob; Cloudinary needs a named File so it can
+    // infer the extension. webm is what MediaRecorder emits in Chrome and
+    // Firefox, and it is in the allowed formats for the presentations folder.
+    const extension = (videoBlob.type.split("/")[1] || "webm").split(";")[0];
+    const file = new File([videoBlob], `presentation.${extension}`, {
+      type: videoBlob.type || "video/webm",
+    });
 
-    for (let progress = 0; progress <= 100; progress += 5) {
-      await new Promise((resolve) => setTimeout(resolve, 70));
+    // Uploads straight from the browser to Cloudinary using a short-lived
+    // signature, then saves only the resulting metadata on our API — a video
+    // would exceed the serverless request body limit if routed through it.
+    const presentation = await oralPresentationService.uploadPresentation(
+      file,
+      setUploadProgress
+    );
 
-      setUploadProgress(progress);
-    }
-
-    ////////////////////////////////////////////////////////
-
-    const fakeCloudinaryURL =
-      "https://cloudinary.com/demo/oral-presentation.webm";
-
-    setUploadedURL(fakeCloudinaryURL);
-
-    onUploaded?.(fakeCloudinaryURL);
-  } catch (error) {
+    const url = presentation.video?.url ?? "";
+    setUploadedURL(url);
+    onUploaded?.(url);
+  } catch (error: any) {
     console.error("Upload failed", error);
-
-    alert("Unable to upload the presentation.");
+    setUploadError(
+      error?.message ||
+        "Le téléversement de la présentation a échoué. Veuillez réessayer."
+    );
   } finally {
     setIsUploading(false);
+  }
+};
+
+/////////////////////////////////////////////////////////////
+// Replace / delete an already-saved presentation
+/////////////////////////////////////////////////////////////
+
+const handleDeleteSaved = async () => {
+  if (!window.confirm("Supprimer votre présentation enregistrée ?")) return;
+
+  try {
+    setIsDeleting(true);
+    setUploadError(null);
+    await oralPresentationService.deletePresentation();
+    setUploadedURL("");
+    setUploadProgress(0);
+    resetRecording();
+  } catch (error: any) {
+    console.error("Delete failed", error);
+    setUploadError(
+      error?.response?.data?.message ||
+        error?.message ||
+        "Impossible de supprimer la présentation."
+    );
+  } finally {
+    setIsDeleting(false);
   }
 };
 
@@ -448,19 +516,19 @@ const canUpload =
     {/* Success */}
     {/* ================================================= */}
 
-    {uploadedURL && (
+    {uploadError && (
 
-        <div className="rounded-3xl bg-blue-50 border border-blue-200 p-6">
+        <div className="rounded-3xl bg-red-50 border border-red-200 p-6">
 
-        <h2 className="font-bold text-[#173E7D]">
+        <h2 className="font-bold text-red-700">
 
-            ✅ Presentation Uploaded Successfully
+            Le téléversement a échoué
 
         </h2>
 
-        <p className="text-gray-600 mt-2">
+        <p className="text-red-600/90 mt-2 text-sm break-words">
 
-            Your oral presentation has been uploaded successfully.
+            {uploadError}
 
         </p>
 
@@ -468,7 +536,58 @@ const canUpload =
 
     )}
 
-    -
+    {uploadedURL && (
+
+        <div className="rounded-3xl bg-emerald-50 border border-emerald-200 p-6 space-y-4">
+
+        <div>
+
+            <h2 className="font-bold text-emerald-800">
+
+                Présentation enregistrée
+
+            </h2>
+
+            <p className="text-emerald-700/80 mt-1 text-sm">
+
+                Votre présentation est enregistrée sur votre profil. Les recruteurs
+                autorisés peuvent la consulter.
+
+            </p>
+
+        </div>
+
+        {/* The saved video, so the candidate can check what recruiters will see. */}
+        <video
+            src={uploadedURL}
+            controls
+            playsInline
+            className="w-full rounded-2xl bg-black max-h-80"
+        />
+
+        <div className="flex flex-wrap gap-3">
+
+            <button
+                onClick={handleDeleteRecording}
+                className="px-6 py-3 rounded-2xl bg-[#173E7D] text-white font-bold hover:bg-[#0E2E61] transition"
+            >
+                Réenregistrer
+            </button>
+
+            <button
+                onClick={handleDeleteSaved}
+                disabled={isDeleting}
+                className="px-6 py-3 rounded-2xl bg-white text-red-600 border border-red-200 font-bold hover:bg-red-50 transition disabled:opacity-50"
+            >
+                {isDeleting ? "Suppression…" : "Supprimer"}
+            </button>
+
+        </div>
+
+        </div>
+
+    )}
+
     {/* ================================================= */}
 
         <div className="text-center py-10">

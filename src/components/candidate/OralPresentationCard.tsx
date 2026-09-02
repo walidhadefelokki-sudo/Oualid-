@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Loader2,
   CheckCircle,
+  Languages,
 } from "lucide-react";
 
 import oralPresentationService from "../../services/oralPresentation.service";
@@ -125,6 +126,24 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
 
           <p className="text-sm text-gray-500">
             Les recruteurs peuvent visionner cette présentation depuis votre profil.
+          </p>
+        </div>
+      </div>
+
+      {/* The presentation must be in Arabic. Stated before the upload control
+          because recording in the wrong language means redoing the whole
+          video — it has to be read before the candidate picks a file. */}
+      <div className="flex gap-3 items-start rounded-xl border border-[#F68D58]/30 bg-[#F68D58]/10 p-4 mb-5">
+        <Languages className="text-[#F68D58] mt-0.5 shrink-0" size={20} />
+        <div>
+          <p className="font-bold text-[#173E7D] text-sm">
+            Présentation vidéo en arabe
+          </p>
+          <p className="text-gray-700 text-sm mt-0.5">
+            Votre présentation doit être enregistrée <span className="font-semibold">en arabe</span>.
+          </p>
+          <p className="text-gray-700 text-sm mt-1" dir="rtl" lang="ar">
+            يجب تسجيل عرضك التقديمي باللغة العربية.
           </p>
         </div>
       </div>

@@ -8,6 +8,8 @@ export interface PublicJob {
   wilaya?: string | null;
   type: string;
   remote: boolean;
+  /** Promoted as "À la une". Set by the backend per the recruiter's plan. */
+  featured: boolean;
   salaryMin?: number | null;
   salaryMax?: number | null;
   currency: string;
@@ -56,6 +58,23 @@ export interface CreateJobPayload {
   featured?: boolean;
 }
 
+/**
+ * Query filters accepted by GET /jobs. Every field is optional and only sent
+ * when present, so `getAllJobs()` with no argument behaves exactly as before.
+ */
+export interface JobFilters {
+  title?: string;
+  location?: string;
+  wilaya?: string;
+  type?: JobType;
+  categoryId?: string;
+  /** Filter by the sector's stable slug ("it", "health", …). */
+  categorySlug?: string;
+  featured?: boolean;
+  /** Server clamps this to 60. */
+  limit?: number;
+}
+
 // Every field is optional: the recruiter's edit form sends the whole form
 // state, but a caller may send only what changed. `status` is update-only
 // (a job is always created as-is, then opened/closed later).
@@ -65,11 +84,28 @@ export interface UpdateJobPayload extends Partial<CreateJobPayload> {
 
 class JobService {
   /**
-   * Public: Get all published jobs (for candidate job browsing).
+   * Public: Get published jobs (for candidate job browsing and the landing
+   * page). All filters are optional; omitting them returns every published
+   * job, which is the behaviour every existing caller relies on.
    */
-  async getAllJobs(): Promise<PublicJob[]> {
-    const response = await api.get("/jobs");
+  async getAllJobs(filters: JobFilters = {}): Promise<PublicJob[]> {
+    const response = await api.get("/jobs", { params: filters });
     return response.data.data.jobs;
+  }
+
+  /**
+   * Public: jobs promoted as "À la une". Featured placement is granted by the
+   * backend according to the recruiter's plan — never by the client.
+   */
+  async getFeaturedJobs(limit = 6): Promise<PublicJob[]> {
+    return this.getAllJobs({ featured: true, limit });
+  }
+
+  /**
+   * Public: part-time openings, for the dedicated landing-page section.
+   */
+  async getPartTimeJobs(limit = 6): Promise<PublicJob[]> {
+    return this.getAllJobs({ type: "PART_TIME", limit });
   }
 
   /**

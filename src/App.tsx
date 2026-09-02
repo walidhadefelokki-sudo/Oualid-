@@ -48,6 +48,9 @@ import { db, auth, googleProvider } from './firebase';
 import { signInAnonymously, signInWithPopup, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import Dashboard from './components/Dashboard';
+import DomainModal from './components/DomainModal';
+import categoryService, { JobCategory } from './services/category.service';
+import jobService, { PublicJob } from './services/job.service';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AuthModal from './components/AuthModal';
 import { translations, Language } from './translations';
@@ -408,6 +411,116 @@ export default function App() {
   const [colorIndex, setColorIndex] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
+
+  // --- Landing page live data -------------------------------------------
+  // The sectors grid, "Postes à la une" and the part-time section all read
+  // from the API. Each keeps its own loading flag so one slow or failing
+  // request never blanks the others.
+  const [categories, setCategories] = useState<JobCategory[]>([]);
+  const [openDomain, setOpenDomain] = useState<{ slug: string; label: string } | null>(null);
+
+  const [featuredJobs, setFeaturedJobs] = useState<PublicJob[]>([]);
+  const [featuredLoading, setFeaturedLoading] = useState(true);
+  const [featuredError, setFeaturedError] = useState(false);
+
+  const [partTimeJobs, setPartTimeJobs] = useState<PublicJob[]>([]);
+  const [partTimeLoading, setPartTimeLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    categoryService
+      .getCategories()
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch((err) => {
+        // Non-fatal: the grid falls back to showing the eight sectors
+        // without counts rather than disappearing.
+        console.error('Failed to load categories:', err);
+      });
+
+    jobService
+      .getFeaturedJobs(6)
+      .then((jobs) => {
+        if (!cancelled) setFeaturedJobs(jobs);
+      })
+      .catch((err) => {
+        console.error('Failed to load featured jobs:', err);
+        if (!cancelled) setFeaturedError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setFeaturedLoading(false);
+      });
+
+    jobService
+      .getPartTimeJobs(6)
+      .then((jobs) => {
+        if (!cancelled) setPartTimeJobs(jobs);
+      })
+      .catch((err) => {
+        console.error('Failed to load part-time jobs:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setPartTimeLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Published-job count for a sector, or null while counts are still loading. */
+  const categoryCount = (slug: string): number | null => {
+    if (!categories.length) return null;
+    return categories.find((c) => c.slug === slug)?.jobCount ?? 0;
+  };
+
+  // Backend JobType -> the contract wording used across the product.
+  const JOB_TYPE_LABEL: Record<string, { fr: string; ar: string }> = {
+    FULL_TIME: { fr: 'CDI', ar: 'دوام كامل' },
+    PART_TIME: { fr: 'Temps partiel', ar: 'دوام جزئي' },
+    CONTRACT: { fr: 'CDD', ar: 'عقد محدد' },
+    FREELANCE: { fr: 'Freelance', ar: 'عمل حر' },
+    INTERNSHIP: { fr: 'Stage', ar: 'تدريب' },
+    TEMPORARY: { fr: 'Temporaire', ar: 'مؤقت' },
+  };
+
+  // Adapts an API job into the shape the landing-page job card has always
+  // rendered. Keeping the card's contract stable means the data source could
+  // change without touching a line of its markup.
+  const toCardJob = (job: PublicJob) => {
+    const fmt = (n: number) => n.toLocaleString(language === 'ar' ? 'ar-DZ' : 'fr-DZ');
+    let salary = language === 'fr' ? 'Non communiqué' : 'غير محدد';
+    if (job.salaryMin != null && job.salaryMax != null) {
+      salary = `${fmt(job.salaryMin)} - ${fmt(job.salaryMax)} ${job.currency}`;
+    } else if (job.salaryMin != null || job.salaryMax != null) {
+      salary = `${fmt((job.salaryMin ?? job.salaryMax)!)} ${job.currency}`;
+    }
+
+    return {
+      id: job.id,
+      title: job.title,
+      company: job.company?.name ?? '',
+      location: job.wilaya || job.location,
+      type: JOB_TYPE_LABEL[job.type]?.[language] ?? job.type,
+      remote: job.remote
+        ? language === 'fr' ? 'Télétravail' : 'عن بعد'
+        : language === 'fr' ? 'Sur site' : 'في الموقع',
+      salary,
+      logo: job.company?.logo?.url ?? '',
+      color: 'bg-blue-50 text-blue-600',
+      featured: job.featured,
+      description: job.description,
+      // The Job model has no free-form tag list; the sector is the one real
+      // classification available, so the card shows that instead of inventing
+      // requirements.
+      requirements: job.category?.name ? [job.category.name] : [],
+    };
+  };
+
+  const displayFeaturedJobs = featuredJobs.map(toCardJob);
+  const displayPartTimeJobs = partTimeJobs.map(toCardJob);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -1108,7 +1221,28 @@ export default function App() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
                 whileHover={{ y: -10, scale: 1.02 }}
-                className="bg-white overflow-hidden rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group cursor-pointer flex flex-col"
+                onClick={() =>
+                  setOpenDomain({
+                    slug: sector.id,
+                    label: translations[language].sectors[
+                      sector.id as keyof typeof translations['fr']['sectors']
+                    ],
+                  })
+                }
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setOpenDomain({
+                      slug: sector.id,
+                      label: translations[language].sectors[
+                        sector.id as keyof typeof translations['fr']['sectors']
+                      ],
+                    });
+                  }
+                }}
+                className="bg-white overflow-hidden rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group cursor-pointer flex flex-col focus:outline-none focus-visible:ring-4 focus-visible:ring-[#173E7D]/25"
               >
                 <div className="h-40 w-full relative overflow-hidden">
                   <img 
@@ -1126,6 +1260,16 @@ export default function App() {
                   <h3 className="text-xl font-bold text-[#173E7D] mb-2">
                     {translations[language].sectors[sector.id as keyof typeof translations['fr']['sectors']]}
                   </h3>
+                  {/* Real published-job count. Hidden until counts arrive so
+                      the card never flashes a misleading "0 offres". */}
+                  {categoryCount(sector.id) !== null && (
+                    <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">
+                      {categoryCount(sector.id)}{' '}
+                      {categoryCount(sector.id) === 1
+                        ? language === 'fr' ? 'offre' : 'عرض'
+                        : language === 'fr' ? 'offres' : 'عروض'}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 text-[#F68D58] font-bold text-sm opacity-0 group-hover:opacity-100 transition-opacity">
                     <span>{language === 'fr' ? 'Explorer' : 'استكشاف'}</span>
                     <ChevronRight size={16} className={language === 'ar' ? 'rotate-180' : ''} />
@@ -1364,87 +1508,51 @@ export default function App() {
             </button>
           </div>
 
+          {featuredLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="bg-white p-10 rounded-[3.5rem] border-2 border-gray-100 animate-pulse">
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl mb-10" />
+                  <div className="h-7 bg-gray-100 rounded-xl w-3/4 mb-4" />
+                  <div className="h-4 bg-gray-50 rounded-lg w-1/2 mb-10" />
+                  <div className="h-4 bg-gray-50 rounded-lg w-full mb-2" />
+                  <div className="h-4 bg-gray-50 rounded-lg w-5/6" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!featuredLoading && featuredError && (
+            <div className="bg-white rounded-[3rem] border-2 border-gray-100 p-16 text-center">
+              <p className="text-2xl font-black text-[#173E7D] mb-2">
+                {language === 'fr' ? 'Offres momentanément indisponibles' : 'العروض غير متاحة مؤقتًا'}
+              </p>
+              <p className="text-gray-400 font-medium">
+                {language === 'fr'
+                  ? 'Rafraîchissez la page dans quelques instants.'
+                  : 'يرجى تحديث الصفحة بعد قليل.'}
+              </p>
+            </div>
+          )}
+
+          {!featuredLoading && !featuredError && displayFeaturedJobs.length === 0 && (
+            <div className="bg-white rounded-[3rem] border-2 border-gray-100 p-16 text-center">
+              <p className="text-2xl font-black text-[#173E7D] mb-2">
+                {language === 'fr' ? 'Aucune offre à la une' : 'لا توجد عروض مميزة'}
+              </p>
+              <p className="text-gray-400 font-medium max-w-md mx-auto">
+                {language === 'fr'
+                  ? 'Les offres mises en avant par les recruteurs apparaîtront ici.'
+                  : 'ستظهر هنا العروض التي يميّزها أصحاب العمل.'}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-              {[
-                { 
-                  title: "Senior UI/UX Designer", 
-                  company: "TechNova Algeria", 
-                  location: "Alger", 
-                  type: "CDI", 
-                  remote: "Hybride",
-                  salary: "150k - 220k DZD", 
-                  logo: "https://images.unsplash.com/photo-1572044162444-ad60f128bde3?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-blue-50 text-blue-600", 
-                  featured: true,
-                  description: language === 'fr' ? "Concevez des interfaces utilisateur exceptionnelles pour nos clients internationaux." : "صمم واجهات مستخدم استثنائية لعملائنا الدوليين.",
-                  requirements: ["Figma", "Design System", "Prototyping"]
-                },
-                { 
-                  title: "Full Stack Developer", 
-                  company: "Atlas Solutions", 
-                  location: "Oran", 
-                  type: "CDI", 
-                  remote: "Télétravail",
-                  salary: "180k - 250k DZD", 
-                  logo: "https://images.unsplash.com/photo-1549923746-c502d488b3ea?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-emerald-50 text-emerald-600", 
-                  featured: false,
-                  description: language === 'fr' ? "Développez des applications web robustes avec React et Node.js." : "طور تطبيقات ويب قوية باستخدام React و Node.js.",
-                  requirements: ["React", "Node.js", "PostgreSQL"]
-                },
-                { 
-                  title: "Marketing Manager", 
-                  company: "Sahara Creative", 
-                  location: "Constantine", 
-                  type: "CDI", 
-                  remote: "Hybride",
-                  salary: "120k - 180k DZD", 
-                  logo: "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-orange-50 text-orange-600", 
-                  featured: true,
-                  description: language === 'fr' ? "Pilotez la stratégie marketing digitale de nos clients." : "قد استراتيجية التسويق الرقمي لعملائنا.",
-                  requirements: ["SEO", "Ads", "Strategy"]
-                },
-                { 
-                  title: "Data Scientist", 
-                  company: "FinTech Hub", 
-                  location: "Alger", 
-                  type: "CDI", 
-                  remote: "Sur site",
-                  salary: "200k - 300k DZD", 
-                  logo: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-indigo-50 text-indigo-600", 
-                  featured: false,
-                  description: language === 'fr' ? "Analysez des données complexes pour extraire des insights métiers." : "حلل البيانات المعقدة لاستخراج رؤى تجارية.",
-                  requirements: ["Python", "ML", "SQL"]
-                },
-                { 
-                  title: "Product Owner", 
-                  company: "Digital Nomad Co", 
-                  location: "Annaba", 
-                  type: "CDI", 
-                  remote: "Télétravail",
-                  salary: "160k - 240k DZD", 
-                  logo: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-purple-50 text-purple-600", 
-                  featured: false,
-                  description: language === 'fr' ? "Gérez le backlog produit et collaborez avec les équipes techniques." : "أدر قائمة مهام المنتج وتعاون مع الفرق التقنية.",
-                  requirements: ["Agile", "Scrum", "Product"]
-                },
-                { 
-                  title: "HR Specialist", 
-                  company: "Global Reach", 
-                  location: "Sétif", 
-                  type: "CDI", 
-                  remote: "Sur site",
-                  salary: "100k - 140k DZD", 
-                  logo: "https://images.unsplash.com/photo-1454165833767-027ffea9e77b?auto=format&fit=crop&q=80&w=200", 
-                  color: "bg-pink-50 text-pink-600", 
-                  featured: false,
-                  description: language === 'fr' ? "Gérez le recrutement et le développement des talents." : "أدر التوظيف وتطوير المواهب.",
-                  requirements: ["Recruitment", "HRM", "Admin"]
-                },
-              ].map((job, i) => (
+              {/* Real featured jobs from the API. Adapted into the shape this
+                  card has always rendered, so the card markup below is
+                  unchanged — only the data source moved. */}
+              {displayFeaturedJobs.map((job, i) => (
                 <motion.div 
                   key={i}
                   initial={{ opacity: 0, y: 20 }}
@@ -1514,6 +1622,74 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      {/* Part-time jobs — real PART_TIME postings. The whole section is
+          omitted when there are none, rather than showing an empty shell. */}
+      {!partTimeLoading && displayPartTimeJobs.length > 0 && (
+        <section id="part-time" className="py-32 px-6 bg-white">
+          <div className="max-w-7xl mx-auto">
+            <div className={`flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16 ${language === 'ar' ? 'md:flex-row-reverse text-right' : ''}`}>
+              <div>
+                <span className="text-[#F68D58] font-black text-xs tracking-[0.4em] uppercase mb-5 block">
+                  {language === 'fr' ? 'Temps partiel' : 'دوام جزئي'}
+                </span>
+                <h2 className="text-5xl md:text-6xl font-display font-bold text-[#173E7D] tracking-tighter mb-4">
+                  {language === 'fr' ? 'Jobs à temps partiel' : 'وظائف بدوام جزئي'}
+                </h2>
+                <p className="text-xl text-gray-500 font-light max-w-2xl">
+                  {language === 'fr'
+                    ? 'Des missions compatibles avec vos études ou votre activité actuelle.'
+                    : 'فرص تتوافق مع دراستك أو نشاطك الحالي.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {displayPartTimeJobs.map((job) => (
+                <motion.div
+                  key={job.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  whileHover={{ y: -6 }}
+                  className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col group"
+                >
+                  <div className={`flex items-start justify-between gap-4 mb-6 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center text-[#173E7D] shrink-0">
+                      {job.logo ? (
+                        <img src={job.logo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <Building2 size={22} />
+                      )}
+                    </div>
+                    <span className="shrink-0 px-4 py-1.5 bg-orange-50 text-[#F68D58] border border-orange-100 rounded-full text-[9px] font-black uppercase tracking-widest">
+                      {job.type}
+                    </span>
+                  </div>
+
+                  <h3 className={`text-xl font-black text-[#173E7D] leading-snug group-hover:text-[#F68D58] transition-colors ${language === 'ar' ? 'text-right' : ''}`}>
+                    {job.title}
+                  </h3>
+                  <p className={`text-sm font-bold text-gray-500 mt-1 ${language === 'ar' ? 'text-right' : ''}`}>
+                    {job.company}
+                  </p>
+
+                  <div className={`flex items-center gap-5 mt-6 pt-6 border-t border-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                    <span className="flex items-center gap-2">
+                      <MapPin size={14} className="text-[#F68D58]" />
+                      {job.location}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Clock size={14} className="text-[#F68D58]" />
+                      {job.remote}
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Featured Jobs to Hiring Partners Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-gray-50/30 to-white" />
@@ -1647,6 +1823,14 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Domain popup — opened from the "Opportunités par domaine" grid */}
+      <DomainModal
+        slug={openDomain?.slug ?? null}
+        label={openDomain?.label ?? ''}
+        language={language}
+        onClose={() => setOpenDomain(null)}
+      />
 
       {/* Application Modal */}
       <AnimatePresence>

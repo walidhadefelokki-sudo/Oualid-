@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.routes";
 import jobRoutes from "./routes/job.routes";
+import categoryRoutes from "./routes/category.routes";
 import applicationRoutes from "./routes/application.routes";
 import contactRoutes from "./routes/contact.routes";
 import adminRoutes from "./routes/admin.routes";
@@ -110,6 +111,7 @@ export function createApp() {
   // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/jobs", jobRoutes);
+  app.use("/api/categories", categoryRoutes);
   app.use("/api/applications", applicationRoutes);
   app.use("/api/contact", contactRoutes);
   app.use("/api/admin", adminRoutes);

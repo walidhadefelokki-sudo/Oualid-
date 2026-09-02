@@ -53,18 +53,76 @@ var transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+var APP_URL = process.env.APP_URL || "https://www.darlemploi.dz";
+var FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+var FROM_NAME = "Dar L'emploi";
+var BRAND = {
+  navy: "#173E7D",
+  orange: "#F68D58",
+  ink: "#2B3442",
+  muted: "#6B7686",
+  rule: "#E4E8EE",
+  ground: "#F5F7FA"
+};
+var layout = (heading, body) => `
+<div style="margin:0;padding:0;background:${BRAND.ground};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.ground};padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid ${BRAND.rule};border-radius:12px;overflow:hidden;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+          <tr>
+            <td style="background:${BRAND.navy};padding:28px 32px;">
+              <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.2px;">Dar L'emploi</p>
+              <p style="margin:4px 0 0;color:#AFC3E4;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Plateforme de recrutement</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:32px;">
+              <h1 style="margin:0 0 16px;color:${BRAND.navy};font-size:22px;font-weight:700;line-height:1.3;">${heading}</h1>
+              ${body}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px;background:#FAFBFC;border-top:1px solid ${BRAND.rule};">
+              <p style="margin:0;color:${BRAND.muted};font-size:12px;line-height:1.6;">
+                Dar L'emploi &middot; Saint Jean, Constantine, Alg&eacute;rie<br>
+                <a href="tel:+213542982346" style="color:${BRAND.muted};text-decoration:none;">+213 (0)542 98 23 46</a>
+              </p>
+              <p style="margin:10px 0 0;color:#9BA5B4;font-size:11px;">
+                &copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Dar L'emploi. Tous droits r&eacute;serv&eacute;s.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>`;
+var button = (href, label) => `
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+  <tr>
+    <td style="background:${BRAND.navy};border-radius:8px;">
+      <a href="${href}" style="display:inline-block;padding:14px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.3px;">${label}</a>
+    </td>
+  </tr>
+</table>`;
+var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html) => {
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log("--- Email Simulation ---");
+      console.log("--- Email simulation (EMAIL_USER/EMAIL_PASS not set) ---");
+      console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? "unset"}>`);
       console.log(`To: ${to}`);
       console.log(`Subject: ${subject}`);
-      console.log(`Body: ${html}`);
-      console.log("-------------------------");
+      console.log("-------------------------------------------------------");
       return;
     }
     const info = await transporter.sendMail({
-      from: `"JobMatch AI" <${process.env.EMAIL_USER}>`,
+      from: `"${FROM_NAME}" <${FROM_ADDRESS}>`,
       to,
       subject,
       html
@@ -74,35 +132,65 @@ var sendEmail = async (to, subject, html) => {
     console.error("Error sending email:", error);
   }
 };
-var sendWelcomeEmail = async (email, name) => {
-  const subject = "Welcome to JobMatch AI!";
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2>Welcome ${name}!</h2>
-      <p>Thank you for joining JobMatch AI. We are excited to help you find your next big opportunity or your next great hire.</p>
-      <p>Start exploring jobs or posting vacancies today!</p>
-      <div style="margin-top: 20px; font-size: 0.8em; color: #666;">
-        &copy; 2026 JobMatch AI. All rights reserved.
-      </div>
-    </div>
-  `;
-  await sendEmail(email, subject, html);
+var sendWelcomeEmail = async (email, name, role) => {
+  const isRecruiter = role === "RECRUITER";
+  const accountLabel = isRecruiter ? "Recruteur" : "Candidat";
+  const nextSteps = isRecruiter ? `
+      <li style="margin-bottom:8px;">Compl&eacute;tez le profil de votre entreprise (logo, secteur, description).</li>
+      <li style="margin-bottom:8px;">Publiez votre premi&egrave;re offre d'emploi.</li>
+      <li style="margin-bottom:8px;">Consultez les candidatures et les analyses IA.</li>` : `
+      <li style="margin-bottom:8px;">Compl&eacute;tez votre profil et t&eacute;l&eacute;versez votre CV.</li>
+      <li style="margin-bottom:8px;">Enregistrez votre pr&eacute;sentation vid&eacute;o en arabe.</li>
+      <li style="margin-bottom:8px;">Explorez les offres et postulez en un clic.</li>`;
+  const body = `
+    ${paragraph(`Bonjour <strong>${name}</strong>,`)}
+    ${paragraph(
+    `Votre compte Dar L'emploi a bien &eacute;t&eacute; cr&eacute;&eacute;. Vous rejoignez la plateforme de recrutement qui met l'intelligence artificielle au service des talents et des entreprises en Alg&eacute;rie.`
+  )}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
+      <tr>
+        <td style="padding:18px 20px;">
+          <p style="margin:0 0 10px;color:${BRAND.muted};font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;">Votre compte</p>
+          <p style="margin:0;color:${BRAND.ink};font-size:14px;line-height:1.8;">
+            <strong style="color:${BRAND.navy};">Email</strong> &nbsp;${email}<br>
+            <strong style="color:${BRAND.navy};">Type de compte</strong> &nbsp;${accountLabel}
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 10px;color:${BRAND.navy};font-size:15px;font-weight:700;">Pour bien commencer</p>
+    <ul style="margin:0 0 4px;padding-left:20px;color:${BRAND.ink};font-size:15px;line-height:1.6;">
+      ${nextSteps}
+    </ul>
+
+    ${button(APP_URL, "Acc&eacute;der &agrave; mon espace")}
+
+    ${paragraph(
+    `<span style="color:${BRAND.muted};font-size:13px;">Vous n'&ecirc;tes pas &agrave; l'origine de cette inscription&nbsp;? Ignorez simplement ce message ou r&eacute;pondez-y pour nous en informer.</span>`
+  )}`;
+  await sendEmail(email, `Bienvenue sur Dar L'emploi, ${name}`, layout("Bienvenue sur Dar L'emploi", body));
 };
 var sendJobMatchEmail = async (email, jobTitle, company, jobId) => {
-  const subject = `New Job Match: ${jobTitle} at ${company}`;
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2>A new job matches your profile!</h2>
-      <p>We found a new position that might interest you:</p>
-      <div style="background: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <h3 style="margin: 0;">${jobTitle}</h3>
-        <p style="margin: 5px 0;"><strong>Company:</strong> ${company}</p>
-      </div>
-      <p>Click the link below to view the job details and apply:</p>
-      <a href="${process.env.APP_URL || "http://localhost:3000"}/jobs/${jobId}" style="display: inline-block; background: #007bff; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Job</a>
-    </div>
-  `;
-  await sendEmail(email, subject, html);
+  const body = `
+    ${paragraph(`Une nouvelle offre correspond &agrave; votre profil&nbsp;:`)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
+      <tr>
+        <td style="padding:18px 20px;">
+          <p style="margin:0;color:${BRAND.navy};font-size:17px;font-weight:700;">${jobTitle}</p>
+          <p style="margin:6px 0 0;color:${BRAND.muted};font-size:14px;">${company}</p>
+        </td>
+      </tr>
+    </table>
+
+    ${button(`${APP_URL}/jobs/${jobId}`, `Voir l'offre`)}`;
+  await sendEmail(
+    email,
+    `Nouvelle offre : ${jobTitle} chez ${company}`,
+    layout("Une offre pour vous", body)
+  );
 };
 
 // server/middleware/tier.middleware.ts
@@ -145,39 +233,88 @@ var requireRecruiterTier = (minimumPlan) => {
 
 // server/utils/firebaseAdmin.ts
 import admin from "firebase-admin";
+
+// firebase-applet-config.json
+var firebase_applet_config_default = {
+  projectId: "gen-lang-client-0423382332",
+  appId: "1:908353894959:web:393044982b1ad3aa3ce4da",
+  apiKey: "AIzaSyBTkFUT5VcmIaG-d1YZJvhP_BeubfNpc04",
+  authDomain: "gen-lang-client-0423382332.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-4193da14-151a-4361-a254-18b799f2a15c",
+  storageBucket: "gen-lang-client-0423382332.firebasestorage.app",
+  messagingSenderId: "908353894959",
+  measurementId: ""
+};
+
+// server/utils/firebaseAdmin.ts
+var initError = null;
 if (!admin.apps.length) {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) {
-    console.warn(
-      "\u26A0\uFE0F  FIREBASE_SERVICE_ACCOUNT is not set. Google sign-in verification will fail until you add a Firebase service account key to your .env."
-    );
+    initError = "FIREBASE_SERVICE_ACCOUNT is not set, so Google ID tokens cannot be verified.";
+    console.warn(`\u26A0\uFE0F  ${initError}`);
   } else {
     try {
       const serviceAccount = JSON.parse(raw);
+      const adminProject = serviceAccount.project_id;
+      const webProject = firebase_applet_config_default.projectId;
+      if (adminProject && webProject && adminProject !== webProject) {
+        initError = `Firebase project mismatch: the service account belongs to "${adminProject}" but the frontend signs in against "${webProject}". Google sign-in cannot work until both name the same project \u2014 either generate a service account key from "${webProject}", or update firebase-applet-config.json to the web config of "${adminProject}".`;
+        console.error(`\u274C ${initError}`);
+      }
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
     } catch (err) {
-      console.error(
-        "\u274C Failed to parse FIREBASE_SERVICE_ACCOUNT. Make sure it's valid JSON on a single line.",
-        err
-      );
+      initError = "FIREBASE_SERVICE_ACCOUNT could not be parsed. It must be the full service-account JSON on a single line.";
+      console.error(`\u274C ${initError}`, err);
     }
   }
 }
 async function verifyFirebaseIdToken(idToken) {
   if (!admin.apps.length) {
     throw new Error(
-      "Firebase Admin isn't initialized. Set FIREBASE_SERVICE_ACCOUNT in your .env."
+      initError ?? "Firebase Admin is not initialized. Set FIREBASE_SERVICE_ACCOUNT in the environment."
     );
   }
-  return admin.auth().verifyIdToken(idToken);
+  try {
+    return await admin.auth().verifyIdToken(idToken);
+  } catch (err) {
+    if (initError) {
+      throw new Error(initError);
+    }
+    throw err;
+  }
 }
 
 // server/controllers/auth.controller.ts
+import crypto2 from "crypto";
+
+// server/utils/jwt.ts
 import crypto from "crypto";
+var devSecret = null;
+function getJwtSecret() {
+  const configured = process.env.JWT_SECRET;
+  if (configured && configured.trim().length > 0) {
+    return configured;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "JWT_SECRET is not set. Refusing to sign or verify tokens with a default secret in production \u2014 set JWT_SECRET in the environment."
+    );
+  }
+  if (!devSecret) {
+    devSecret = crypto.randomBytes(48).toString("hex");
+    console.warn(
+      "\u26A0\uFE0F  JWT_SECRET is not set. Using a random per-process secret for development \u2014 every restart invalidates existing sessions. Set JWT_SECRET in your .env to keep sessions across restarts."
+    );
+  }
+  return devSecret;
+}
+
+// server/controllers/auth.controller.ts
 var signToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET || "fallback_secret", {
+  return jwt.sign({ id, role }, getJwtSecret(), {
     expiresIn: "30d"
   });
 };
@@ -193,7 +330,7 @@ var mapPlanToTier = (plan) => {
 };
 var slugify = (name) => {
   const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto.randomBytes(3).toString("hex");
+  const suffix = crypto2.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
 var createCompanyForRecruiter = async (recruiterProfileId, companyName) => {
@@ -238,7 +375,7 @@ var register = async (req, res, next) => {
       await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
     }
     const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-    await sendWelcomeEmail(email, name);
+    await sendWelcomeEmail(email, name, user.role);
     const token = signToken(user.id, user.role);
     res.status(201).json({
       status: "success",
@@ -314,7 +451,18 @@ var googleAuth = async (req, res, next) => {
     if (!idToken) {
       return next(new AppError("Missing idToken", 400));
     }
-    const decoded = await verifyFirebaseIdToken(idToken);
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(idToken);
+    } catch (verifyError) {
+      console.error("Google ID token verification failed:", verifyError?.message);
+      return next(
+        new AppError(
+          verifyError?.message || "Could not verify your Google sign-in.",
+          401
+        )
+      );
+    }
     const email = decoded.email;
     if (!email) {
       return next(new AppError("Google account has no email", 400));
@@ -325,7 +473,7 @@ var googleAuth = async (req, res, next) => {
       const fullName = decoded.name || "";
       const [firstName, ...rest] = fullName.split(" ");
       const lastName = rest.join(" ");
-      const randomPassword = crypto.randomBytes(32).toString("hex");
+      const randomPassword = crypto2.randomBytes(32).toString("hex");
       const hashedPassword = await bcrypt.hash(randomPassword, 12);
       user = await prisma_default.user.create({
         data: {
@@ -345,7 +493,7 @@ var googleAuth = async (req, res, next) => {
         await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
       }
       const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-      await sendWelcomeEmail(email, name);
+      await sendWelcomeEmail(email, name, user.role);
     }
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
     const token = signToken(user.id, user.role);
@@ -419,7 +567,7 @@ var protect = (req, res, next) => {
     return next(new AppError("Not authorized to access this route", 401));
   }
   try {
-    const decoded = jwt2.verify(token, process.env.JWT_SECRET || "fallback_secret");
+    const decoded = jwt2.verify(token, getJwtSecret());
     req.user = decoded;
     next();
   } catch (err) {
@@ -484,21 +632,29 @@ var auth_routes_default = router;
 import { Router as Router2 } from "express";
 
 // server/controllers/job.controller.ts
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 var slugify2 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto2.randomBytes(3).toString("hex");
+  const suffix = crypto3.randomBytes(3).toString("hex");
   return `${base || "job"}-${suffix}`;
 };
 var getAllJobs = async (req, res, next) => {
   try {
-    const { title, location, type, categoryId } = req.query;
+    const { title, location, type, categoryId, categorySlug, wilaya, featured, limit } = req.query;
+    const featuredOnly = featured === "true" ? true : void 0;
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 60) : void 0;
     const jobs = await prisma_default.job.findMany({
       where: {
         title: title ? { contains: title, mode: "insensitive" } : void 0,
         location: location ? { contains: location, mode: "insensitive" } : void 0,
         type,
         categoryId: categoryId ? categoryId : void 0,
+        // Lets the frontend filter by the stable slug it already knows ("it",
+        // "health", …) without first resolving it to a uuid.
+        category: categorySlug ? { slug: categorySlug } : void 0,
+        wilaya: wilaya ? { equals: wilaya, mode: "insensitive" } : void 0,
+        featured: featuredOnly,
         status: "PUBLISHED"
       },
       include: {
@@ -506,7 +662,9 @@ var getAllJobs = async (req, res, next) => {
         company: true,
         category: true
       },
-      orderBy: { createdAt: "desc" }
+      // Featured first so promoted postings lead any list they appear in.
+      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+      take
     });
     res.status(200).json({
       status: "success",
@@ -732,8 +890,32 @@ var updateJob = async (req, res, next) => {
       currency,
       status,
       expiresAt,
-      categoryId
+      categoryId,
+      featured
     } = req.body;
+    let nextFeatured = void 0;
+    if (featured !== void 0) {
+      const plan = await getRecruiterPlan(req.user.id);
+      nextFeatured = Boolean(featured);
+      if (nextFeatured && plan === "FREE") {
+        return next(
+          new AppError("Featured jobs require a Premium or Corporate plan.", 403)
+        );
+      }
+      if (nextFeatured && plan === "PREMIUM" && !job.featured) {
+        const featuredCount = await prisma_default.job.count({
+          where: { recruiterId: job.recruiterId, featured: true }
+        });
+        if (featuredCount >= 5) {
+          return next(
+            new AppError(
+              "Premium plan allows 5 featured jobs. Upgrade to Corporate for more.",
+              403
+            )
+          );
+        }
+      }
+    }
     const updatedJob = await prisma_default.job.update({
       where: { id: req.params.id },
       data: {
@@ -751,7 +933,8 @@ var updateJob = async (req, res, next) => {
         currency,
         status,
         expiresAt,
-        categoryId
+        categoryId,
+        featured: nextFeatured
       }
     });
     res.status(200).json({
@@ -804,8 +987,95 @@ router2.patch("/:id", restrictTo("RECRUITER", "ADMIN"), updateJob);
 router2.delete("/:id", restrictTo("RECRUITER", "ADMIN"), deleteJob);
 var job_routes_default = router2;
 
-// server/routes/application.routes.ts
+// server/routes/category.routes.ts
 import { Router as Router3 } from "express";
+
+// server/controllers/category.controller.ts
+var getAllCategories = async (_req, res, next) => {
+  try {
+    const categories = await prisma_default.jobCategory.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        icon: true,
+        _count: {
+          select: { jobs: { where: { status: "PUBLISHED" } } }
+        }
+      }
+    });
+    res.status(200).json({
+      status: "success",
+      results: categories.length,
+      data: {
+        categories: categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          description: c.description,
+          icon: c.icon,
+          jobCount: c._count.jobs
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getCategoryBySlug = async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const limitParam = Number(req.query.limit);
+    const take = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 20) : 6;
+    const category = await prisma_default.jobCategory.findUnique({
+      where: { slug },
+      select: { id: true, name: true, slug: true, description: true, icon: true }
+    });
+    if (!category) {
+      return next(new AppError("Category not found", 404));
+    }
+    const [jobs, jobCount] = await Promise.all([
+      prisma_default.job.findMany({
+        where: { categoryId: category.id, status: "PUBLISHED" },
+        orderBy: [{ featured: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+        take,
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          wilaya: true,
+          type: true,
+          remote: true,
+          featured: true,
+          salaryMin: true,
+          salaryMax: true,
+          currency: true,
+          createdAt: true,
+          publishedAt: true,
+          company: { select: { name: true, logo: { select: { url: true } } } }
+        }
+      }),
+      prisma_default.job.count({ where: { categoryId: category.id, status: "PUBLISHED" } })
+    ]);
+    res.status(200).json({
+      status: "success",
+      data: { category: { ...category, jobCount }, jobs }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/routes/category.routes.ts
+var router3 = Router3();
+router3.get("/", getAllCategories);
+router3.get("/:slug", getCategoryBySlug);
+var category_routes_default = router3;
+
+// server/routes/application.routes.ts
+import { Router as Router4 } from "express";
 
 // server/services/candidateScore.service.ts
 var CandidateScoreService = class {
@@ -2638,16 +2908,16 @@ var updateApplicationStatus = async (req, res, next) => {
 };
 
 // server/routes/application.routes.ts
-var router3 = Router3();
-router3.use(protect);
-router3.post("/", restrictTo("CANDIDATE"), applyToJob);
-router3.get("/my", restrictTo("CANDIDATE"), getMyApplications);
-router3.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
-router3.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
-var application_routes_default = router3;
+var router4 = Router4();
+router4.use(protect);
+router4.post("/", restrictTo("CANDIDATE"), applyToJob);
+router4.get("/my", restrictTo("CANDIDATE"), getMyApplications);
+router4.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
+router4.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
+var application_routes_default = router4;
 
 // server/routes/contact.routes.ts
-import { Router as Router4 } from "express";
+import { Router as Router5 } from "express";
 
 // server/controllers/contact.controller.ts
 var sendContactMessage = async (req, res) => {
@@ -2680,12 +2950,12 @@ var sendContactMessage = async (req, res) => {
 };
 
 // server/routes/contact.routes.ts
-var router4 = Router4();
-router4.post("/", sendContactMessage);
-var contact_routes_default = router4;
+var router5 = Router5();
+router5.post("/", sendContactMessage);
+var contact_routes_default = router5;
 
 // server/routes/admin.routes.ts
-import { Router as Router5 } from "express";
+import { Router as Router6 } from "express";
 
 // server/controllers/admin.controller.ts
 var getAllCompanies = async (req, res, next) => {
@@ -2928,21 +3198,21 @@ var getStats = async (req, res, next) => {
 };
 
 // server/routes/admin.routes.ts
-var router5 = Router5();
-router5.use(protect);
-router5.use(restrictTo("ADMIN"));
-router5.get("/stats", getStats);
-router5.get("/companies", getAllCompanies);
-router5.get("/companies/:id", getCompany);
-router5.patch("/companies/:id/plan", updateCompanyPlan);
-router5.get("/users", getAllUsers);
-router5.patch("/users/:id/status", updateUserStatus);
-router5.get("/preselections/corporate-pending", getCorporatePendingPreselections);
-router5.post("/preselections/:applicationId", adminPreselect);
-var admin_routes_default = router5;
+var router6 = Router6();
+router6.use(protect);
+router6.use(restrictTo("ADMIN"));
+router6.get("/stats", getStats);
+router6.get("/companies", getAllCompanies);
+router6.get("/companies/:id", getCompany);
+router6.patch("/companies/:id/plan", updateCompanyPlan);
+router6.get("/users", getAllUsers);
+router6.patch("/users/:id/status", updateUserStatus);
+router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
+router6.post("/preselections/:applicationId", adminPreselect);
+var admin_routes_default = router6;
 
 // server/routes/preselection.routes.ts
-import { Router as Router6 } from "express";
+import { Router as Router7 } from "express";
 
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
@@ -3160,94 +3430,94 @@ var preselection_controller_default = {
 };
 
 // server/routes/preselection.routes.ts
-var router6 = Router6();
-router6.get(
+var router7 = Router7();
+router7.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   preselection_controller_default.getMyPreselection
 );
-router6.get(
+router7.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getPreselection
 );
-router6.patch(
+router7.patch(
   "/application/:applicationId/review",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.reviewCandidate
 );
-router6.patch(
+router7.patch(
   "/application/:applicationId/shortlist",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.shortlistCandidate
 );
-router6.patch(
+router7.patch(
   "/application/:applicationId/reject",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.rejectCandidate
 );
-router6.patch(
+router7.patch(
   "/application/:applicationId/comment",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
 );
-router6.get(
+router7.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterPreselections
 );
-router6.get(
+router7.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterStatistics
 );
-router6.get(
+router7.get(
   "/recruiter/ranking",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRanking
 );
-router6.get(
+router7.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAllPreselections
 );
-router6.get(
+router7.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAdminStatistics
 );
-router6.patch(
+router7.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.recalculatePreselection
 );
-router6.delete(
+router7.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.deletePreselection
 );
-var preselection_routes_default = router6;
+var preselection_routes_default = router7;
 
 // server/routes/oralPresentation.routes.ts
 import express from "express";
@@ -3682,46 +3952,46 @@ var getRecruiterStatistics2 = async (req, res, next) => {
 };
 
 // server/routes/oralPresentation.routes.ts
-var router7 = express.Router();
-router7.use(protect);
-router7.get(
+var router8 = express.Router();
+router8.use(protect);
+router8.get(
   "/upload-signature",
   restrictTo("CANDIDATE"),
   getUploadSignature
 );
-router7.post(
+router8.post(
   "/me",
   restrictTo("CANDIDATE"),
   uploadPresentation
 );
-router7.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
-router7.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
-router7.get(
+router8.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
+router8.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
+router8.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterPresentations
 );
-router7.get(
+router8.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics2
 );
-router7.get(
+router8.get(
   "/candidate/:candidateId",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getPresentationByCandidateId
 );
-router7.patch(
+router8.patch(
   "/candidate/:candidateId/recruiter-score",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   updateRecruiterScore
 );
-router7.get("/", restrictTo("ADMIN"), getAllPresentations);
-var oralPresentation_routes_default = router7;
+router8.get("/", restrictTo("ADMIN"), getAllPresentations);
+var oralPresentation_routes_default = router8;
 
 // server/routes/quiz.routes.ts
 import express2 from "express";
@@ -4282,37 +4552,37 @@ var deleteAttempt = async (req, res, next) => {
 };
 
 // server/routes/quiz.routes.ts
-var router8 = express2.Router();
-router8.use(protect);
-router8.post("/start", restrictTo("CANDIDATE"), startQuiz);
-router8.get("/", restrictTo("CANDIDATE"), getQuiz);
-router8.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
-router8.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
-router8.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
-router8.get(
+var router9 = express2.Router();
+router9.use(protect);
+router9.post("/start", restrictTo("CANDIDATE"), startQuiz);
+router9.get("/", restrictTo("CANDIDATE"), getQuiz);
+router9.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
+router9.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
+router9.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
+router9.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterAttempts
 );
-router8.get(
+router9.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics3
 );
-router8.get(
+router9.get(
   "/attempt/:id",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getAttemptById
 );
-router8.get("/all", restrictTo("ADMIN"), getAllAttempts);
-router8.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
-var quiz_routes_default = router8;
+router9.get("/all", restrictTo("ADMIN"), getAllAttempts);
+router9.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
+var quiz_routes_default = router9;
 
 // server/routes/aiAnalysis.routes.ts
-import { Router as Router7 } from "express";
+import { Router as Router8 } from "express";
 
 // server/controllers/aiAnalysis.controller.ts
 var AIAnalysisController = class {
@@ -4425,43 +4695,43 @@ var AIAnalysisController = class {
 var aiAnalysis_controller_default = new AIAnalysisController();
 
 // server/routes/aiAnalysis.routes.ts
-var router9 = Router7();
-router9.use(protect);
-router9.get(
+var router10 = Router8();
+router10.use(protect);
+router10.get(
   "/:applicationId",
   restrictTo("CANDIDATE", "RECRUITER", "ADMIN"),
   aiAnalysis_controller_default.getAnalysis
 );
-router9.post(
+router10.post(
   "/:applicationId/analyze",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.analyzeApplication
 );
-router9.post(
+router10.post(
   "/:applicationId/recalculate",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.recalculate
 );
-router9.get(
+router10.get(
   "/recruiter/all",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getRecruiterAnalyses
 );
-router9.get(
+router10.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getStatistics
 );
-router9.delete(
+router10.delete(
   "/:applicationId",
   restrictTo("ADMIN"),
   aiAnalysis_controller_default.deleteAnalysis
 );
-var aiAnalysis_routes_default = router9;
+var aiAnalysis_routes_default = router10;
 
 // server/routes/candidateProfile.routes.ts
 import express3 from "express";
@@ -4647,17 +4917,17 @@ var saveMyCvBuilder = async (req, res, next) => {
 };
 
 // server/routes/candidateProfile.routes.ts
-var router10 = express3.Router();
-router10.use(protect, restrictTo("CANDIDATE"));
-router10.patch("/me", updateMyProfile);
-router10.post("/me/cv", upload.single("cv"), uploadCV);
-router10.get("/me/cv", getMyCV);
-router10.get("/me/cv-builder", getMyCvBuilder);
-router10.put("/me/cv-builder", saveMyCvBuilder);
-var candidateProfile_routes_default = router10;
+var router11 = express3.Router();
+router11.use(protect, restrictTo("CANDIDATE"));
+router11.patch("/me", updateMyProfile);
+router11.post("/me/cv", upload.single("cv"), uploadCV);
+router11.get("/me/cv", getMyCV);
+router11.get("/me/cv-builder", getMyCvBuilder);
+router11.put("/me/cv-builder", saveMyCvBuilder);
+var candidateProfile_routes_default = router11;
 
 // server/routes/candidateScore.routes.ts
-import { Router as Router8 } from "express";
+import { Router as Router9 } from "express";
 
 // server/controllers/candidateScore.controller.ts
 var getMyScore = async (req, res, next) => {
@@ -4807,71 +5077,71 @@ var deleteScore = async (req, res, next) => {
 };
 
 // server/routes/candidateScore.routes.ts
-var router11 = Router8();
-router11.get(
+var router12 = Router9();
+router12.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   getMyScore
 );
-router11.get(
+router12.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateScore
 );
-router11.patch(
+router12.patch(
   "/application/:applicationId/interview-score",
   protect,
   restrictTo("RECRUITER"),
   updateInterviewScore
 );
-router11.patch(
+router12.patch(
   "/application/:applicationId/recruiter-score",
   protect,
   restrictTo("RECRUITER"),
   updateRecruiterScore2
 );
-router11.get(
+router12.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterScores
 );
-router11.get(
+router12.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterStatistics4
 );
-router11.get(
+router12.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   getAllScores
 );
-router11.get(
+router12.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   getAdminStatistics3
 );
-router11.patch(
+router12.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   recalculateScore
 );
-router11.delete(
+router12.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   deleteScore
 );
-var candidateScore_routes_default = router11;
+var candidateScore_routes_default = router12;
 
 // server/routes/notification.routes.ts
-import { Router as Router9 } from "express";
+import { Router as Router10 } from "express";
 
 // server/controllers/notification.controller.ts
 var getMyNotifications = async (req, res, next) => {
@@ -4918,12 +5188,12 @@ var markAllNotificationsRead = async (req, res, next) => {
 };
 
 // server/routes/notification.routes.ts
-var router12 = Router9();
-router12.use(protect);
-router12.get("/", getMyNotifications);
-router12.patch("/read-all", markAllNotificationsRead);
-router12.patch("/:id/read", markNotificationRead);
-var notification_routes_default = router12;
+var router13 = Router10();
+router13.use(protect);
+router13.get("/", getMyNotifications);
+router13.patch("/read-all", markAllNotificationsRead);
+router13.patch("/:id/read", markNotificationRead);
+var notification_routes_default = router13;
 
 // server/app.ts
 dotenv2.config();
@@ -4987,6 +5257,7 @@ function createApp() {
   app2.use("/api/auth/register", authLimiter);
   app2.use("/api/auth", auth_routes_default);
   app2.use("/api/jobs", job_routes_default);
+  app2.use("/api/categories", category_routes_default);
   app2.use("/api/applications", application_routes_default);
   app2.use("/api/contact", contact_routes_default);
   app2.use("/api/admin", admin_routes_default);

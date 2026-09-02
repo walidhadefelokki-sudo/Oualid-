@@ -8,9 +8,10 @@ import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import { verifyFirebaseIdToken } from "../utils/firebaseAdmin";
 import crypto from "crypto";
+import { getJwtSecret } from "../utils/jwt";
 
 const signToken = (id: string, role: string) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET || "fallback_secret", {
+  return jwt.sign({ id, role }, getJwtSecret(), {
     expiresIn: "30d",
   });
 };
@@ -90,9 +91,11 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
     }
 
-    // Send Welcome Email
+    // Send Welcome Email. `user.role` is the persisted role, not the value
+    // from the request body, so the email always names the account that was
+    // actually created.
     const name = firstName ? `${firstName} ${lastName || ''}`.trim() : email;
-    await sendWelcomeEmail(email, name);
+    await sendWelcomeEmail(email, name, user.role);
 
     const token = signToken(user.id, user.role);
 
@@ -195,7 +198,22 @@ export const googleAuth = async (req: Request, res: Response, next: NextFunction
       return next(new AppError("Missing idToken", 400));
     }
 
-    const decoded = await verifyFirebaseIdToken(idToken);
+    // A failure here is almost always configuration (missing or mismatched
+    // service account), not a bad token. Return 401 with the specific reason
+    // rather than letting it fall through as an opaque 500.
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(idToken);
+    } catch (verifyError: any) {
+      console.error("Google ID token verification failed:", verifyError?.message);
+      return next(
+        new AppError(
+          verifyError?.message || "Could not verify your Google sign-in.",
+          401
+        )
+      );
+    }
+
     const email = decoded.email;
 
     if (!email) {
@@ -235,7 +253,7 @@ export const googleAuth = async (req: Request, res: Response, next: NextFunction
       }
 
       const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-      await sendWelcomeEmail(email, name);
+      await sendWelcomeEmail(email, name, user.role);
     }
 
     const recruiterTier =

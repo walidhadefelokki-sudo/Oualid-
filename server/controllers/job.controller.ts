@@ -20,7 +20,19 @@ const slugify = (title: string) => {
 
 export const getAllJobs = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, location, type, categoryId } = req.query;
+    const { title, location, type, categoryId, categorySlug, wilaya, featured, limit } =
+      req.query;
+
+    // `featured=true` drives the "Postes à la une" section; any other value is
+    // ignored rather than treated as false, so an accidental ?featured=maybe
+    // still returns the full list instead of silently filtering it.
+    const featuredOnly = featured === "true" ? true : undefined;
+
+    // Bounded so a public endpoint cannot be asked for the entire table.
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 60)
+      : undefined;
 
     const jobs = await prisma.job.findMany({
       where: {
@@ -28,6 +40,11 @@ export const getAllJobs = async (req: Request, res: Response, next: NextFunction
         location: location ? { contains: location as string, mode: 'insensitive' } : undefined,
         type: type as any,
         categoryId: categoryId ? (categoryId as string) : undefined,
+        // Lets the frontend filter by the stable slug it already knows ("it",
+        // "health", …) without first resolving it to a uuid.
+        category: categorySlug ? { slug: categorySlug as string } : undefined,
+        wilaya: wilaya ? { equals: wilaya as string, mode: 'insensitive' } : undefined,
+        featured: featuredOnly,
         status: 'PUBLISHED',
       },
       include: {
@@ -35,7 +52,9 @@ export const getAllJobs = async (req: Request, res: Response, next: NextFunction
         company: true,
         category: true,
       },
-      orderBy: { createdAt: 'desc' },
+      // Featured first so promoted postings lead any list they appear in.
+      orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
+      take,
     });
 
     res.status(200).json({
@@ -305,7 +324,38 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
       status,
       expiresAt,
       categoryId,
+      featured,
     } = req.body;
+
+    // "À la une" is a paid placement, so promoting an existing job goes
+    // through the same plan rules as creating one — otherwise a FREE
+    // recruiter could post normally and then PATCH featured:true.
+    // `undefined` means "not sent", which leaves the current value alone.
+    let nextFeatured: boolean | undefined = undefined;
+    if (featured !== undefined) {
+      const plan = await getRecruiterPlan(req.user!.id);
+      nextFeatured = Boolean(featured);
+
+      if (nextFeatured && plan === "FREE") {
+        return next(
+          new AppError("Featured jobs require a Premium or Corporate plan.", 403)
+        );
+      }
+
+      if (nextFeatured && plan === "PREMIUM" && !job.featured) {
+        const featuredCount = await prisma.job.count({
+          where: { recruiterId: job.recruiterId, featured: true },
+        });
+        if (featuredCount >= 5) {
+          return next(
+            new AppError(
+              "Premium plan allows 5 featured jobs. Upgrade to Corporate for more.",
+              403
+            )
+          );
+        }
+      }
+    }
 
     const updatedJob = await prisma.job.update({
       where: { id: req.params.id },
@@ -325,6 +375,7 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
         status,
         expiresAt,
         categoryId,
+        featured: nextFeatured,
       },
     });
 

@@ -1812,11 +1812,17 @@ export default function App() {
                   </a>
                 </li>
                 <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                  <Phone size={20} className="text-[#F68D58] shrink-0" />
+                  {/* tel: with no spaces or parentheses so mobile dialers parse
+                      it; the visible text keeps the readable formatting. */}
+                  <a href="tel:+213542982346" className="hover:text-white transition-colors" dir="ltr">
+                    +213 (0)662 25 05 26
+                  </a>
+                </li>
+                <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
                   <MapPin size={20} className="text-[#F68D58] shrink-0" />
                   <span>
-                    {language === 'fr'
-                      ? 'Saint Jean, Constantine, Algérie'
-                      : 'سان جان، قسنطينة، الجزائر'}
+                    Saint Jean, Constantine, Algéri
                   </span>
                 </li>
               </ul>

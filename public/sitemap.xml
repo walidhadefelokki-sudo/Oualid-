@@ -1,0 +1,22 @@
+<!-- 
+  Dar L'emploi sitemap.
+
+  Only the homepage is listed, and that is deliberate. The site is a
+  single-page application with no router: every path is served the same
+  index.html, so /jobs, /jobs/<id> and /domaines would each return a page
+  identical to this one. Listing them would hand Google a set of duplicate
+  URLs, which costs ranking rather than earning it.
+
+  Once real routes exist, this file should be replaced by a generated
+  sitemap that enumerates published jobs and domain pages from the database
+  — a static list would go stale the moment a recruiter posts or closes an
+  offer.
+ -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url>
+<loc>https://www.darlemploi.dz/</loc>
+<lastmod>2026-09-03</lastmod>
+<changefreq>daily</changefreq>
+<priority>1.0</priority>
+</url>
+</urlset>

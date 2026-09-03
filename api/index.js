@@ -4915,10 +4915,74 @@ var saveMyCvBuilder = async (req, res, next) => {
     next(err);
   }
 };
+var getCandidateCvDocument = async (req, res, next) => {
+  try {
+    const { candidateId } = req.params;
+    const profile = await prisma_default.candidateProfile.findUnique({
+      where: { id: candidateId },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, avatar: true } }
+      }
+    });
+    if (!profile) {
+      return next(new AppError("Candidate not found.", 404));
+    }
+    if (req.user.role !== "ADMIN") {
+      const recruiter = await prisma_default.recruiterProfile.findUnique({
+        where: { userId: req.user.id },
+        select: { id: true }
+      });
+      if (!recruiter) {
+        return next(new AppError("Recruiter profile not found.", 403));
+      }
+      const hasApplied = await prisma_default.application.findFirst({
+        where: { candidateId: profile.id, job: { recruiterId: recruiter.id } },
+        select: { id: true }
+      });
+      if (!hasApplied) {
+        return next(
+          new AppError("You can only view candidates who applied to your jobs.", 403)
+        );
+      }
+    }
+    const built = profile.cvBuilderData ?? null;
+    const fullName = [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ").trim();
+    const document = {
+      name: built?.name || fullName || profile.user.email,
+      title: built?.title || profile.currentJobTitle || profile.headline || "",
+      email: built?.email || profile.user.email || "",
+      phone: built?.phone || profile.phone || "",
+      address: built?.address || [profile.city, profile.wilaya, profile.country].filter(Boolean).join(", "),
+      summary: built?.summary || profile.bio || "",
+      experiences: Array.isArray(built?.experiences) ? built.experiences : [],
+      education: Array.isArray(built?.education) ? built.education : [],
+      skills: Array.isArray(built?.skills) ? built.skills : profile.skills ?? [],
+      languages: Array.isArray(built?.languages) ? built.languages : []
+    };
+    res.status(200).json({
+      status: "success",
+      data: {
+        document,
+        photoUrl: profile.user.avatar?.url ?? null,
+        // Lets the UI say "this candidate has not built a CV yet" instead of
+        // silently showing a sparse document.
+        hasBuiltCv: Boolean(built)
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/candidateProfile.routes.ts
 var router11 = express3.Router();
-router11.use(protect, restrictTo("CANDIDATE"));
+router11.use(protect);
+router11.get(
+  "/:candidateId/cv-document",
+  restrictTo("RECRUITER", "ADMIN"),
+  getCandidateCvDocument
+);
+router11.use(restrictTo("CANDIDATE"));
 router11.patch("/me", updateMyProfile);
 router11.post("/me/cv", upload.single("cv"), uploadCV);
 router11.get("/me/cv", getMyCV);

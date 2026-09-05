@@ -1,27 +1,115 @@
 // GENERATED FILE - DO NOT EDIT. Run: npm run build:api
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// server/utils/prisma.ts
+var prisma_exports = {};
+__export(prisma_exports, {
+  default: () => prisma_default
+});
+import { PrismaClient } from "@prisma/client";
+var globalForPrisma, prisma, prisma_default;
+var init_prisma = __esm({
+  "server/utils/prisma.ts"() {
+    globalForPrisma = globalThis;
+    prisma = globalForPrisma.prisma ?? new PrismaClient();
+    if (process.env.NODE_ENV !== "production") {
+      globalForPrisma.prisma = prisma;
+    }
+    prisma_default = prisma;
+  }
+});
 
 // server/app.ts
 import express4 from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import dotenv2 from "dotenv";
+import dotenv3 from "dotenv";
+import cookieParser from "cookie-parser";
+
+// server/config/passport.ts
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+
+// server/config/oauth.ts
+import dotenv from "dotenv";
+dotenv.config();
+var getFrontendUrl = () => (process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:5000").replace(/\/$/, "");
+var getGoogleOAuthConfig = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const callbackUrl = process.env.GOOGLE_CALLBACK_URL?.trim();
+  if (!clientId || !clientSecret || !callbackUrl) {
+    return null;
+  }
+  return { clientId, clientSecret, callbackUrl };
+};
+var getGoogleConfigError = () => {
+  const missing = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALLBACK_URL"].filter((key) => !process.env[key]?.trim());
+  if (missing.length === 0) return null;
+  return `Google sign-in is not configured: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set.`;
+};
+var isGoogleOAuthConfigured = () => getGoogleOAuthConfig() !== null;
+
+// server/config/passport.ts
+function configureGoogleStrategy() {
+  const config = getGoogleOAuthConfig();
+  if (!config) {
+    return false;
+  }
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: config.clientId,
+        clientSecret: config.clientSecret,
+        callbackURL: config.callbackUrl,
+        // Only what is needed to identify the person (§10). No Drive, Gmail,
+        // Contacts or Calendar.
+        scope: ["profile", "email"]
+      },
+      (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          if (!email) {
+            return done(null, false, {
+              message: "Google did not provide an email address for this account."
+            });
+          }
+          const emailVerified = profile.emails?.[0]?.verified === true || profile._json?.email_verified === true;
+          const identity = {
+            providerAccountId: profile.id,
+            email: email.toLowerCase(),
+            emailVerified,
+            firstName: profile.name?.givenName,
+            lastName: profile.name?.familyName,
+            picture: profile.photos?.[0]?.value
+          };
+          return done(null, identity);
+        } catch (err) {
+          return done(err);
+        }
+      }
+    )
+  );
+  return true;
+}
+var passport_default = passport;
 
 // server/routes/auth.routes.ts
 import { Router } from "express";
 
 // server/controllers/auth.controller.ts
+init_prisma();
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
-// server/utils/prisma.ts
-import { PrismaClient } from "@prisma/client";
-var globalForPrisma = globalThis;
-var prisma = globalForPrisma.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-var prisma_default = prisma;
 
 // server/middleware/error.middleware.ts
 var errorHandler = (err, req, res, next) => {
@@ -44,8 +132,8 @@ var AppError = class extends Error {
 
 // server/utils/email.ts
 import nodemailer from "nodemailer";
-import dotenv from "dotenv";
-dotenv.config();
+import dotenv2 from "dotenv";
+dotenv2.config();
 var transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -194,6 +282,7 @@ var sendJobMatchEmail = async (email, jobTitle, company, jobId) => {
 };
 
 // server/middleware/tier.middleware.ts
+init_prisma();
 var TIER_ORDER = ["FREE", "PREMIUM", "CORPORATE"];
 async function getRecruiterPlan(userId) {
   const membership = await prisma_default.companyMember.findFirst({
@@ -230,62 +319,6 @@ var requireRecruiterTier = (minimumPlan) => {
     }
   };
 };
-
-// server/utils/firebaseAdmin.ts
-import admin from "firebase-admin";
-
-// firebase-applet-config.json
-var firebase_applet_config_default = {
-  projectId: "gen-lang-client-0423382332",
-  appId: "1:908353894959:web:393044982b1ad3aa3ce4da",
-  apiKey: "AIzaSyBTkFUT5VcmIaG-d1YZJvhP_BeubfNpc04",
-  authDomain: "gen-lang-client-0423382332.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-4193da14-151a-4361-a254-18b799f2a15c",
-  storageBucket: "gen-lang-client-0423382332.firebasestorage.app",
-  messagingSenderId: "908353894959",
-  measurementId: ""
-};
-
-// server/utils/firebaseAdmin.ts
-var initError = null;
-if (!admin.apps.length) {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) {
-    initError = "FIREBASE_SERVICE_ACCOUNT is not set, so Google ID tokens cannot be verified.";
-    console.warn(`\u26A0\uFE0F  ${initError}`);
-  } else {
-    try {
-      const serviceAccount = JSON.parse(raw);
-      const adminProject = serviceAccount.project_id;
-      const webProject = firebase_applet_config_default.projectId;
-      if (adminProject && webProject && adminProject !== webProject) {
-        initError = `Firebase project mismatch: the service account belongs to "${adminProject}" but the frontend signs in against "${webProject}". Google sign-in cannot work until both name the same project \u2014 either generate a service account key from "${webProject}", or update firebase-applet-config.json to the web config of "${adminProject}".`;
-        console.error(`\u274C ${initError}`);
-      }
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-    } catch (err) {
-      initError = "FIREBASE_SERVICE_ACCOUNT could not be parsed. It must be the full service-account JSON on a single line.";
-      console.error(`\u274C ${initError}`, err);
-    }
-  }
-}
-async function verifyFirebaseIdToken(idToken) {
-  if (!admin.apps.length) {
-    throw new Error(
-      initError ?? "Firebase Admin is not initialized. Set FIREBASE_SERVICE_ACCOUNT in the environment."
-    );
-  }
-  try {
-    return await admin.auth().verifyIdToken(idToken);
-  } catch (err) {
-    if (initError) {
-      throw new Error(initError);
-    }
-    throw err;
-  }
-}
 
 // server/controllers/auth.controller.ts
 import crypto2 from "crypto";
@@ -353,6 +386,14 @@ var register = async (req, res, next) => {
     const { email, password, role, firstName, lastName, companyName, plan } = req.body;
     const existingUser = await prisma_default.user.findUnique({ where: { email } });
     if (existingUser) {
+      if (existingUser.password === null) {
+        return next(
+          new AppError(
+            "This email is already registered with Google. Please continue with Google.",
+            400
+          )
+        );
+      }
       return next(new AppError("Email already in use", 400));
     }
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -401,6 +442,14 @@ var login = async (req, res, next) => {
       return next(new AppError("Please provide email and password", 400));
     }
     const user = await prisma_default.user.findUnique({ where: { email } });
+    if (user && user.password === null) {
+      return next(
+        new AppError(
+          "This account uses Google sign-in. Please continue with Google.",
+          401
+        )
+      );
+    }
     if (!user || !await bcrypt.compare(password, user.password)) {
       return next(new AppError("Incorrect email or password", 401));
     }
@@ -440,76 +489,6 @@ var getMe = async (req, res, next) => {
     res.status(200).json({
       status: "success",
       data: { user: { ...user, recruiterTier } }
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var googleAuth = async (req, res, next) => {
-  try {
-    const { idToken, role, companyName } = req.body;
-    if (!idToken) {
-      return next(new AppError("Missing idToken", 400));
-    }
-    let decoded;
-    try {
-      decoded = await verifyFirebaseIdToken(idToken);
-    } catch (verifyError) {
-      console.error("Google ID token verification failed:", verifyError?.message);
-      return next(
-        new AppError(
-          verifyError?.message || "Could not verify your Google sign-in.",
-          401
-        )
-      );
-    }
-    const email = decoded.email;
-    if (!email) {
-      return next(new AppError("Google account has no email", 400));
-    }
-    let user = await prisma_default.user.findUnique({ where: { email } });
-    if (!user) {
-      const requestedRole = role === "employer" ? "RECRUITER" : "CANDIDATE";
-      const fullName = decoded.name || "";
-      const [firstName, ...rest] = fullName.split(" ");
-      const lastName = rest.join(" ");
-      const randomPassword = crypto2.randomBytes(32).toString("hex");
-      const hashedPassword = await bcrypt.hash(randomPassword, 12);
-      user = await prisma_default.user.create({
-        data: {
-          email,
-          password: hashedPassword,
-          role: requestedRole,
-          status: "ACTIVE",
-          emailVerified: decoded.email_verified ?? false,
-          firstName: firstName || void 0,
-          lastName: lastName || void 0,
-          candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : void 0,
-          recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : void 0
-        },
-        include: { recruiterProfile: true }
-      });
-      if (requestedRole === "RECRUITER" && user.recruiterProfile) {
-        await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
-      }
-      const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-      await sendWelcomeEmail(email, name, user.role);
-    }
-    const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
-    const token = signToken(user.id, user.role);
-    res.status(200).json({
-      status: "success",
-      token,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          recruiterTier
-        }
-      }
     });
   } catch (err) {
     next(err);
@@ -556,8 +535,215 @@ var updateMyAvatar = async (req, res, next) => {
   }
 };
 
-// server/middleware/auth.middleware.ts
+// server/controllers/googleAuth.controller.ts
+import crypto4 from "crypto";
 import jwt2 from "jsonwebtoken";
+import passport2 from "passport";
+
+// server/services/oauth.service.ts
+init_prisma();
+import crypto3 from "crypto";
+var PROVIDER = "google";
+var slugify2 = (name) => {
+  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return `${base || "company"}-${crypto3.randomBytes(3).toString("hex")}`;
+};
+async function findOrCreateUserFromGoogle(identity, requestedRole) {
+  const existingAccount = await prisma_default.account.findUnique({
+    where: {
+      provider_providerAccountId: {
+        provider: PROVIDER,
+        providerAccountId: identity.providerAccountId
+      }
+    },
+    include: { user: true }
+  });
+  if (existingAccount) {
+    return { user: existingAccount.user, outcome: "returning" };
+  }
+  const existingUser = await prisma_default.user.findUnique({
+    where: { email: identity.email }
+  });
+  if (existingUser) {
+    if (!identity.emailVerified) {
+      throw new Error(
+        "An account already exists with this email. Sign in with your password, or verify this address with Google before linking."
+      );
+    }
+    await prisma_default.account.create({
+      data: {
+        userId: existingUser.id,
+        provider: PROVIDER,
+        providerAccountId: identity.providerAccountId,
+        providerEmail: identity.email
+      }
+    });
+    return { user: existingUser, outcome: "linked_existing" };
+  }
+  const user = await prisma_default.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        email: identity.email,
+        // No local password: the column is nullable precisely so this stays
+        // honest rather than storing an unusable placeholder hash.
+        password: null,
+        role: requestedRole,
+        status: "ACTIVE",
+        emailVerified: identity.emailVerified,
+        firstName: identity.firstName || void 0,
+        lastName: identity.lastName || void 0,
+        candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : void 0,
+        recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : void 0
+      },
+      include: { recruiterProfile: true }
+    });
+    await tx.account.create({
+      data: {
+        userId: created.id,
+        provider: PROVIDER,
+        providerAccountId: identity.providerAccountId,
+        providerEmail: identity.email
+      }
+    });
+    if (requestedRole === "RECRUITER" && created.recruiterProfile) {
+      await tx.company.create({
+        data: {
+          name: "My Company",
+          slug: slugify2("My Company"),
+          plan: "FREE",
+          members: {
+            create: { role: "OWNER", recruiter: { connect: { id: created.recruiterProfile.id } } }
+          }
+        }
+      });
+    }
+    return created;
+  });
+  return { user, outcome: "created" };
+}
+
+// server/controllers/googleAuth.controller.ts
+var STATE_COOKIE = "dl_oauth_state";
+var HANDOFF_COOKIE = "dl_oauth_handoff";
+var isProduction = () => process.env.NODE_ENV === "production";
+var cookieOptions = (maxAgeMs) => ({
+  httpOnly: true,
+  secure: isProduction(),
+  sameSite: "lax",
+  maxAge: maxAgeMs,
+  path: "/"
+});
+var failRedirect = (res, code) => res.redirect(`${getFrontendUrl()}/auth/callback?error=${encodeURIComponent(code)}`);
+var googleAuthStart = (req, res, next) => {
+  if (!isGoogleOAuthConfigured()) {
+    return next(new AppError(getGoogleConfigError() ?? "Google sign-in is unavailable.", 503));
+  }
+  const requestedRole = req.query.role === "employer" ? "RECRUITER" : "CANDIDATE";
+  const nonce = crypto4.randomBytes(24).toString("hex");
+  const state = jwt2.sign({ nonce, role: requestedRole }, getJwtSecret(), { expiresIn: "10m" });
+  res.cookie(STATE_COOKIE, nonce, cookieOptions(10 * 60 * 1e3));
+  passport2.authenticate("google", {
+    session: false,
+    scope: ["profile", "email"],
+    state
+  })(req, res, next);
+};
+var googleAuthCallback = (req, res, next) => {
+  if (!isGoogleOAuthConfigured()) {
+    return failRedirect(res, "not_configured");
+  }
+  const stateToken = typeof req.query.state === "string" ? req.query.state : "";
+  const cookieNonce = req.cookies?.[STATE_COOKIE];
+  res.clearCookie(STATE_COOKIE, { path: "/" });
+  let stateRole = "CANDIDATE";
+  try {
+    const decoded = jwt2.verify(stateToken, getJwtSecret());
+    if (!cookieNonce || decoded.nonce !== cookieNonce) {
+      console.warn("Google OAuth: state nonce mismatch \u2014 possible CSRF, rejecting");
+      return failRedirect(res, "invalid_state");
+    }
+    stateRole = decoded.role === "RECRUITER" ? "RECRUITER" : "CANDIDATE";
+  } catch {
+    console.warn("Google OAuth: state token invalid or expired, rejecting");
+    return failRedirect(res, "invalid_state");
+  }
+  passport2.authenticate(
+    "google",
+    { session: false },
+    async (err, identity, info) => {
+      try {
+        if (err) {
+          console.error("Google OAuth: provider error \u2014", err.message);
+          return failRedirect(res, "provider_error");
+        }
+        if (!identity) {
+          console.warn("Google OAuth: no identity returned \u2014", info?.message ?? "cancelled by user");
+          return failRedirect(res, info?.message ? "no_email" : "cancelled");
+        }
+        const { user, outcome } = await findOrCreateUserFromGoogle(identity, stateRole);
+        console.info(
+          `Google OAuth: ${outcome} \u2014 user ${user.id} (${user.role})`
+        );
+        const token = jwt2.sign({ id: user.id, role: user.role }, getJwtSecret(), {
+          expiresIn: "30d"
+        });
+        res.cookie(HANDOFF_COOKIE, token, cookieOptions(60 * 1e3));
+        return res.redirect(`${getFrontendUrl()}/auth/callback`);
+      } catch (error) {
+        const isLinkingRefusal = error?.message?.includes("already exists with this email");
+        console.error("Google OAuth: callback failed \u2014", error?.message);
+        return failRedirect(res, isLinkingRefusal ? "email_in_use" : "server_error");
+      }
+    }
+  )(req, res, next);
+};
+var googleAuthSession = async (req, res, next) => {
+  try {
+    const token = req.cookies?.[HANDOFF_COOKIE];
+    res.clearCookie(HANDOFF_COOKIE, { path: "/" });
+    if (!token) {
+      return next(new AppError("No pending Google sign-in. Please try again.", 401));
+    }
+    let decoded;
+    try {
+      decoded = jwt2.verify(token, getJwtSecret());
+    } catch {
+      return next(new AppError("Your sign-in expired. Please try again.", 401));
+    }
+    const prisma2 = (await Promise.resolve().then(() => (init_prisma(), prisma_exports))).default;
+    const user = await prisma2.user.findUnique({ where: { id: decoded.id } });
+    if (!user) {
+      return next(new AppError("Account no longer exists.", 401));
+    }
+    const recruiterTier = user.role === "RECRUITER" ? await getRecruiterPlan(user.id) : void 0;
+    res.status(200).json({
+      status: "success",
+      token,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          recruiterTier: recruiterTier === "PREMIUM" ? "paid" : recruiterTier === "CORPORATE" ? "corporate" : recruiterTier ? "free" : void 0
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var googleAuthStatus = (_req, res) => {
+  const reason = getGoogleConfigError();
+  res.status(200).json({
+    status: "success",
+    data: { googleSignInReady: reason === null, reason }
+  });
+};
+
+// server/middleware/auth.middleware.ts
+import jwt3 from "jsonwebtoken";
 var protect = (req, res, next) => {
   let token;
   if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
@@ -567,7 +753,7 @@ var protect = (req, res, next) => {
     return next(new AppError("Not authorized to access this route", 401));
   }
   try {
-    const decoded = jwt2.verify(token, getJwtSecret());
+    const decoded = jwt3.verify(token, getJwtSecret());
     req.user = decoded;
     next();
   } catch (err) {
@@ -623,7 +809,10 @@ var avatarUpload = multer({
 var router = Router();
 router.post("/register", register);
 router.post("/login", login);
-router.post("/google", googleAuth);
+router.get("/google", googleAuthStart);
+router.get("/google/callback", googleAuthCallback);
+router.post("/google/session", googleAuthSession);
+router.get("/google/status", googleAuthStatus);
 router.get("/me", protect, getMe);
 router.patch("/me/avatar", protect, avatarUpload.single("avatar"), updateMyAvatar);
 var auth_routes_default = router;
@@ -632,10 +821,11 @@ var auth_routes_default = router;
 import { Router as Router2 } from "express";
 
 // server/controllers/job.controller.ts
-import crypto3 from "crypto";
-var slugify2 = (title) => {
+init_prisma();
+import crypto5 from "crypto";
+var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto3.randomBytes(3).toString("hex");
+  const suffix = crypto5.randomBytes(3).toString("hex");
   return `${base || "job"}-${suffix}`;
 };
 var getAllJobs = async (req, res, next) => {
@@ -806,7 +996,7 @@ var createJob = async (req, res, next) => {
     const job = await prisma_default.job.create({
       data: {
         title,
-        slug: slugify2(title),
+        slug: slugify3(title),
         description,
         location,
         wilaya,
@@ -991,6 +1181,7 @@ var job_routes_default = router2;
 import { Router as Router3 } from "express";
 
 // server/controllers/category.controller.ts
+init_prisma();
 var getAllCategories = async (_req, res, next) => {
   try {
     const categories = await prisma_default.jobCategory.findMany({
@@ -1077,7 +1268,14 @@ var category_routes_default = router3;
 // server/routes/application.routes.ts
 import { Router as Router4 } from "express";
 
+// server/controllers/application.controller.ts
+init_prisma();
+
+// server/services/aiAnalysis.service.ts
+init_prisma();
+
 // server/services/candidateScore.service.ts
+init_prisma();
 var CandidateScoreService = class {
   constructor() {
     // ============================================================
@@ -1650,6 +1848,7 @@ var CandidateScoreService = class {
 var candidateScore_service_default = new CandidateScoreService();
 
 // server/services/preselection.service.ts
+init_prisma();
 import { PreselectionStatus } from "@prisma/client";
 var PreselectionService = class {
   constructor() {
@@ -2958,6 +3157,7 @@ var contact_routes_default = router5;
 import { Router as Router6 } from "express";
 
 // server/controllers/admin.controller.ts
+init_prisma();
 var getAllCompanies = async (req, res, next) => {
   try {
     const companies = await prisma_default.company.findMany({
@@ -3523,6 +3723,7 @@ var preselection_routes_default = router7;
 import express from "express";
 
 // server/services/oralPresentation.service.ts
+init_prisma();
 import { OralPresentationStatus } from "@prisma/client";
 var OralPresentationService = class {
   /**
@@ -3997,6 +4198,7 @@ var oralPresentation_routes_default = router8;
 import express2 from "express";
 
 // server/services/quiz.service.ts
+init_prisma();
 import { QuizStatus } from "@prisma/client";
 
 // server/services/ai/quiz.ai.ts
@@ -4737,6 +4939,7 @@ var aiAnalysis_routes_default = router10;
 import express3 from "express";
 
 // server/controllers/candidateProfile.controller.ts
+init_prisma();
 var uploadCV = async (req, res, next) => {
   try {
     const file = req.file;
@@ -5208,6 +5411,7 @@ var candidateScore_routes_default = router12;
 import { Router as Router10 } from "express";
 
 // server/controllers/notification.controller.ts
+init_prisma();
 var getMyNotifications = async (req, res, next) => {
   try {
     if (!req.user) return next(new AppError("Not authorized", 401));
@@ -5260,7 +5464,7 @@ router13.patch("/:id/read", markNotificationRead);
 var notification_routes_default = router13;
 
 // server/app.ts
-dotenv2.config();
+dotenv3.config();
 if (!process.env.JWT_SECRET) {
   console.warn(
     "\u26A0\uFE0F  JWT_SECRET is not set. Falling back to an insecure default \u2014 set JWT_SECRET in your environment before deploying to production."
@@ -5307,6 +5511,13 @@ function createApp() {
     })
   );
   app2.use(express4.json());
+  app2.use(cookieParser());
+  app2.use(passport_default.initialize());
+  if (!configureGoogleStrategy()) {
+    console.warn(
+      "\u26A0\uFE0F  Google sign-in is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL). Email+password login is unaffected."
+    );
+  }
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1e3,
     limit: 20,

@@ -1,0 +1,10 @@
+# Dar L'emploi — https://www.darlemploi.dz
+
+User-agent: *
+Allow: /
+
+# The API returns JSON, never pages. Crawling it wastes budget and can expose
+# endpoint shapes in search results.
+Disallow: /api/
+
+Sitemap: https://www.darlemploi.dz/sitemap.xml

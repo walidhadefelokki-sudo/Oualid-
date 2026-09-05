@@ -3,6 +3,9 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import passport from "./config/passport";
+import { configureGoogleStrategy } from "./config/passport";
 import authRoutes from "./routes/auth.routes";
 import jobRoutes from "./routes/job.routes";
 import categoryRoutes from "./routes/category.routes";
@@ -87,6 +90,20 @@ export function createApp() {
   );
 
   app.use(express.json());
+
+  // OAuth uses two short-lived HttpOnly cookies (state nonce, token handoff),
+  // so the callback can be verified and the JWT delivered without ever
+  // putting it in a URL.
+  app.use(cookieParser());
+
+  // Passport performs the Google handshake only — no sessions. The app keeps
+  // its own stateless JWT, so passport.session() is deliberately not used.
+  app.use(passport.initialize());
+  if (!configureGoogleStrategy()) {
+    console.warn(
+      "⚠️  Google sign-in is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL). Email+password login is unaffected."
+    );
+  }
 
   // Brute-force protection on auth endpoints.
   // Note: express-rate-limit's default store is in-memory, which is

@@ -42,13 +42,15 @@ import {
   Instagram,
   Mail,
   Phone,
-  ShieldCheck
+  ShieldCheck,
+  ListChecks,
+  UserCheck
 } from 'lucide-react';
-import { db, auth, googleProvider } from './firebase';
-import { signInAnonymously, signInWithPopup, onAuthStateChanged as onFirebaseAuthStateChanged } from 'firebase/auth';
+import { db } from './firebase';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import Dashboard from './components/Dashboard';
 import DomainModal from './components/DomainModal';
+import GoogleAuthCallback from './components/GoogleAuthCallback';
 import categoryService, { JobCategory } from './services/category.service';
 import jobService, { PublicJob } from './services/job.service';
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -519,8 +521,6 @@ export default function App() {
     };
   };
 
-  const displayFeaturedJobs = featuredJobs.map(toCardJob);
-  const displayPartTimeJobs = partTimeJobs.map(toCardJob);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -528,6 +528,19 @@ export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard'>('landing');
   const [loginRole, setLoginRole] = useState<'user' | 'employer'>('user');
   const [language, setLanguage] = useState<Language>('fr');
+
+  // Must come after `language`: toCardJob reads it to localise the contract
+  // type and format salaries, so mapping any earlier throws a temporal-dead-
+  // zone error. It only surfaced once a featured/part-time job existed,
+  // because [].map() never invokes its callback.
+  // The newest featured posting becomes the "Offre du jour" spotlight; the
+  // grid below shows the rest. Splitting one list rather than fetching twice
+  // is what keeps the same job from appearing in both sections.
+  const spotlightJob = featuredJobs.length > 0 ? featuredJobs[0] : null;
+  const displaySpotlightJob = spotlightJob ? toCardJob(spotlightJob) : null;
+  const displayFeaturedJobs = featuredJobs.slice(1).map(toCardJob);
+  const displayPartTimeJobs = partTimeJobs.map(toCardJob);
+
   const [isDemo, setIsDemo] = useState(false);
   const [modalInitialRole, setModalInitialRole] = useState<'user' | 'employer'>('user');
   const [modalInitialStep, setModalInitialStep] = useState<'selection' | 'form'>('selection');
@@ -541,20 +554,8 @@ export default function App() {
     // Prevent multiple clicks
     if (loading) return;
     
-    // Sign into Firebase Auth anonymously for demo if not already
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch (err: any) {
-        console.error("Error signing into Firebase anonymously for demo:", err);
-        if (err.code === 'auth/admin-restricted-operation') {
-          console.warn("Anonymous auth is disabled in the Firebase console. Demo will continue in offline mode for Firebase features.");
-        }
-      }
-    }
-
     setUser({
-      uid: auth.currentUser?.uid || 'demo-candidate',
+      uid: 'demo-candidate',
       displayName: 'Amine Benali',
       email: 'amine.benali@example.dz',
       photoURL: 'https://i.pravatar.cc/150?u=amine',
@@ -571,20 +572,8 @@ export default function App() {
     // Prevent multiple clicks
     if (loading) return;
 
-    // Sign into Firebase Auth anonymously for demo if not already
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch (err: any) {
-        console.error("Error signing into Firebase anonymously for demo:", err);
-        if (err.code === 'auth/admin-restricted-operation') {
-          console.warn("Anonymous auth is disabled in the Firebase console. Demo will continue in offline mode for Firebase features.");
-        }
-      }
-    }
-
     setUser({
-      uid: auth.currentUser?.uid || 'demo-employer',
+      uid: 'demo-employer',
       displayName: 'Oualid Elhadef Elokki',
       email: 'oualidelhadefelokki@outlook.com',
       photoURL: 'https://i.pravatar.cc/150?u=oualid',
@@ -640,32 +629,17 @@ export default function App() {
     }, 1500);
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-
-      const { data } = await api.post('/auth/google', {
-        idToken,
-        role: loginRole,
-      });
-
-      localStorage.setItem('token', data.token);
-      setUser({
-        uid: data.data.user.id,
-        email: data.data.user.email,
-        displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
-        role: normalizeRole(data.data.user.role),
-        recruiterTier: data.data.user.recruiterTier,
-      });
-
-      setIsLoginOpen(false);
-      setIsAuthModalOpen(false);
-      setView('dashboard');
-    } catch (error) {
-      console.error("Error during Google Login:", error);
-      alert("Erreur lors de la connexion avec Google.");
-    }
+  /**
+   * Starts the Google OAuth redirect flow — the same one AuthModal uses.
+   *
+   * A full-page navigation to our backend, which redirects on to Google. The
+   * session is picked up afterwards by GoogleAuthCallback, so there is no
+   * success handling here: this function's last act is leaving the page.
+   */
+  const handleGoogleLogin = () => {
+    const apiBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+    const roleParam = loginRole === 'employer' ? 'employer' : 'candidate';
+    window.location.href = `${apiBase}/auth/google?role=${roleParam}`;
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -723,14 +697,12 @@ export default function App() {
     };
     testConnection();
 
-    // Bridge: sign into Firebase Auth anonymously (if not already signed
-    // in) so Firestore-backed features (e.g. invitation notifications)
-    // keep working, independent of how the user logged into our own API.
-    if (!auth.currentUser) {
-      signInAnonymously(auth).catch((err) => {
-        console.error("Error signing into Firebase anonymously:", err);
-      });
-    }
+    // Firebase anonymous sign-in was removed here. Authentication is handled
+    // entirely by our own API (email + password, and Google OAuth), so this
+    // call granted nothing the app relies on — it only emitted
+    // auth/configuration-not-found on every page load. Firestore-backed
+    // features must be governed by rules that permit the access they need,
+    // rather than by an unused anonymous session.
 
     // Restore session from our own backend using the JWT saved in
     // localStorage (set on login/signup/Google sign-in).
@@ -804,6 +776,30 @@ export default function App() {
           </div>
         </motion.div>
       </div>
+    );
+  }
+
+  // Google returns the browser to /auth/callback. There is no router in this
+  // app, so the path is matched here, ahead of every other view — the page
+  // must render before anything tries to read a session that does not exist
+  // yet. It exchanges the handoff cookie, then hands the session to the same
+  // code path the password login uses.
+  if (window.location.pathname === '/auth/callback') {
+    return (
+      <GoogleAuthCallback
+        language={language}
+        onAuthSuccess={({ user: u }) => {
+          setUser({
+            uid: u.id,
+            email: u.email,
+            displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+            role: normalizeRole(u.role),
+            recruiterTier: u.recruiterTier,
+          });
+          setView('dashboard');
+        }}
+        onFailure={() => setView('landing')}
+      />
     );
   }
 
@@ -1324,11 +1320,35 @@ export default function App() {
                 icon: <BarChart3 size={32} />,
                 color: "bg-indigo-50 text-indigo-600"
               },
-              { 
-                title: language === 'fr' ? "Notifications" : "تنبيهات", 
+              {
+                title: language === 'fr' ? "Notifications" : "تنبيهات",
                 desc: language === 'fr' ? "Alertes instantanées pour les nouvelles offres." : "تنبيهات فورية للعروض الجديدة.",
                 icon: <Bell size={32} />,
                 color: "bg-pink-50 text-pink-600"
+              },
+              {
+                title: language === 'fr' ? "Quiz d'orientation" : "اختبار توجيهي",
+                desc: language === 'fr'
+                  ? "Répondez à un quiz rapide pour découvrir les domaines et postes qui vous correspondent."
+                  : "أجب عن اختبار سريع لاكتشاف المجالات والوظائف التي تناسبك.",
+                icon: <ListChecks size={32} />,
+                color: "bg-teal-50 text-teal-600"
+              },
+              {
+                title: language === 'fr' ? "Présélection" : "الانتقاء الأولي",
+                desc: language === 'fr'
+                  ? "Les recruteurs peuvent présélectionner et shortlister les candidats directement depuis leurs candidatures."
+                  : "يمكن لأصحاب العمل انتقاء المرشحين مباشرة من الطلبات المستلمة.",
+                icon: <UserCheck size={32} />,
+                color: "bg-amber-50 text-amber-600"
+              },
+              {
+                title: language === 'fr' ? "Emplois à temps partiel" : "وظائف بدوام جزئي",
+                desc: language === 'fr'
+                  ? "Filtrez et postulez facilement aux offres d'emploi à temps partiel."
+                  : "صفِّ وقدّم بسهولة على عروض العمل بدوام جزئي.",
+                icon: <Clock size={32} />,
+                color: "bg-sky-50 text-sky-600"
               }
             ].map((feature, i) => (
               <motion.div 
@@ -1489,6 +1509,94 @@ export default function App() {
       {/* About Us to Featured Jobs Gradient Transition */}
       <div className="h-32 w-full bg-gradient-to-b from-white to-gray-50/30" />
 
+      {/* Offre du jour — a single recruiter posting given hero treatment.
+          Rendered only when a recruiter has actually promoted a job; there is
+          no placeholder, so the section simply does not exist otherwise. */}
+      {!featuredLoading && displaySpotlightJob && spotlightJob && (
+        <section className="bg-gray-50/30 pt-24 pb-8 px-6">
+          <div className="max-w-7xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              onClick={() => setSelectedJob(spotlightJob as any)}
+              className="group cursor-pointer relative overflow-hidden rounded-[3.5rem] bg-[#173E7D] text-white shadow-[0_40px_90px_-25px_rgba(23,62,125,0.55)]"
+            >
+              {/* Ambient shapes, purely decorative */}
+              <div className="pointer-events-none absolute -top-32 -right-24 h-96 w-96 rounded-full bg-[#F68D58]/20 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
+
+              <div className={`relative z-10 p-10 md:p-16 flex flex-col lg:flex-row lg:items-center gap-12 ${language === 'ar' ? 'lg:flex-row-reverse text-right' : ''}`}>
+
+                <div className="flex-1 min-w-0">
+                  <div className={`flex items-center gap-3 mb-8 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                    <span className="inline-flex items-center gap-2 bg-[#F68D58] text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.25em] shadow-lg">
+                      <Zap size={12} fill="currentColor" />
+                      {language === 'fr' ? 'Offre du jour' : 'عرض اليوم'}
+                    </span>
+                    <span className="text-blue-200/70 text-[10px] font-black uppercase tracking-[0.25em]">
+                      {language === 'fr' ? 'Publiée par un recruteur' : 'منشور من طرف صاحب عمل'}
+                    </span>
+                  </div>
+
+                  <h2 className="text-4xl md:text-6xl font-display font-black tracking-tighter leading-[1.05] mb-5 group-hover:text-[#F68D58] transition-colors duration-500">
+                    {displaySpotlightJob.title}
+                  </h2>
+
+                  <div className={`flex items-center gap-4 mb-8 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                      {displaySpotlightJob.logo ? (
+                        <img src={displaySpotlightJob.logo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <Building2 size={22} className="text-white/60" />
+                      )}
+                    </div>
+                    <p className="text-xl font-bold text-blue-100">{displaySpotlightJob.company}</p>
+                  </div>
+
+                  {displaySpotlightJob.description && (
+                    <p className="text-blue-100/75 text-lg font-light leading-relaxed max-w-2xl line-clamp-3">
+                      {displaySpotlightJob.description}
+                    </p>
+                  )}
+
+                  <div className={`flex flex-wrap items-center gap-3 mt-10 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                    <span className="px-5 py-2.5 bg-white/10 border border-white/10 rounded-full text-xs font-bold">
+                      {displaySpotlightJob.location}
+                    </span>
+                    <span className="px-5 py-2.5 bg-white/10 border border-white/10 rounded-full text-xs font-bold">
+                      {displaySpotlightJob.type}
+                    </span>
+                    <span className="px-5 py-2.5 bg-white/10 border border-white/10 rounded-full text-xs font-bold">
+                      {displaySpotlightJob.remote}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={`lg:w-72 shrink-0 lg:border-l lg:border-white/10 lg:pl-12 ${language === 'ar' ? 'lg:border-l-0 lg:border-r lg:pl-0 lg:pr-12' : ''}`}>
+                  <p className="text-[10px] font-black text-blue-200/60 uppercase tracking-[0.25em] mb-2">
+                    {language === 'fr' ? 'Rémunération' : 'الأجر'}
+                  </p>
+                  <p className="text-3xl font-black tracking-tight mb-10">{displaySpotlightJob.salary}</p>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedJob(spotlightJob as any);
+                    }}
+                    className={`w-full bg-white text-[#173E7D] px-8 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-[#F68D58] hover:text-white transition-all duration-500 flex items-center justify-center gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}
+                  >
+                    {language === 'fr' ? "Voir l'offre" : 'عرض الوظيفة'}
+                    <ChevronRight size={18} className={language === 'ar' ? 'rotate-180' : ''} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+      )}
+
       {/* Featured Jobs */}
       <section className="bg-gray-50/30 py-40 px-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/2 h-full bg-blue-50/20 -z-10 blur-3xl rounded-full" />
@@ -1535,7 +1643,10 @@ export default function App() {
             </div>
           )}
 
-          {!featuredLoading && !featuredError && displayFeaturedJobs.length === 0 && (
+          {/* Only when nothing is featured at all. With a single featured job
+              the spotlight above shows it and this grid is legitimately
+              empty — saying "aucune offre" there would contradict it. */}
+          {!featuredLoading && !featuredError && featuredJobs.length === 0 && (
             <div className="bg-white rounded-[3rem] border-2 border-gray-100 p-16 text-center">
               <p className="text-2xl font-black text-[#173E7D] mb-2">
                 {language === 'fr' ? 'Aucune offre à la une' : 'لا توجد عروض مميزة'}
@@ -1822,7 +1933,7 @@ export default function App() {
                 <li className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
                   <MapPin size={20} className="text-[#F68D58] shrink-0" />
                   <span>
-                    Saint Jean, Constantine, Algéri
+                    Saint Jean, Constantine, Algérie
                   </span>
                 </li>
               </ul>

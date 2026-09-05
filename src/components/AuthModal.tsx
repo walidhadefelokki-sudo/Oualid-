@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
-import { signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
 import api from '../services/api';
 import Logo from './Logo';
 
@@ -25,6 +23,9 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
   const [role, setRole] = useState<'user' | 'employer'>(initialRole || 'user');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Separate from `loading` so the Google button can show its own state while
+  // the browser navigates away, without disabling the email/password form.
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Sync state if props change (when modal is opened)
@@ -105,27 +106,25 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
     }
   }[language];
 
-  const handleGoogleLogin = async () => {
+  /**
+   * Starts the Google OAuth redirect flow.
+   *
+   * This is a full-page navigation to our own backend, not an API call: the
+   * backend redirects on to Google, and Google returns to our callback. The
+   * chosen role travels as a query parameter so the account is created with
+   * the same role the visitor picked here; the backend re-signs it into the
+   * OAuth state so it cannot be tampered with in transit.
+   */
+  const handleGoogleLogin = () => {
     setError(null);
-    setLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
+    setGoogleLoading(true);
 
-      const { data } = await api.post('/auth/google', {
-        idToken,
-        role,
-        companyName: role === 'employer' ? formData.companyName : undefined,
-      });
+    // Uses the configured API base rather than a hard-coded host, so the same
+    // code works in dev, preview and production.
+    const apiBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+    const roleParam = role === 'employer' ? 'employer' : 'candidate';
 
-      localStorage.setItem('token', data.token);
-      onAuthSuccess?.({ token: data.token, user: data.data.user });
-      onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || t.error);
-    } finally {
-      setLoading(false);
-    }
+    window.location.href = `${apiBase}/auth/google?role=${roleParam}`;
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -388,13 +387,31 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                       </div>
                     </div>
 
-                    <button 
+                    <button
                       type="button"
                       onClick={handleGoogleLogin}
-                      className="w-full flex items-center justify-center gap-3 bg-white border border-gray-100 text-[#173E7D] py-2.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all shadow-sm group"
+                      disabled={googleLoading || loading}
+                      className="w-full flex items-center justify-center gap-3 bg-white border border-gray-100 text-[#173E7D] py-2.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all shadow-sm group disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                      {t.google}
+                      {googleLoading ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-[#173E7D]/25 border-t-[#173E7D] rounded-full animate-spin" />
+                          {language === 'ar' ? 'جارٍ التوجيه إلى Google…' : 'Redirection vers Google…'}
+                        </>
+                      ) : (
+                        <>
+                          {/* Inline SVG rather than fetching google.com/favicon.ico:
+                              no third-party request on the login screen, and it
+                              stays sharp at any size. */}
+                          <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1Z" />
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+                            <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84Z" />
+                            <path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.46 14.97.5 12 .5A11 11 0 0 0 2.18 7.05l3.66 2.84c.87-2.6 3.3-4.14 6.16-4.14Z" />
+                          </svg>
+                          {t.google}
+                        </>
+                      )}
                     </button>
                   </form>
                 </div>

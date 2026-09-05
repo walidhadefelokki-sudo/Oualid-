@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, MapPin, Briefcase, Clock, Building2, ChevronRight, AlertCircle, Search } from 'lucide-react';
 import categoryService, { CategoryDetail, CategoryJob } from '../services/category.service';
+import { getDomainRoles } from '../constants/domainRoles';
 
 interface DomainModalProps {
   /** Sector slug ("it", "health", …). Null closes the modal. */
@@ -38,6 +39,8 @@ export default function DomainModal({ slug, label, language, onClose }: DomainMo
   const [data, setData] = useState<CategoryDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const roles = slug ? getDomainRoles(slug, language) : [];
 
   // Reload whenever a different domain is opened. `cancelled` guards against a
   // slow response for a domain the user has already navigated away from
@@ -136,6 +139,29 @@ export default function DomainModal({ slug, label, language, onClose }: DomainMo
 
             {/* Body */}
             <div className="p-6 md:p-10 max-h-[55vh] overflow-y-auto">
+
+              {/* Which jobs exist in this field. Editorial reference content,
+                  so it renders immediately and stays useful even for a domain
+                  with no live openings — which is most of them at launch. */}
+              {roles.length > 0 && (
+                <section className="mb-8">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.25em] mb-4">
+                    {t('Métiers de ce domaine', 'مهن هذا المجال')}
+                  </p>
+                  <div className={`flex flex-wrap gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    {roles.map((role) => (
+                      <span
+                        key={role}
+                        className="px-4 py-2.5 bg-gray-50 text-[#173E7D] text-[12.5px] font-bold rounded-xl border border-gray-100"
+                      >
+                        {role}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="h-px bg-gray-100 mt-8" />
+                </section>
+              )}
+
               {loading && (
                 <div className="py-16 flex flex-col items-center gap-4 text-gray-400">
                   <div className="w-10 h-10 border-4 border-gray-100 border-t-[#F68D58] rounded-full animate-spin" />

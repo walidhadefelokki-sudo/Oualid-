@@ -5,7 +5,15 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// The previous project (gen-lang-client-…) stored Firestore in a named,
+// AI-Studio-generated database, so its id had to be passed explicitly. The
+// dar-l-emploi project uses the standard "(default)" database, which is what
+// getFirestore(app) selects. Keep honouring an explicit id when the config
+// carries one, so pointing at a named database later needs no code change.
+export const db = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {

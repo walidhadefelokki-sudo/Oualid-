@@ -6,7 +6,6 @@ import { AppError } from "../middleware/error.middleware";
 import { sendWelcomeEmail } from "../utils/email";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
-import { verifyFirebaseIdToken } from "../utils/firebaseAdmin";
 import crypto from "crypto";
 import { getJwtSecret } from "../utils/jwt";
 
@@ -64,8 +63,19 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
   try {
     const { email, password, role, firstName, lastName, companyName, plan } = req.body;
 
+    // Covers the "signed up with Google first, now registering" case: the
+    // unique email constraint already prevents a duplicate User, but the
+    // message should point at the way in rather than look like a dead end.
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
+      if (existingUser.password === null) {
+        return next(
+          new AppError(
+            "This email is already registered with Google. Please continue with Google.",
+            400
+          )
+        );
+      }
       return next(new AppError("Email already in use", 400));
     }
 
@@ -127,6 +137,19 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     const user = await prisma.user.findUnique({ where: { email } });
 
+    // A Google-only account has no local password. Say so plainly instead of
+    // "incorrect password", which would send the user round in circles trying
+    // credentials that were never set. This leaks nothing an attacker could
+    // not learn by clicking "Continue with Google" themselves.
+    if (user && user.password === null) {
+      return next(
+        new AppError(
+          "This account uses Google sign-in. Please continue with Google.",
+          401
+        )
+      );
+    }
+
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return next(new AppError("Incorrect email or password", 401));
     }
@@ -180,102 +203,6 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
     res.status(200).json({
       status: "success",
       data: { user: { ...user, recruiterTier } },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// Exchanges a Firebase Google-Sign-In ID token for our own session JWT.
-// The frontend signs the user in with Firebase (signInWithPopup), gets an
-// ID token, and sends it here. We verify it server-side, then find or
-// create a matching User row.
-export const googleAuth = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { idToken, role, companyName } = req.body;
-
-    if (!idToken) {
-      return next(new AppError("Missing idToken", 400));
-    }
-
-    // A failure here is almost always configuration (missing or mismatched
-    // service account), not a bad token. Return 401 with the specific reason
-    // rather than letting it fall through as an opaque 500.
-    let decoded;
-    try {
-      decoded = await verifyFirebaseIdToken(idToken);
-    } catch (verifyError: any) {
-      console.error("Google ID token verification failed:", verifyError?.message);
-      return next(
-        new AppError(
-          verifyError?.message || "Could not verify your Google sign-in.",
-          401
-        )
-      );
-    }
-
-    const email = decoded.email;
-
-    if (!email) {
-      return next(new AppError("Google account has no email", 400));
-    }
-
-    let user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      const requestedRole = role === "employer" ? "RECRUITER" : "CANDIDATE";
-      const fullName = decoded.name || "";
-      const [firstName, ...rest] = fullName.split(" ");
-      const lastName = rest.join(" ");
-
-      // Google-authenticated users don't set a password; store a random
-      // hash as a placeholder so the column's NOT NULL constraint is met.
-      const randomPassword = crypto.randomBytes(32).toString("hex");
-      const hashedPassword = await bcrypt.hash(randomPassword, 12);
-
-      user = await prisma.user.create({
-        data: {
-          email,
-          password: hashedPassword,
-          role: requestedRole,
-          status: "ACTIVE",
-          emailVerified: decoded.email_verified ?? false,
-          firstName: firstName || undefined,
-          lastName: lastName || undefined,
-          candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : undefined,
-          recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : undefined,
-        },
-        include: { recruiterProfile: true },
-      });
-
-      if (requestedRole === "RECRUITER" && user.recruiterProfile) {
-        await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
-      }
-
-      const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-      await sendWelcomeEmail(email, name, user.role);
-    }
-
-    const recruiterTier =
-      user.role === "RECRUITER"
-        ? mapPlanToTier(await getRecruiterPlan(user.id))
-        : undefined;
-
-    const token = signToken(user.id, user.role);
-
-    res.status(200).json({
-      status: "success",
-      token,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          recruiterTier,
-        },
-      },
     });
   } catch (err) {
     next(err);

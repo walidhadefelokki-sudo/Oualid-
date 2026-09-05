@@ -10,9 +10,17 @@ interface JwtPayload {
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
+    /**
+     * The authenticated principal attached by `protect`.
+     *
+     * Declared as `Express.User` rather than by re-typing `Request.user`:
+     * @types/passport owns that property and types it as `Express.User`, so a
+     * competing `Request` augmentation is silently overridden and every
+     * `req.user.id` in the codebase stops type-checking. Widening the User
+     * interface instead means passport and our own middleware agree on one
+     * shape, and no call site has to change.
+     */
+    interface User extends JwtPayload {}
   }
 }
 

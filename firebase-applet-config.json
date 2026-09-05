@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0423382332",
-  "appId": "1:908353894959:web:393044982b1ad3aa3ce4da",
-  "apiKey": "AIzaSyBTkFUT5VcmIaG-d1YZJvhP_BeubfNpc04",
-  "authDomain": "gen-lang-client-0423382332.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-4193da14-151a-4361-a254-18b799f2a15c",
-  "storageBucket": "gen-lang-client-0423382332.firebasestorage.app",
-  "messagingSenderId": "908353894959",
-  "measurementId": ""
+  "projectId": "dar-l-emploi",
+  "appId": "1:342936265899:web:a50ce07a99c32b7f8ec3ee",
+  "apiKey": "AIzaSyAZ7AgS48LJgFpYAGy9h-xF3mTzc13bEt0",
+  "authDomain": "dar-l-emploi.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "dar-l-emploi.firebasestorage.app",
+  "messagingSenderId": "342936265899",
+  "measurementId": "G-VR7FYC07NX"
 }

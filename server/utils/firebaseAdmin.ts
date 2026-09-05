@@ -43,9 +43,14 @@ if (!admin.apps.length) {
         credential: admin.credential.cert(serviceAccount),
       });
     } catch (err) {
-      initError =
-        "FIREBASE_SERVICE_ACCOUNT could not be parsed. It must be the full " +
-        "service-account JSON on a single line.";
+      // Do not clobber a project mismatch already diagnosed above: that names
+      // both projects and tells the operator exactly what to change, whereas
+      // a parse failure here is often just its downstream symptom.
+      if (!initError) {
+        initError =
+          "FIREBASE_SERVICE_ACCOUNT could not be parsed. It must be the full " +
+          "service-account JSON on a single line.";
+      }
       console.error(`❌ ${initError}`, err);
     }
   }
@@ -80,5 +85,9 @@ export async function verifyFirebaseIdToken(idToken: string) {
 
 /** True when Google sign-in is usable. Lets routes report status without throwing. */
 export const isFirebaseReady = () => admin.apps.length > 0 && !initError;
+
+/** Why Google sign-in is unavailable, or null when it is working. */
+export const getFirebaseInitError = () =>
+  isFirebaseReady() ? null : initError ?? "Firebase Admin is not initialized.";
 
 export default admin;

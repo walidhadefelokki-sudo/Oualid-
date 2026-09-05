@@ -110,7 +110,6 @@ enum AIAnalysisStatus {
 }
 
 enum QuizStatus {
-
   PENDING
 
   GENERATED
@@ -123,7 +122,6 @@ enum QuizStatus {
 }
 
 enum QuizDifficulty {
-
   EASY
 
   MEDIUM
@@ -170,7 +168,7 @@ enum PaymentStatus {
 }
 
 enum PaymentMethod {
-  CARD 
+  CARD
   BANK_TRANSFER
   CCP
   CASH
@@ -383,24 +381,24 @@ model AIAnalysis {
 //////////////////////////////////////////////////////////
 
 model Quiz {
-  id            String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  candidateId   String   @unique
-  candidate     User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId String @unique
+  candidate   User   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
-  status        QuizStatus @default(PENDING)
+  status QuizStatus @default(PENDING)
 
-  generatedAt   DateTime @default(now())
-  submittedAt   DateTime?
+  generatedAt DateTime  @default(now())
+  submittedAt DateTime?
 
-  aiModel       String?
+  aiModel String?
 
-  questions     QuizQuestion[]
+  questions QuizQuestion[]
 
-  attempt       QuizAttempt?
+  attempt QuizAttempt?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 //////////////////////////////////////////////////////////
@@ -408,23 +406,22 @@ model Quiz {
 //////////////////////////////////////////////////////////
 
 model QuizQuestion {
+  id String @id @default(cuid())
 
-  id          String @id @default(cuid())
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  quizId      String
-  quiz        Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  order Int
 
-  order       Int
+  question String @db.Text
 
-  question    String @db.Text
+  skill String?
 
-  skill       String?
+  difficulty QuizDifficulty @default(MEDIUM)
 
-  difficulty  QuizDifficulty @default(MEDIUM)
+  answers QuizAnswer[]
 
-  answers     QuizAnswer[]
-
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 //////////////////////////////////////////////////////////
@@ -432,24 +429,23 @@ model QuizQuestion {
 //////////////////////////////////////////////////////////
 
 model QuizAttempt {
+  id String @id @default(cuid())
 
-  id          String @id @default(cuid())
-
-  quizId      String @unique
-  quiz        Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId String @unique
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   candidateId String
-  candidate   User @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidate   User   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
-  aiScore         Float?
-  recruiterScore  Float?
+  aiScore        Float?
+  recruiterScore Float?
 
-  feedback        String? @db.Text
+  feedback String? @db.Text
 
-  submittedAt     DateTime?
+  submittedAt DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   answers QuizAnswer[]
 }
@@ -461,18 +457,17 @@ enum QuizAttemptStatus {
 }
 
 model QuizAnswer {
+  id String @id @default(cuid())
 
-  id          String @id @default(cuid())
+  attemptId String
+  attempt   QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
-  attemptId   String
-  attempt     QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  questionId  String
-  question    QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answer String @db.Text
 
-  answer      String @db.Text
-
-  aiScore     Float?
+  aiScore Float?
 
   recruiterScore Float?
 
@@ -481,27 +476,25 @@ model QuizAnswer {
   createdAt DateTime @default(now())
 }
 
-
-
 //////////////////////////////////////////////////////////
 // ORAL PRESENTATION
 //////////////////////////////////////////////////////////
 
 model OralPresentation {
-  id            String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  candidateId   String   @unique
-  candidate     CandidateProfile @relation(fields: [candidateId], references: [id])
+  candidateId String           @unique
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id])
 
-  videoId       String?
-  video         FileAsset? @relation(fields: [videoId], references: [id])
+  videoId String?
+  video   FileAsset? @relation(fields: [videoId], references: [id])
 
   recruiterScore Float?
 
-  status        OralPresentationStatus
+  status OralPresentationStatus
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 //////////////////////////////////////////////////////////
@@ -702,11 +695,11 @@ model Application {
 
   preselections Preselection[]
 
-  appliedAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  aianalysis       AIAnalysis?
-  interviews       Interview[]
-  candidateScore   CandidateScore?
+  appliedAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  aianalysis     AIAnalysis?
+  interviews     Interview[]
+  candidateScore CandidateScore?
 
   @@index([candidateId])
   @@index([recruiterId])
@@ -769,7 +762,12 @@ model FileAsset {
 model User {
   id            String        @id @default(uuid())
   email         String        @unique
-  password      String
+  // Nullable since Google-only accounts have no local password. Storing a
+  // random or predictable placeholder would make a password-shaped value that
+  // is never a real credential; null states plainly that this user signs in
+  // through a provider. `login` rejects an account with no password and points
+  // the user at the provider instead.
+  password      String?
   role          Role          @default(CANDIDATE)
   status        AccountStatus @default(PENDING)
   emailVerified Boolean       @default(false)
@@ -794,6 +792,7 @@ model User {
 
   refreshTokens  RefreshToken[]
   sessions       UserSession[]
+  accounts       Account[]
   notifications  Notification[]
   auditLogs      AuditLog[]
   supportTickets SupportTicket[]
@@ -869,7 +868,7 @@ model CandidateProfile {
   applications      Application[]
   savedJobs         SavedJob[]
   favoriteCompanies FavoriteCompany[]
-  oralPresentation OralPresentation?
+  oralPresentation  OralPresentation?
 
   @@index([userId])
 }
@@ -978,4 +977,35 @@ enum PreselectionStatus {
   PENDING
   SHORTLISTED
   REJECTED
+}
+
+/// A third-party identity linked to a User (currently Google).
+///
+/// Kept separate from User so one person can sign in several ways without
+/// duplicate identities: the User row is the application's single identity,
+/// and each Account row records one external provider that maps to it.
+/// Adding another provider later needs no schema change.
+model Account {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Provider key, e.g. "google".
+  provider          String
+  /// The provider's own immutable id for this user (Google's `sub`).
+  /// Deliberately not the email: an email can be reassigned, `sub` cannot.
+  providerAccountId String
+
+  /// Email reported by the provider at link time, kept for auditing only —
+  /// never used to authenticate.
+  providerEmail String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Stops the same provider identity being attached to two Users, which is
+  /// the database-level guarantee behind duplicate-account prevention.
+  @@unique([provider, providerAccountId])
+  @@index([userId])
 }

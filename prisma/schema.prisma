@@ -747,6 +747,10 @@ model FileAsset {
   url       String
   provider  String
   publicId  String?
+  /// The name the candidate's own file had, kept for display only. Never
+  /// used to build a storage path — an upload-supplied name is how path
+  /// traversal and object overwrites happen.
+  fileName  String?
   mimeType  String?
   extension String?
   size      Int?

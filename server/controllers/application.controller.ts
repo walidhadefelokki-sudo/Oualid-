@@ -123,7 +123,24 @@ export const getJobApplications = async (req: Request, res: Response, next: Next
     const applications = await prisma.application.findMany({
       where: { jobId },
       include: {
-        candidate: { include: { user: true } },
+        candidate: {
+          include: {
+            // Selected explicitly rather than `user: true`, which returned the
+            // whole User row — including the bcrypt password hash — to every
+            // recruiter who opened a job's applicants. avatarUrl is also
+            // resolved here; the client was reading a field that never existed.
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                avatar: { select: { url: true } },
+              },
+            },
+          },
+        },
         cv: true,
         aianalysis: true,
       },
@@ -155,6 +172,13 @@ export const getJobApplications = async (req: Request, res: Response, next: Next
 
     const enriched = applications.map((application) => ({
       ...application,
+      candidate: {
+        ...application.candidate,
+        user: {
+          ...application.candidate.user,
+          avatarUrl: application.candidate.user.avatar?.url ?? null,
+        },
+      },
       quiz: quizByUserId.get(application.candidate.userId) ?? null,
       oralPresentation:
         presentationByCandidateId.get(application.candidateId) ?? null,

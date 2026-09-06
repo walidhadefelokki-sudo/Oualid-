@@ -8,17 +8,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "job-portal-cvs",
-    allowed_formats: ["pdf", "doc", "docx"],
-    resource_type: "auto",
-  } as any,
-});
-
-export const upload = multer({ storage: storage });
-
+// NOTE: CVs are no longer stored here. They contain personal data and now
+// live in a private Supabase Storage bucket, read only through short-lived
+// signed URLs — see server/utils/supabaseStorage.ts. Cloudinary keeps the
+// public media: avatars, company logos and oral presentations.
 
 const videoStorage = new CloudinaryStorage({
   cloudinary,

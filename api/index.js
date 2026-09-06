@@ -801,15 +801,6 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
-var storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "job-portal-cvs",
-    allowed_formats: ["pdf", "doc", "docx"],
-    resource_type: "auto"
-  }
-});
-var upload = multer({ storage });
 var videoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -2564,57 +2555,178 @@ function parseAnalysis(response) {
 }
 
 // server/services/cvExtraction.service.ts
-import axios from "axios";
 import pdfParse from "pdf-parse-debugging-disabled";
 import mammoth from "mammoth";
-var CVExtractionService = class {
-  async extractTextFromCV(fileUrl) {
-    if (!fileUrl) {
-      throw new AppError("CV URL is missing.", 400);
+
+// server/services/cvFile.service.ts
+import axios from "axios";
+
+// server/utils/supabaseStorage.ts
+import { createClient } from "@supabase/supabase-js";
+import crypto6 from "crypto";
+var BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
+var SIGNED_URL_TTL_SECONDS = 300;
+var MAX_CV_BYTES = 10 * 1024 * 1024;
+var cachedClient = null;
+var getClient = () => {
+  if (cachedClient) return cachedClient;
+  const url = process.env.SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceRoleKey) {
+    throw new AppError(
+      "CV storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+      500
+    );
+  }
+  cachedClient = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+  return cachedClient;
+};
+var BUCKET_SETTINGS = {
+  public: false,
+  fileSizeLimit: MAX_CV_BYTES,
+  // Explicitly null, not omitted: updateBucket only changes the fields it is
+  // given, so leaving this out would silently preserve an allow-list set by an
+  // earlier version of this code.
+  allowedMimeTypes: null
+};
+var bucketReady = null;
+var ensureBucket = async () => {
+  if (bucketReady) return bucketReady;
+  bucketReady = (async () => {
+    const storage = getClient().storage;
+    const { error } = await storage.createBucket(BUCKET, BUCKET_SETTINGS);
+    if (!error) return;
+    if (!/already exists/i.test(error.message)) {
+      throw new AppError(`Could not prepare CV storage: ${error.message}`, 500);
     }
-    const response = await axios.get(fileUrl, {
-      responseType: "arraybuffer"
-    });
-    const buffer = Buffer.from(response.data);
-    const extension = this.getExtension(fileUrl);
+    const { error: updateError } = await storage.updateBucket(BUCKET, BUCKET_SETTINGS);
+    if (updateError) {
+      throw new AppError(
+        `Could not verify CV storage settings: ${updateError.message}`,
+        500
+      );
+    }
+  })();
+  try {
+    await bucketReady;
+  } catch (err) {
+    bucketReady = null;
+    throw err;
+  }
+};
+var uploadCvObject = async (params) => {
+  const { candidateProfileId, buffer, extension, mimeType } = params;
+  await ensureBucket();
+  const path = `${candidateProfileId}/${crypto6.randomUUID()}.${extension}`;
+  const { error } = await getClient().storage.from(BUCKET).upload(path, buffer, { contentType: mimeType, upsert: false });
+  if (error) {
+    throw new AppError(`CV upload failed: ${error.message}`, 502);
+  }
+  return path;
+};
+var createCvUploadTicket = async (params) => {
+  const { candidateProfileId, extension } = params;
+  await ensureBucket();
+  const path = `${candidateProfileId}/${crypto6.randomUUID()}.${extension}`;
+  const { data, error } = await getClient().storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error || !data) {
+    throw new AppError(
+      `Could not start the CV upload: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return { path, token: data.token, signedUrl: data.signedUrl };
+};
+var createSignedCvUrl = async (path, expiresIn = SIGNED_URL_TTL_SECONDS) => {
+  const { data, error } = await getClient().storage.from(BUCKET).createSignedUrl(path, expiresIn);
+  if (error || !data?.signedUrl) {
+    throw new AppError(
+      `Could not generate CV link: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return data.signedUrl;
+};
+var downloadCvObject = async (path) => {
+  const { data, error } = await getClient().storage.from(BUCKET).download(path);
+  if (error || !data) {
+    throw new AppError(
+      `Could not read CV from storage: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return Buffer.from(await data.arrayBuffer());
+};
+var removeCvObject = async (path) => {
+  try {
+    const { error } = await getClient().storage.from(BUCKET).remove([path]);
+    if (error) {
+      console.error(`CV cleanup failed for ${path}: ${error.message}`);
+    }
+  } catch (err) {
+    console.error(`CV cleanup failed for ${path}:`, err);
+  }
+};
+
+// server/services/cvFile.service.ts
+var SUPABASE_URL_SCHEME = "supabase://cvs/";
+var isPrivatelyStored = (asset) => asset.provider === "supabase";
+var getCvAccessUrl = async (asset) => {
+  if (!isPrivatelyStored(asset)) {
+    return asset.url;
+  }
+  if (!asset.publicId) {
+    throw new AppError("This CV is missing its storage reference.", 500);
+  }
+  return createSignedCvUrl(asset.publicId);
+};
+var getCvBuffer = async (asset) => {
+  if (isPrivatelyStored(asset)) {
+    if (!asset.publicId) {
+      throw new AppError("This CV is missing its storage reference.", 500);
+    }
+    return downloadCvObject(asset.publicId);
+  }
+  const response = await axios.get(asset.url, {
+    responseType: "arraybuffer"
+  });
+  return Buffer.from(response.data);
+};
+var getCvExtension = (asset) => {
+  if (asset.extension) return asset.extension.toLowerCase();
+  const source = asset.publicId || asset.url;
+  return source.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+};
+
+// server/services/cvExtraction.service.ts
+var CVExtractionService = class {
+  async extractTextFromAsset(asset) {
+    const extension = getCvExtension(asset);
+    const buffer = await getCvBuffer(asset);
     switch (extension) {
       case "pdf":
         return this.extractPdf(buffer);
       case "docx":
         return this.extractDocx(buffer);
-      default:
+      case "doc":
         throw new AppError(
-          `Unsupported CV format: ${extension}`,
+          "Text cannot be read from a .doc file. Please upload your CV as a PDF or DOCX to use this feature.",
           400
         );
+      default:
+        throw new AppError(`Unsupported CV format: ${extension}`, 400);
     }
   }
-  /**
-   * Extract text from PDF
-   */
   async extractPdf(buffer) {
     const result = await pdfParse(buffer);
     return this.cleanText(result.text);
   }
-  /**
-   * Extract text from DOCX
-   */
   async extractDocx(buffer) {
-    const result = await mammoth.extractRawText({
-      buffer
-    });
+    const result = await mammoth.extractRawText({ buffer });
     return this.cleanText(result.value);
   }
-  /**
-   * Get extension
-   */
-  getExtension(url) {
-    const clean = url.split("?")[0];
-    return clean.split(".").pop()?.toLowerCase() || "";
-  }
-  /**
-   * Clean extracted text
-   */
   cleanText(text) {
     return text.replace(/\r/g, "").replace(/\n{2,}/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
   }
@@ -2740,8 +2852,14 @@ var AIAnalysisService = class {
       });
     }
     try {
-      const cvText = await cvExtraction_service_default.extractTextFromCV(
-        application.cv.url
+      if (!application.cv) {
+        throw new AppError(
+          "This application has no CV attached, so it cannot be analysed.",
+          400
+        );
+      }
+      const cvText = await cvExtraction_service_default.extractTextFromAsset(
+        application.cv
       );
       const prompt = this.createPrompt(
         application.job.title,
@@ -3070,7 +3188,24 @@ var getJobApplications = async (req, res, next) => {
     const applications = await prisma_default.application.findMany({
       where: { jobId },
       include: {
-        candidate: { include: { user: true } },
+        candidate: {
+          include: {
+            // Selected explicitly rather than `user: true`, which returned the
+            // whole User row — including the bcrypt password hash — to every
+            // recruiter who opened a job's applicants. avatarUrl is also
+            // resolved here; the client was reading a field that never existed.
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                avatar: { select: { url: true } }
+              }
+            }
+          }
+        },
         cv: true,
         aianalysis: true
       },
@@ -3096,6 +3231,13 @@ var getJobApplications = async (req, res, next) => {
     );
     const enriched = applications.map((application) => ({
       ...application,
+      candidate: {
+        ...application.candidate,
+        user: {
+          ...application.candidate.user,
+          avatarUrl: application.candidate.user.avatar?.url ?? null
+        }
+      },
       quiz: quizByUserId.get(application.candidate.userId) ?? null,
       oralPresentation: presentationByCandidateId.get(application.candidateId) ?? null
     }));
@@ -4351,8 +4493,8 @@ var QuizService = class {
         400
       );
     }
-    const cvText = await cvExtraction_service_default.extractTextFromCV(
-      candidate.candidateProfile.resume.url
+    const cvText = await cvExtraction_service_default.extractTextFromAsset(
+      candidate.candidateProfile.resume
     );
     if (!cvText || cvText.trim().length < 50) {
       throw new AppError(
@@ -4971,41 +5113,210 @@ import express3 from "express";
 
 // server/controllers/candidateProfile.controller.ts
 init_prisma();
-var uploadCV = async (req, res, next) => {
-  try {
-    const file = req.file;
-    if (!file) {
-      return next(new AppError("Please upload a CV file.", 400));
+
+// server/middleware/cvUpload.middleware.ts
+import multer2 from "multer";
+var CV_EXTENSIONS = ["pdf", "doc", "docx"];
+var CV_MAX_BYTES = 10 * 1024 * 1024;
+var CV_MIME_TYPES = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+};
+var cvUpload = multer2({
+  storage: multer2.memoryStorage(),
+  limits: { fileSize: CV_MAX_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+    if (!CV_EXTENSIONS.includes(extension)) {
+      cb(new AppError("Your CV must be a PDF, DOC or DOCX file.", 400));
+      return;
     }
-    const user = await prisma_default.user.findUnique({
-      where: { id: req.user.id },
-      include: { candidateProfile: true }
-    });
-    if (!user?.candidateProfile) {
-      return next(new AppError("Candidate profile not found.", 404));
-    }
-    const previousResumeId = user.candidateProfile.resumeId;
-    const fileAsset = await prisma_default.fileAsset.create({
-      data: {
-        url: file.path || "",
-        provider: "cloudinary",
-        publicId: file.filename,
-        mimeType: file.mimetype,
-        extension: file.originalname?.split(".").pop(),
-        size: file.size
+    cb(null, true);
+  }
+}).single("cv");
+var hasSignature = (buffer, extension) => {
+  switch (extension) {
+    // "%PDF"
+    case "pdf":
+      return buffer.subarray(0, 4).toString("latin1") === "%PDF";
+    // OLE2 compound document — the legacy Word container.
+    case "doc":
+      return buffer.subarray(0, 8).equals(Buffer.from([208, 207, 17, 224, 161, 177, 26, 225]));
+    // DOCX is a ZIP. "PK\x03\x04" alone would accept any archive, so also
+    // require a Word part: ZIP stores entry names uncompressed in the local
+    // file headers, so they are readable straight out of the raw bytes.
+    case "docx":
+      return buffer.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4])) && buffer.subarray(0, 4096).includes("word/");
+    default:
+      return false;
+  }
+};
+var resolveCvExtension = (fileName) => {
+  const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+  if (!CV_EXTENSIONS.includes(extension)) {
+    throw new AppError("Your CV must be a PDF, DOC or DOCX file.", 400);
+  }
+  return extension;
+};
+var validateCvBuffer = (buffer, fileName) => {
+  if (buffer.length === 0) {
+    throw new AppError("That file is empty. Please choose another CV.", 400);
+  }
+  if (buffer.length > CV_MAX_BYTES) {
+    throw new AppError("Your CV must be smaller than 10 MB.", 400);
+  }
+  const extension = resolveCvExtension(fileName);
+  if (!hasSignature(buffer, extension)) {
+    throw new AppError(
+      `This file is not a valid ${extension.toUpperCase()} document. Please upload your CV again.`,
+      400
+    );
+  }
+  return {
+    buffer,
+    extension,
+    // Taken from our own table, not from the request: the browser-supplied
+    // MIME type is never stored or served back.
+    mimeType: CV_MIME_TYPES[extension],
+    fileName,
+    size: buffer.length
+  };
+};
+var validateCvUpload = (file) => {
+  if (!file) {
+    throw new AppError("Please choose a CV file to upload.", 400);
+  }
+  return validateCvBuffer(file.buffer, file.originalname);
+};
+var handleCvUpload = (req, res, next) => {
+  cvUpload(req, res, (err) => {
+    if (err instanceof multer2.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError("Your CV must be smaller than 10 MB.", 400));
       }
-    });
-    const updatedProfile = await prisma_default.candidateProfile.update({
-      where: { id: user.candidateProfile.id },
-      data: { resumeId: fileAsset.id },
-      include: { resume: true }
-    });
-    if (previousResumeId && previousResumeId !== fileAsset.id) {
-      await prisma_default.fileAsset.delete({ where: { id: previousResumeId } }).catch(() => null);
+      return next(new AppError(`Upload failed: ${err.message}`, 400));
     }
+    if (err) return next(err);
+    next();
+  });
+};
+
+// server/controllers/candidateProfile.controller.ts
+var serializeResume = async (resume) => ({
+  id: resume.id,
+  url: await getCvAccessUrl(resume),
+  fileName: resume.fileName,
+  mimeType: resume.mimeType,
+  extension: resume.extension,
+  size: resume.size,
+  uploadedAt: resume.createdAt
+});
+var retireResume = async (resumeId) => {
+  const citedByApplications = await prisma_default.application.count({
+    where: { cvId: resumeId }
+  });
+  if (citedByApplications > 0) return;
+  const asset = await prisma_default.fileAsset.findUnique({ where: { id: resumeId } });
+  if (!asset) return;
+  if (asset.provider === "supabase" && asset.publicId) {
+    await removeCvObject(asset.publicId);
+  }
+  await prisma_default.fileAsset.delete({ where: { id: resumeId } }).catch(() => null);
+};
+var finalizeCv = async (profileId, previousResumeId, storedPath, cv) => {
+  let resume;
+  try {
+    resume = await prisma_default.$transaction(async (tx) => {
+      const asset = await tx.fileAsset.create({
+        data: {
+          // Not a fetchable address: the bucket is private, so readers mint a
+          // signed URL from publicId. Stored in this deliberately non-HTTP
+          // form so code that renders it blindly fails loudly.
+          url: `${SUPABASE_URL_SCHEME}${storedPath}`,
+          provider: "supabase",
+          publicId: storedPath,
+          fileName: cv.fileName,
+          mimeType: cv.mimeType,
+          extension: cv.extension,
+          size: cv.size
+        }
+      });
+      await tx.candidateProfile.update({
+        where: { id: profileId },
+        data: { resumeId: asset.id }
+      });
+      return asset;
+    });
+  } catch (dbErr) {
+    await removeCvObject(storedPath);
+    throw dbErr;
+  }
+  if (previousResumeId && previousResumeId !== resume.id) {
+    await retireResume(previousResumeId);
+  }
+  console.log(
+    `CV stored candidate=${profileId} format=${cv.extension} bytes=${cv.size}`
+  );
+  return resume;
+};
+var requireOwnCandidateProfile = async (req) => {
+  const user = await prisma_default.user.findUnique({
+    where: { id: req.user.id },
+    include: { candidateProfile: true }
+  });
+  if (!user?.candidateProfile) {
+    throw new AppError("Candidate profile not found.", 404);
+  }
+  return user.candidateProfile;
+};
+var CV_OBJECT_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|doc|docx)$/;
+var assertOwnObjectPath = (path, profileId) => {
+  if (typeof path !== "string" || !path) {
+    throw new AppError("Missing upload reference.", 400);
+  }
+  const segments = path.split("/");
+  if (segments.length !== 2) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+  const [folder, object] = segments;
+  if (folder !== profileId || !CV_OBJECT_NAME.test(object)) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+  return path;
+};
+var assertCanViewCandidate = async (req, candidateProfileId) => {
+  if (req.user.role === "ADMIN") return;
+  const recruiter = await prisma_default.recruiterProfile.findUnique({
+    where: { userId: req.user.id },
+    select: { id: true }
+  });
+  if (!recruiter) {
+    throw new AppError("Recruiter profile not found.", 403);
+  }
+  const hasApplied = await prisma_default.application.findFirst({
+    where: { candidateId: candidateProfileId, job: { recruiterId: recruiter.id } },
+    select: { id: true }
+  });
+  if (!hasApplied) {
+    throw new AppError("You can only view candidates who applied to your jobs.", 403);
+  }
+};
+var uploadCV = async (req, res, next) => {
+  let storedPath = null;
+  try {
+    const cv = validateCvUpload(req.file);
+    const profile = await requireOwnCandidateProfile(req);
+    storedPath = await uploadCvObject({
+      candidateProfileId: profile.id,
+      buffer: cv.buffer,
+      extension: cv.extension,
+      mimeType: cv.mimeType
+    });
+    const resume = await finalizeCv(profile.id, profile.resumeId, storedPath, cv);
     res.status(200).json({
       status: "success",
-      data: { candidateProfile: updatedProfile }
+      data: { resume: await serializeResume(resume) }
     });
   } catch (err) {
     next(err);
@@ -5092,9 +5403,10 @@ var getMyCV = async (req, res, next) => {
     if (!user?.candidateProfile) {
       return next(new AppError("Candidate profile not found.", 404));
     }
+    const resume = user.candidateProfile.resume;
     res.status(200).json({
       status: "success",
-      data: { resume: user.candidateProfile.resume }
+      data: { resume: resume ? await serializeResume(resume) : null }
     });
   } catch (err) {
     next(err);
@@ -5161,24 +5473,7 @@ var getCandidateCvDocument = async (req, res, next) => {
     if (!profile) {
       return next(new AppError("Candidate not found.", 404));
     }
-    if (req.user.role !== "ADMIN") {
-      const recruiter = await prisma_default.recruiterProfile.findUnique({
-        where: { userId: req.user.id },
-        select: { id: true }
-      });
-      if (!recruiter) {
-        return next(new AppError("Recruiter profile not found.", 403));
-      }
-      const hasApplied = await prisma_default.application.findFirst({
-        where: { candidateId: profile.id, job: { recruiterId: recruiter.id } },
-        select: { id: true }
-      });
-      if (!hasApplied) {
-        return next(
-          new AppError("You can only view candidates who applied to your jobs.", 403)
-        );
-      }
-    }
+    await assertCanViewCandidate(req, profile.id);
     const built = profile.cvBuilderData ?? null;
     const fullName = [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ").trim();
     const document = {
@@ -5207,6 +5502,73 @@ var getCandidateCvDocument = async (req, res, next) => {
     next(err);
   }
 };
+var getCandidateCvFile = async (req, res, next) => {
+  try {
+    const { candidateId } = req.params;
+    const profile = await prisma_default.candidateProfile.findUnique({
+      where: { id: candidateId },
+      include: { resume: true }
+    });
+    if (!profile) {
+      return next(new AppError("Candidate not found.", 404));
+    }
+    await assertCanViewCandidate(req, profile.id);
+    if (!profile.resume) {
+      return next(new AppError("This candidate has not uploaded a CV.", 404));
+    }
+    res.status(200).json({
+      status: "success",
+      data: { resume: await serializeResume(profile.resume) }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var createCvUploadUrl = async (req, res, next) => {
+  try {
+    const { fileName } = req.body;
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Please choose a CV file to upload.", 400));
+    }
+    const extension = resolveCvExtension(fileName);
+    const profile = await requireOwnCandidateProfile(req);
+    const ticket = await createCvUploadTicket({
+      candidateProfileId: profile.id,
+      extension
+    });
+    res.status(200).json({
+      status: "success",
+      data: { path: ticket.path, signedUrl: ticket.signedUrl, token: ticket.token }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var confirmCvUpload = async (req, res, next) => {
+  try {
+    const { path, fileName } = req.body;
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Missing file name.", 400));
+    }
+    const profile = await requireOwnCandidateProfile(req);
+    const storedPath = assertOwnObjectPath(path, profile.id);
+    let cv;
+    try {
+      const buffer = await downloadCvObject(storedPath);
+      cv = validateCvBuffer(buffer, fileName);
+    } catch (validationErr) {
+      await removeCvObject(storedPath);
+      throw validationErr;
+    }
+    const resume = await finalizeCv(profile.id, profile.resumeId, storedPath, cv);
+    res.status(200).json({
+      status: "success",
+      data: { resume: await serializeResume(resume) }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/candidateProfile.routes.ts
 var router11 = express3.Router();
@@ -5216,9 +5578,16 @@ router11.get(
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvDocument
 );
+router11.get(
+  "/:candidateId/cv-file",
+  restrictTo("RECRUITER", "ADMIN"),
+  getCandidateCvFile
+);
 router11.use(restrictTo("CANDIDATE"));
 router11.patch("/me", updateMyProfile);
-router11.post("/me/cv", upload.single("cv"), uploadCV);
+router11.post("/me/cv/upload-url", createCvUploadUrl);
+router11.post("/me/cv/confirm", confirmCvUpload);
+router11.post("/me/cv", handleCvUpload, uploadCV);
 router11.get("/me/cv", getMyCV);
 router11.get("/me/cv-builder", getMyCvBuilder);
 router11.put("/me/cv-builder", saveMyCvBuilder);

@@ -44,8 +44,8 @@ class QuizService {
       );
     }
 
-    const cvText = await cvExtractionService.extractTextFromCV(
-      candidate.candidateProfile.resume.url
+    const cvText = await cvExtractionService.extractTextFromAsset(
+      candidate.candidateProfile.resume
     );
 
     if (!cvText || cvText.trim().length < 50) {

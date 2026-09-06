@@ -251,9 +251,19 @@ class AIAnalysisService {
       // Extract CV text
       // ---------------------------------------
 
+      // Guarded rather than asserted: an application can legitimately have
+      // no CV attached (the candidate had not uploaded one when they applied),
+      // and the non-null assertion turned that into a TypeError.
+      if (!application.cv) {
+        throw new AppError(
+          "This application has no CV attached, so it cannot be analysed.",
+          400
+        );
+      }
+
       const cvText =
-        await cvExtractionService.extractTextFromCV(
-            application.cv!.url
+        await cvExtractionService.extractTextFromAsset(
+            application.cv
         );
 
       // ---------------------------------------

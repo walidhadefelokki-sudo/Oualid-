@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
@@ -88,7 +88,6 @@ import Logo from './Logo';
 import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
 import { useRef } from "react";
-import { supabase } from '../supabase';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/notifications';
 import candidateProfileService from '../services/candidateProfile.service';
 import { WILAYAS } from '../constants';
@@ -276,9 +275,9 @@ export default function Dashboard({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  // The full uploaded CV, not just its URL. profileData.resumeUrl kept only the
-  // link, so there was nothing to show the candidate beyond "View current CV" —
-  // no file type, no size, no confirmation of what actually landed.
+  // The single source of truth for whether this candidate has a CV, and what
+  // it is. Not a URL: the CV lives in a private bucket, so links are signed and
+  // expire — a missing link means it went stale, not that the CV is gone.
   const [cvAsset, setCvAsset] = useState<import('../services/candidateProfile.service').CVFileAsset | null>(null);
   const [selectedPresentationCandidate, setSelectedPresentationCandidate] =
     useState<any>(null);
@@ -338,7 +337,6 @@ export default function Dashboard({
     const [activeOralRecording, setActiveOralRecording] =
   useState<boolean>(false);
 
-  const [candidateList, setCandidateList] = useState([]);
   const [quizResults, setQuizResults] = useState([]);
   const [oralPresentationResults, setOralPresentationResults] = useState([]);
   const [preselectedCandidates, setPreselectedCandidates] = useState([]);
@@ -416,6 +414,10 @@ export default function Dashboard({
                   ? Math.round(application.quiz.attempt.aiScore)
                   : undefined,
                 hasPresentation: !!application.oralPresentation?.video,
+                oralPresentationScore: application.oralPresentationScore ?? undefined,
+                yearsExperience: application.candidate.yearsExperience ?? 0,
+                isPreselected: application.isPreselected ?? false,
+                appliedAt: application.appliedAt,
                 skills: application.candidate.skills ?? [],
                 aiSummary: application.aianalysis?.strengths?.[0],
                 strengths: application.aianalysis?.strengths ?? [],
@@ -506,7 +508,38 @@ export default function Dashboard({
     }
   };
 
-  const handleOpenCV = () => {};
+  /**
+   * Opens a CV in a new tab.
+   *
+   * The window is opened synchronously, before awaiting, because browsers
+   * block a window.open() that happens after a promise resolves — it no longer
+   * counts as a response to the click. The tab is filled in once the signed
+   * link arrives.
+   */
+  const openSignedCv = async (fetchCv: () => Promise<{ url: string } | null>) => {
+    const win = window.open('', '_blank');
+    try {
+      const resume = await fetchCv();
+      if (!resume?.url) {
+        win?.close();
+        showToast(lt('No CV available.', 'Aucun CV disponible.', 'لا توجد سيرة ذاتية.'), 'error');
+        return;
+      }
+      if (win) win.location.href = resume.url;
+      else window.location.href = resume.url;
+    } catch (error: any) {
+      win?.close();
+      const message = error?.response?.data?.message || error.message;
+      showToast(lt(`Error: ${message}`, `Erreur : ${message}`, `خطأ: ${message}`), 'error');
+    }
+  };
+
+  /** Candidate: open own CV. Refetched so the signed link is current. */
+  const handleOpenMyCV = () => openSignedCv(() => candidateProfileService.getMyCV());
+
+  /** Recruiter: open one candidate's uploaded CV. The server checks access. */
+  const handleOpenCV = (candidate: { id: string }) =>
+    openSignedCv(() => candidateProfileService.getCandidateCvFile(candidate.id));
   const handleInterview = (candidate: any) =>
     updateCandidateStatus(
       candidate,
@@ -574,10 +607,7 @@ export default function Dashboard({
       candidateProfileService
         .getMyCV()
         .then((resume) => {
-          if (resume?.url) {
-            setCvAsset(resume);
-            setProfileData(prev => ({ ...prev, resumeUrl: resume.url }));
-          }
+          setCvAsset(resume);
         })
         .catch(() => null);
 
@@ -597,7 +627,6 @@ export default function Dashboard({
             bio: cp?.bio ?? prev.bio,
             jobTitle: cp?.currentJobTitle ?? prev.jobTitle,
             location: cp?.city || cp?.wilaya || prev.location,
-            resumeUrl: cp?.resume?.url ?? prev.resumeUrl,
           }));
           if (fullUser?.avatar?.url) {
             setAvatarUrl(fullUser.avatar.url);
@@ -678,10 +707,9 @@ export default function Dashboard({
     try {
       const resume = await candidateProfileService.uploadCV(file);
 
-      // Keep the whole asset so the profile can show what was uploaded, and
-      // carry the original filename, which the backend does not store.
-      setCvAsset(resume ? { ...resume, fileName: file.name } as any : null);
-      setProfileData(prev => ({ ...prev, resumeUrl: resume?.url || '' }));
+      // The filename now comes back from the server, which stores it — no
+      // need to graft the local File's name on and lose it at the next reload.
+      setCvAsset(resume);
       showToast(lt('CV uploaded successfully!', 'CV téléversé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
     } catch (error: any) {
       console.error('Error uploading file:', error);
@@ -1363,6 +1391,51 @@ export default function Dashboard({
   }, [user?.uid, isDemo]);
 
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
+
+  /**
+   * Rows for the recruiter's CV Directory, derived from the applications
+   * already loaded rather than fetched again — one source of truth for who has
+   * applied, so the directory cannot drift from the candidates list.
+   *
+   * Deduplicated by candidate: someone who applied to three of this recruiter's
+   * jobs is one person in a directory, listed once at their best AI score.
+   *
+   * Declared here, below candidatesByJob, and not beside the other list state
+   * further up: a useMemo reading a const declared later in the component body
+   * hits the temporal dead zone and throws on first render.
+   */
+  const candidateList = useMemo(() => {
+    const byCandidate = new Map<string, any>();
+
+    for (const group of candidatesByJob) {
+      for (const c of group.candidates ?? []) {
+        // The CandidateProfile id — what GET /candidates/:id/cv-file expects.
+        // c.id is the application id and would 404.
+        const key = c.candidateId;
+        if (!key) continue;
+
+        const row = {
+          id: key,
+          fullName: c.name || c.email,
+          email: c.email,
+          phone: c.phone ?? '',
+          position: c.role || group.jobTitle || '',
+          experience: c.yearsExperience ?? 0,
+          location: c.location ?? '',
+          aiScore: c.match ?? 0,
+          quizScore: c.quizScore,
+          oralPresentationScore: c.oralPresentationScore,
+          isPreselected: c.isPreselected ?? false,
+          createdAt: c.appliedAt ?? new Date().toISOString(),
+        };
+
+        const existing = byCandidate.get(key);
+        if (!existing || row.aiScore > existing.aiScore) byCandidate.set(key, row);
+      }
+    }
+
+    return [...byCandidate.values()];
+  }, [candidatesByJob]);
 
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
 
@@ -4945,10 +5018,10 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
 
             <div className={`flex flex-col sm:flex-row ${isRTL ? 'justify-start' : 'justify-end'} gap-4 items-center`}>
-              {/* The uploaded CV, shown as a real file rather than a bare link:
-                  format, size and a way to open it, so the candidate can see
-                  that the right document actually landed. */}
-              {profileData.resumeUrl && (
+              {/* The uploaded CV. Driven by cvAsset rather than a URL, because
+                  the download link is signed and short-lived — its absence
+                  means the link expired, not that the CV is gone. */}
+              {cvAsset ? (
                 <div className={`w-full flex items-center gap-4 p-5 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className="w-12 h-12 shrink-0 rounded-2xl bg-white border border-emerald-100 flex items-center justify-center text-emerald-600">
                     <FileText size={22} />
@@ -4956,26 +5029,46 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                   <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
                     <p className="font-black text-[#173E7D] text-sm truncate">
-                      {(cvAsset as any)?.fileName
-                        || decodeURIComponent(profileData.resumeUrl.split('/').pop() || '')
-                        || lt('Your CV', 'Votre CV', 'سيرتك الذاتية')}
+                      {cvAsset.fileName || lt('Your CV', 'Votre CV', 'سيرتك الذاتية')}
                     </p>
-                    <p className={`flex items-center gap-2 text-[11px] font-bold text-emerald-700/70 uppercase tracking-widest mt-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <p className={`flex flex-wrap items-center gap-2 text-[11px] font-bold text-emerald-700/70 uppercase tracking-widest mt-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      {/* Not colour alone: the icon and the word both say it worked. */}
                       <CheckCircle2 size={13} />
                       {lt('Uploaded', 'Téléversé', 'تم الرفع')}
-                      {cvAsset?.extension && <span>· {cvAsset.extension.toUpperCase()}</span>}
-                      {cvAsset?.size ? <span>· {(cvAsset.size / 1024 / 1024).toFixed(2)} MB</span> : null}
+                      {cvAsset.extension && <span>· {cvAsset.extension.toUpperCase()}</span>}
+                      {cvAsset.size ? <span>· {(cvAsset.size / 1024 / 1024).toFixed(2)} MB</span> : null}
+                      {cvAsset.uploadedAt && (
+                        <span>· {new Date(cvAsset.uploadedAt).toLocaleDateString(isRTL ? 'ar' : 'fr-FR')}</span>
+                      )}
                     </p>
                   </div>
 
-                  <a
-                    href={profileData.resumeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  {/* A button, not a link: the URL has to be minted per click. */}
+                  <button
+                    type="button"
+                    onClick={handleOpenMyCV}
                     className="shrink-0 px-5 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-100 transition-all"
                   >
-                    {lt('Open', 'Ouvrir', 'فتح')}
-                  </a>
+                    {lt('View', 'Voir', 'عرض')}
+                  </button>
+                </div>
+              ) : (
+                <div className={`w-full flex items-center gap-4 p-5 bg-gray-50 border border-dashed border-gray-200 rounded-[1.5rem] ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className="w-12 h-12 shrink-0 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-gray-300">
+                    <FileText size={22} />
+                  </div>
+                  <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
+                    <p className="font-black text-gray-500 text-sm">
+                      {lt('No CV added yet', 'Aucun CV ajouté', 'لم تتم إضافة سيرة ذاتية')}
+                    </p>
+                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">
+                      {lt(
+                        'Add your CV as a PDF, DOC or DOCX file.',
+                        'Ajoutez votre CV au format PDF, DOC ou DOCX.',
+                        'أضف سيرتك الذاتية بصيغة PDF أو DOC أو DOCX.'
+                      )}
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -4983,14 +5076,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <input
                   type="file"
                   id="cv-upload"
-                  className="hidden"
+                  className="sr-only"
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={handleFileUpload}
                   disabled={isUploading}
                 />
                 <label
                   htmlFor="cv-upload"
-                  className={`px-8 py-4 bg-gray-100 text-[#173E7D] rounded-full font-bold hover:bg-gray-200 transition-all cursor-pointer flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                  className={`px-8 py-4 bg-gray-100 text-[#173E7D] rounded-full font-bold hover:bg-gray-200 transition-all cursor-pointer flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#173E7D] ${isUploading ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
                 >
                   {isUploading ? (
                     <>
@@ -5001,7 +5094,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <>
                       {/* Upload, not Download — the icon pointed the wrong way. */}
                       <Upload size={20} />
-                      {profileData.resumeUrl
+                      {cvAsset
                         ? lt('Replace CV', 'Remplacer le CV', 'استبدال السيرة')
                         : lt('Upload CV', 'Téléverser un CV', 'رفع السيرة الذاتية')}
                     </>
@@ -5011,6 +5104,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   {lt('PDF, DOC or DOCX · max 10 MB', 'PDF, DOC ou DOCX · 10 Mo max', 'PDF أو DOC أو DOCX · 10 ميغابايت كحد أقصى')}
                 </p>
               </div>
+
               <OralPresentationCard isDemo={isDemo}/>
               <button 
                 onClick={handleSaveProfile}

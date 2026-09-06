@@ -30,6 +30,7 @@ export interface ApplicationRecord {
   jobId: string;
   status: ApplicationStatus;
   appliedAt: string;
+  isPreselected?: boolean;
 
   aiScore?: number | null;
   quizScore?: number | null;

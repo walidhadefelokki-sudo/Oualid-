@@ -81,6 +81,7 @@ import {
   Brain,
   Crown,
   Pencil,
+  Upload,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
@@ -274,6 +275,11 @@ export default function Dashboard({
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  // The full uploaded CV, not just its URL. profileData.resumeUrl kept only the
+  // link, so there was nothing to show the candidate beyond "View current CV" —
+  // no file type, no size, no confirmation of what actually landed.
+  const [cvAsset, setCvAsset] = useState<import('../services/candidateProfile.service').CVFileAsset | null>(null);
   const [selectedPresentationCandidate, setSelectedPresentationCandidate] =
     useState<any>(null);
   const t = (key: string, variables?: Record<string, any>) => {
@@ -569,6 +575,7 @@ export default function Dashboard({
         .getMyCV()
         .then((resume) => {
           if (resume?.url) {
+            setCvAsset(resume);
             setProfileData(prev => ({ ...prev, resumeUrl: resume.url }));
           }
         })
@@ -622,12 +629,48 @@ export default function Dashboard({
     };
   }, [user, isDemo]);
 
+  /** Accepted CV formats — must match the Cloudinary folder's allowed_formats. */
+  const CV_EXTENSIONS = ['pdf', 'doc', 'docx'];
+  const CV_MAX_BYTES = 10 * 1024 * 1024;
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Reset the input immediately so re-picking the same file still fires
+    // onChange — otherwise a failed upload cannot be retried with that file.
+    e.target.value = '';
     if (!file || !user) return;
 
     if (isDemo) {
-      alert(lt('CV uploaded successfully (Demo)!', 'CV téléchargé avec succès (Démo) !', 'تم رفع السيرة الذاتية بنجاح (تجربة)!'));
+      showToast(
+        lt(
+          'Sign in to upload your CV.',
+          'Connectez-vous pour téléverser votre CV.',
+          'سجّل الدخول لرفع سيرتك الذاتية.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    // Validate before uploading: the server rejects these too, but a local
+    // check gives an instant, specific reason instead of a failed round trip.
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!CV_EXTENSIONS.includes(extension)) {
+      showToast(
+        lt(
+          `Unsupported format (.${extension}). Use PDF, DOC or DOCX.`,
+          `Format non pris en charge (.${extension}). Utilisez PDF, DOC ou DOCX.`,
+          `صيغة غير مدعومة (.${extension}). استخدم PDF أو DOC أو DOCX.`
+        ),
+        'error'
+      );
+      return;
+    }
+    if (file.size > CV_MAX_BYTES) {
+      showToast(
+        lt('Your CV must be under 10 MB.', 'Votre CV doit faire moins de 10 Mo.', 'يجب أن يقل حجم سيرتك عن 10 ميغابايت.'),
+        'error'
+      );
       return;
     }
 
@@ -635,12 +678,15 @@ export default function Dashboard({
     try {
       const resume = await candidateProfileService.uploadCV(file);
 
+      // Keep the whole asset so the profile can show what was uploaded, and
+      // carry the original filename, which the backend does not store.
+      setCvAsset(resume ? { ...resume, fileName: file.name } as any : null);
       setProfileData(prev => ({ ...prev, resumeUrl: resume?.url || '' }));
-      alert(lt('CV uploaded successfully!', 'CV téléchargé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
+      showToast(lt('CV uploaded successfully!', 'CV téléversé avec succès !', 'تم رفع السيرة الذاتية بنجاح!'));
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const message = error?.response?.data?.message || error.message;
-      alert(lt(`Error: ${message}`, `Erreur: ${message}`, `خطأ: ${message}`));
+      showToast(lt(`Error: ${message}`, `Erreur : ${message}`, `خطأ: ${message}`), 'error');
     } finally {
       setIsUploading(false);
     }
@@ -684,7 +730,14 @@ export default function Dashboard({
   const [preferredRoles, setPreferredRoles] = useState(['UX Designer', 'Product Manager', 'Frontend Developer']);
   const [preferredLocations, setPreferredLocations] = useState(['Alger', 'Oran', 'Télétravail']);
   const [salaryRange, setSalaryRange] = useState(120000);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // One flag drives two different things: the desktop sidebar's width, and the
+  // mobile drawer. Defaulting to `true` therefore opened the drawer over the
+  // page the moment a phone reached the dashboard. Start open only at the `lg`
+  // breakpoint, where "open" means the expanded desktop rail rather than an
+  // overlay.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 1024
+  );
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
@@ -4892,33 +4945,71 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
 
             <div className={`flex flex-col sm:flex-row ${isRTL ? 'justify-start' : 'justify-end'} gap-4 items-center`}>
+              {/* The uploaded CV, shown as a real file rather than a bare link:
+                  format, size and a way to open it, so the candidate can see
+                  that the right document actually landed. */}
               {profileData.resumeUrl && (
-                <a 
-                  href={profileData.resumeUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 px-6 py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-bold border border-emerald-100 hover:bg-emerald-100 transition-all group"
-                >
-                  <FileText size={20} className="group-hover:scale-110 transition-transform" />
-                  <span className="text-sm">{lt('View current CV', 'Voir le CV actuel', 'عرض السيرة الذاتية')}</span>
-                </a>
+                <div className={`w-full flex items-center gap-4 p-5 bg-emerald-50 border border-emerald-100 rounded-[1.5rem] ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className="w-12 h-12 shrink-0 rounded-2xl bg-white border border-emerald-100 flex items-center justify-center text-emerald-600">
+                    <FileText size={22} />
+                  </div>
+
+                  <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
+                    <p className="font-black text-[#173E7D] text-sm truncate">
+                      {(cvAsset as any)?.fileName
+                        || decodeURIComponent(profileData.resumeUrl.split('/').pop() || '')
+                        || lt('Your CV', 'Votre CV', 'سيرتك الذاتية')}
+                    </p>
+                    <p className={`flex items-center gap-2 text-[11px] font-bold text-emerald-700/70 uppercase tracking-widest mt-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <CheckCircle2 size={13} />
+                      {lt('Uploaded', 'Téléversé', 'تم الرفع')}
+                      {cvAsset?.extension && <span>· {cvAsset.extension.toUpperCase()}</span>}
+                      {cvAsset?.size ? <span>· {(cvAsset.size / 1024 / 1024).toFixed(2)} MB</span> : null}
+                    </p>
+                  </div>
+
+                  <a
+                    href={profileData.resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 px-5 py-2.5 bg-white text-emerald-700 border border-emerald-200 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-100 transition-all"
+                  >
+                    {lt('Open', 'Ouvrir', 'فتح')}
+                  </a>
+                </div>
               )}
+
               <div className="relative">
-                <input 
-                  type="file" 
-                  id="cv-upload" 
-                  className="hidden" 
-                  accept=".pdf,.doc,.docx"
+                <input
+                  type="file"
+                  id="cv-upload"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={handleFileUpload}
                   disabled={isUploading}
                 />
-                <label 
+                <label
                   htmlFor="cv-upload"
-                  className={`px-8 py-4 bg-gray-100 text-[#173E7D] rounded-full font-bold hover:bg-gray-200 transition-all cursor-pointer flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`px-8 py-4 bg-gray-100 text-[#173E7D] rounded-full font-bold hover:bg-gray-200 transition-all cursor-pointer flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
                 >
-                  <Download size={20} />
-                  {isUploading ? (language === 'ar' ? 'جاري الرفع...' : 'Téléchargement...') : (language === 'ar' ? 'رفع CV' : 'Uploader CV')}
+                  {isUploading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-[#173E7D]/25 border-t-[#173E7D] rounded-full animate-spin" />
+                      {lt('Uploading…', 'Téléversement…', 'جارٍ الرفع…')}
+                    </>
+                  ) : (
+                    <>
+                      {/* Upload, not Download — the icon pointed the wrong way. */}
+                      <Upload size={20} />
+                      {profileData.resumeUrl
+                        ? lt('Replace CV', 'Remplacer le CV', 'استبدال السيرة')
+                        : lt('Upload CV', 'Téléverser un CV', 'رفع السيرة الذاتية')}
+                    </>
+                  )}
                 </label>
+                <p className={`text-[11px] text-gray-400 font-medium mt-2 ${isRTL ? 'text-right' : ''}`}>
+                  {lt('PDF, DOC or DOCX · max 10 MB', 'PDF, DOC ou DOCX · 10 Mo max', 'PDF أو DOC أو DOCX · 10 ميغابايت كحد أقصى')}
+                </p>
               </div>
               <OralPresentationCard isDemo={isDemo}/>
               <button 
@@ -6346,14 +6437,17 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         )}
       </AnimatePresence>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile sidebar backdrop.
+          Both conditions here were inverted: it rendered while the drawer was
+          CLOSED, so arriving on mobile blurred the page with nothing open, and
+          tapping the blur OPENED the menu instead of dismissing it. */}
       <AnimatePresence>
-        {!isSidebarOpen && (
-          <motion.div 
+        {isSidebarOpen && (
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setIsSidebarOpen(true)}
+            onClick={() => setIsSidebarOpen(false)}
             className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
           />
         )}

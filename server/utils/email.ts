@@ -1,15 +1,79 @@
+import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+/**
+ * Mail transport. Two paths, tried in this order:
+ *
+ * 1. RESEND_API_KEY — sends over HTTPS through Resend's API. This is the path
+ *    that actually works in production. darlemploi.dz's own mail server
+ *    (mail.darlemploi.dz) accepts no connection on 25, 465 or 587 from outside
+ *    the hosting account, and a Vercel function sits outside it too, so no SMTP
+ *    configuration can reach it. HTTPS is never firewalled.
+ *
+ * 2. SMTP_HOST, or Gmail when that is unset — kept as a fallback so an
+ *    environment configured before this migration keeps sending rather than
+ *    quietly going dark.
+ */
+const resendApiKey = process.env.RESEND_API_KEY?.trim();
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
+const smtpHost = process.env.SMTP_HOST?.trim();
+
+// Port 465 is implicit TLS; 587 upgrades via STARTTLS. Deriving `secure` from
+// the port avoids the classic mismatch where 465 is configured with
+// secure:false and the connection hangs until it times out.
+const smtpPort = Number(process.env.SMTP_PORT) || 465;
+const smtpSecure = process.env.SMTP_SECURE
+  ? process.env.SMTP_SECURE === 'true'
+  : smtpPort === 465;
+
+const transporter = smtpHost
+  ? nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    })
+  : nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+/** Which transport is live — useful in a startup log or a health endpoint. */
+export const emailTransportName = resend
+  ? 'resend'
+  : smtpHost
+    ? `smtp:${smtpHost}:${smtpPort}`
+    : 'gmail';
+
+/**
+ * Checks that mail is configured, without sending anything.
+ *
+ * For SMTP this opens a connection and authenticates. Resend has no such
+ * handshake — an API key is only proven good by a request that uses it, and
+ * the endpoints that would test one (domains, api-keys) are refused to a
+ * sending-only key — so a key being present is all that can be asserted here.
+ */
+export const verifyEmailTransport = async (): Promise<
+  { ok: true } | { ok: false; error: string }
+> => {
+  if (resend) return { ok: true };
+  try {
+    await transporter.verify();
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? String(err) };
+  }
+};
 
 const APP_URL = process.env.APP_URL || 'https://www.darlemploi.dz';
 
@@ -94,15 +158,38 @@ const paragraph = (text: string) =>
   `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 
 export const sendEmail = async (to: string, subject: string, html: string) => {
+  if (resend) {
+    // Resend reports failures in the response body rather than by throwing,
+    // so an unchecked call looks exactly like a successful one.
+    const { data, error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+      to,
+      subject,
+      html,
+    });
+
+    if (error) {
+      // Non-fatal by design: registration must not fail because mail did.
+      // Loud, though — mail silently never arriving is how this went unnoticed.
+      console.error(
+        `Email to ${to} was NOT sent (Resend ${error.name}): ${error.message}`
+      );
+      return;
+    }
+
+    console.log('Message sent via Resend: %s', data?.id);
+    return;
+  }
+
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       // Deliberately non-fatal: registration must still succeed on an
       // environment where mail is not configured yet.
-      console.log('--- Email simulation (EMAIL_USER/EMAIL_PASS not set) ---');
+      console.log('--- Email simulation (no RESEND_API_KEY, no EMAIL_USER/EMAIL_PASS) ---');
       console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? 'unset'}>`);
       console.log(`To: ${to}`);
       console.log(`Subject: ${subject}`);
-      console.log('-------------------------------------------------------');
+      console.log('----------------------------------------------------------------------');
       return;
     }
 
@@ -114,7 +201,7 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
     });
     console.log('Message sent: %s', info.messageId);
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error(`Email to ${to} was NOT sent:`, error);
   }
 };
 

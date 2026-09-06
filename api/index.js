@@ -131,16 +131,31 @@ var AppError = class extends Error {
 };
 
 // server/utils/email.ts
+import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import dotenv2 from "dotenv";
 dotenv2.config();
-var transporter = nodemailer.createTransport({
+var resendApiKey = process.env.RESEND_API_KEY?.trim();
+var resend = resendApiKey ? new Resend(resendApiKey) : null;
+var smtpHost = process.env.SMTP_HOST?.trim();
+var smtpPort = Number(process.env.SMTP_PORT) || 465;
+var smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : smtpPort === 465;
+var transporter = smtpHost ? nodemailer.createTransport({
+  host: smtpHost,
+  port: smtpPort,
+  secure: smtpSecure,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+}) : nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   }
 });
+var emailTransportName = resend ? "resend" : smtpHost ? `smtp:${smtpHost}:${smtpPort}` : "gmail";
 var APP_URL = process.env.APP_URL || "https://www.darlemploi.dz";
 var FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 var FROM_NAME = "Dar L'emploi";
@@ -200,13 +215,29 @@ var button = (href, label) => `
 </table>`;
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html) => {
+  if (resend) {
+    const { data, error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+      to,
+      subject,
+      html
+    });
+    if (error) {
+      console.error(
+        `Email to ${to} was NOT sent (Resend ${error.name}): ${error.message}`
+      );
+      return;
+    }
+    console.log("Message sent via Resend: %s", data?.id);
+    return;
+  }
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log("--- Email simulation (EMAIL_USER/EMAIL_PASS not set) ---");
+      console.log("--- Email simulation (no RESEND_API_KEY, no EMAIL_USER/EMAIL_PASS) ---");
       console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? "unset"}>`);
       console.log(`To: ${to}`);
       console.log(`Subject: ${subject}`);
-      console.log("-------------------------------------------------------");
+      console.log("----------------------------------------------------------------------");
       return;
     }
     const info = await transporter.sendMail({
@@ -217,7 +248,7 @@ var sendEmail = async (to, subject, html) => {
     });
     console.log("Message sent: %s", info.messageId);
   } catch (error) {
-    console.error("Error sending email:", error);
+    console.error(`Email to ${to} was NOT sent:`, error);
   }
 };
 var sendWelcomeEmail = async (email, name, role) => {

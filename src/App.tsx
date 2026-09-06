@@ -1955,6 +1955,9 @@ export default function App() {
       <DomainModal
         slug={openDomain?.slug ?? null}
         label={openDomain?.label ?? ''}
+        // Taken from the categories already loaded for the sector grid, so the
+        // popup opens instantly with no request of its own.
+        description={categories.find((c) => c.slug === openDomain?.slug)?.description ?? null}
         language={language}
         onClose={() => setOpenDomain(null)}
       />

@@ -1290,13 +1290,43 @@ export default function Dashboard({
     avatarInputRef.current?.click();
   };
 
+  /** Formats the avatar endpoint accepts, mirroring Cloudinary's allowed_formats. */
+  const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+  // Matches the server's multer limit, which is itself set below the ~4.5MB
+  // ceiling a Vercel function puts on a request body.
+  const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Cleared straight away so re-picking the same file still fires onChange —
+    // otherwise a failed upload cannot be retried with that file.
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert(lt('Please choose an image file.', 'Veuillez choisir un fichier image.', 'يرجى اختيار ملف صورة.'));
-      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!file.type.startsWith('image/') || !AVATAR_EXTENSIONS.includes(extension)) {
+      showToast(
+        lt(
+          'Choose a JPG, PNG, WEBP or GIF image.',
+          'Choisissez une image JPG, PNG, WEBP ou GIF.',
+          'اختر صورة بصيغة JPG أو PNG أو WEBP أو GIF.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    // Checked here as well as on the server: without it an oversized photo
+    // came back as an opaque platform error with no usable message.
+    if (file.size > AVATAR_MAX_BYTES) {
+      showToast(
+        lt(
+          'Your photo must be under 4 MB.',
+          'Votre photo doit faire moins de 4 Mo.',
+          'يجب أن يقل حجم صورتك عن 4 ميغابايت.'
+        ),
+        'error'
+      );
       return;
     }
 
@@ -1304,17 +1334,20 @@ export default function Dashboard({
       setUploadingAvatar(true);
       const url = await candidateProfileService.updateAvatar(file);
       if (url) setAvatarUrl(url);
+      showToast(lt('Profile picture updated.', 'Photo de profil mise à jour.', 'تم تحديث صورة الملف الشخصي.'));
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       const message = error?.response?.data?.message || error?.message;
-      alert(lt(
-        `Unable to update your profile picture.${message ? ` (${message})` : ''}`,
-        `Impossible de mettre à jour la photo de profil.${message ? ` (${message})` : ''}`,
-        `تعذر تحديث صورة الملف الشخصي.${message ? ` (${message})` : ''}`
-      ));
+      showToast(
+        lt(
+          `Unable to update your profile picture.${message ? ` (${message})` : ''}`,
+          `Impossible de mettre à jour la photo de profil.${message ? ` (${message})` : ''}`,
+          `تعذر تحديث صورة الملف الشخصي.${message ? ` (${message})` : ''}`
+        ),
+        'error'
+      );
     } finally {
       setUploadingAvatar(false);
-      if (avatarInputRef.current) avatarInputRef.current.value = '';
     }
   };
 

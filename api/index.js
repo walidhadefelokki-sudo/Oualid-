@@ -214,22 +214,24 @@ var button = (href, label) => `
   </tr>
 </table>`;
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
-var sendEmail = async (to, subject, html) => {
+var sendEmail = async (to, subject, html, options = {}) => {
   if (resend) {
     const { data, error } = await resend.emails.send({
       from: `${FROM_NAME} <${FROM_ADDRESS}>`,
       to,
       subject,
-      html
+      html,
+      ...options.text ? { text: options.text } : {},
+      ...options.replyTo ? { replyTo: options.replyTo } : {}
     });
     if (error) {
       console.error(
         `Email to ${to} was NOT sent (Resend ${error.name}): ${error.message}`
       );
-      return;
+      return false;
     }
     console.log("Message sent via Resend: %s", data?.id);
-    return;
+    return true;
   }
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -238,17 +240,21 @@ var sendEmail = async (to, subject, html) => {
       console.log(`To: ${to}`);
       console.log(`Subject: ${subject}`);
       console.log("----------------------------------------------------------------------");
-      return;
+      return false;
     }
     const info = await transporter.sendMail({
       from: `"${FROM_NAME}" <${FROM_ADDRESS}>`,
       to,
       subject,
-      html
+      html,
+      ...options.text ? { text: options.text } : {},
+      ...options.replyTo ? { replyTo: options.replyTo } : {}
     });
     console.log("Message sent: %s", info.messageId);
+    return true;
   } catch (error) {
     console.error(`Email to ${to} was NOT sent:`, error);
+    return false;
   }
 };
 var sendWelcomeEmail = async (email, name, role) => {
@@ -352,7 +358,7 @@ var requireRecruiterTier = (minimumPlan) => {
 };
 
 // server/controllers/auth.controller.ts
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 
 // server/utils/jwt.ts
 import crypto from "crypto";
@@ -376,6 +382,317 @@ function getJwtSecret() {
   return devSecret;
 }
 
+// server/utils/cloudinary.ts
+import { v2 as cloudinary } from "cloudinary";
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+var destroyCloudinaryAsset = async (publicId, resourceType = "image") => {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+  } catch (err) {
+    console.error(`Cloudinary cleanup failed for ${publicId}:`, err);
+  }
+};
+
+// server/middleware/mediaUpload.middleware.ts
+import multer from "multer";
+
+// server/utils/supabaseStorage.ts
+import { createClient } from "@supabase/supabase-js";
+import crypto2 from "crypto";
+var CV_BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
+var AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET?.trim() || "avatars";
+var PRESENTATION_BUCKET = process.env.SUPABASE_PRESENTATION_BUCKET?.trim() || "presentations";
+var SIGNED_URL_TTL_SECONDS = 300;
+var VIDEO_URL_TTL_SECONDS = 2 * 60 * 60;
+var CV_MAX_BYTES = 10 * 1024 * 1024;
+var AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+var VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+var BUCKETS = {
+  [CV_BUCKET]: { public: false, fileSizeLimit: CV_MAX_BYTES },
+  [PRESENTATION_BUCKET]: { public: false, fileSizeLimit: VIDEO_MAX_BYTES },
+  [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES }
+};
+var cachedClient = null;
+var getClient = () => {
+  if (cachedClient) return cachedClient;
+  const url = process.env.SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceRoleKey) {
+    throw new AppError(
+      "File storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+      500
+    );
+  }
+  cachedClient = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+  return cachedClient;
+};
+var bucketReady = /* @__PURE__ */ new Map();
+var ensureBucket = async (bucket) => {
+  const pending = bucketReady.get(bucket);
+  if (pending) return pending;
+  const settings = BUCKETS[bucket];
+  if (!settings) {
+    throw new AppError(`Unknown storage bucket: ${bucket}`, 500);
+  }
+  const task = (async () => {
+    const storage = getClient().storage;
+    const config = { ...settings, allowedMimeTypes: null };
+    const { error } = await storage.createBucket(bucket, config);
+    if (!error) return;
+    if (!/already exists/i.test(error.message)) {
+      throw new AppError(`Could not prepare storage: ${error.message}`, 500);
+    }
+    const { error: updateError } = await storage.updateBucket(bucket, config);
+    if (updateError) {
+      throw new AppError(
+        `Could not verify storage settings: ${updateError.message}`,
+        500
+      );
+    }
+  })();
+  bucketReady.set(bucket, task);
+  try {
+    await task;
+  } catch (err) {
+    bucketReady.delete(bucket);
+    throw err;
+  }
+};
+var buildObjectPath = (ownerId, extension) => `${ownerId}/${crypto2.randomUUID()}.${extension}`;
+var OBJECT_NAME_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{2,5}$/;
+var uploadObject = async (params) => {
+  const { bucket, path, buffer, mimeType } = params;
+  await ensureBucket(bucket);
+  const { error } = await getClient().storage.from(bucket).upload(path, buffer, { contentType: mimeType, upsert: false });
+  if (error) {
+    throw new AppError(`Upload failed: ${error.message}`, 502);
+  }
+  return path;
+};
+var createUploadTicket = async (params) => {
+  const { bucket, path } = params;
+  await ensureBucket(bucket);
+  const { data, error } = await getClient().storage.from(bucket).createSignedUploadUrl(path);
+  if (error || !data) {
+    throw new AppError(
+      `Could not start the upload: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return { path, token: data.token, signedUrl: data.signedUrl };
+};
+var createSignedUrl = async (bucket, path, expiresIn = SIGNED_URL_TTL_SECONDS) => {
+  const { data, error } = await getClient().storage.from(bucket).createSignedUrl(path, expiresIn);
+  if (error || !data?.signedUrl) {
+    throw new AppError(
+      `Could not generate link: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return data.signedUrl;
+};
+var createSignedUrls = async (bucket, paths, expiresIn = SIGNED_URL_TTL_SECONDS) => {
+  const result = /* @__PURE__ */ new Map();
+  if (paths.length === 0) return result;
+  const { data, error } = await getClient().storage.from(bucket).createSignedUrls(paths, expiresIn);
+  if (error || !data) {
+    console.error(`Batch signing failed for ${bucket}:`, error?.message);
+    return result;
+  }
+  for (const entry of data) {
+    if (entry.signedUrl && entry.path) result.set(entry.path, entry.signedUrl);
+  }
+  return result;
+};
+var getPublicUrl = (bucket, path) => getClient().storage.from(bucket).getPublicUrl(path).data.publicUrl;
+var downloadObject = async (bucket, path) => {
+  const { data, error } = await getClient().storage.from(bucket).download(path);
+  if (error || !data) {
+    throw new AppError(
+      `Could not read from storage: ${error?.message ?? "unknown error"}`,
+      502
+    );
+  }
+  return Buffer.from(await data.arrayBuffer());
+};
+var downloadObjectHead = async (bucket, path, bytes = 4096) => {
+  const signed = await createSignedUrl(bucket, path, 60);
+  const response = await fetch(signed, {
+    headers: { Range: `bytes=0-${bytes - 1}` }
+  });
+  if (!response.ok && response.status !== 206) {
+    throw new AppError(
+      `Could not read from storage (HTTP ${response.status}).`,
+      502
+    );
+  }
+  return Buffer.from(await response.arrayBuffer());
+};
+var getObjectSize = async (bucket, path) => {
+  const lastSlash = path.lastIndexOf("/");
+  const folder = lastSlash === -1 ? "" : path.slice(0, lastSlash);
+  const name = path.slice(lastSlash + 1);
+  const { data, error } = await getClient().storage.from(bucket).list(folder, { search: name, limit: 100 });
+  if (error || !data) return null;
+  const match = data.find((entry) => entry.name === name);
+  if (!match) return null;
+  return match.metadata?.size ?? null;
+};
+var removeObject = async (bucket, path) => {
+  try {
+    const { error } = await getClient().storage.from(bucket).remove([path]);
+    if (error) {
+      console.error(`Cleanup failed for ${bucket}/${path}: ${error.message}`);
+    }
+  } catch (err) {
+    console.error(`Cleanup failed for ${bucket}/${path}:`, err);
+  }
+};
+var uploadCvObject = async (params) => uploadObject({
+  bucket: CV_BUCKET,
+  path: buildObjectPath(params.candidateProfileId, params.extension),
+  buffer: params.buffer,
+  mimeType: params.mimeType
+});
+var createCvUploadTicket = async (params) => createUploadTicket({
+  bucket: CV_BUCKET,
+  path: buildObjectPath(params.candidateProfileId, params.extension)
+});
+var createSignedCvUrl = (path, expiresIn) => createSignedUrl(CV_BUCKET, path, expiresIn);
+var downloadCvObject = (path) => downloadObject(CV_BUCKET, path);
+var removeCvObject = (path) => removeObject(CV_BUCKET, path);
+
+// server/middleware/mediaUpload.middleware.ts
+var AVATAR_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
+var AVATAR_MIME_TYPES = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif"
+};
+var avatarMemoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AVATAR_MAX_BYTES, files: 1 }
+}).single("avatar");
+var handleAvatarUpload = (req, res, next) => {
+  avatarMemoryUpload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError("Your photo must be smaller than 4 MB.", 400));
+      }
+      return next(new AppError(`Upload failed: ${err.message}`, 400));
+    }
+    if (err) return next(err);
+    next();
+  });
+};
+var hasImageSignature = (buffer, extension) => {
+  switch (extension) {
+    case "jpg":
+    case "jpeg":
+      return buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
+    case "png":
+      return buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    case "gif": {
+      const head = buffer.subarray(0, 6).toString("latin1");
+      return head === "GIF87a" || head === "GIF89a";
+    }
+    // RIFF container with a WEBP fourcc at offset 8.
+    case "webp":
+      return buffer.subarray(0, 4).toString("latin1") === "RIFF" && buffer.subarray(8, 12).toString("latin1") === "WEBP";
+    default:
+      return false;
+  }
+};
+var validateAvatarUpload = (file) => {
+  if (!file) {
+    throw new AppError("Please choose an image to upload.", 400);
+  }
+  if (file.buffer.length === 0) {
+    throw new AppError("That file is empty. Please choose another image.", 400);
+  }
+  const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+  if (!AVATAR_EXTENSIONS.includes(extension)) {
+    throw new AppError("Your photo must be a JPG, PNG, WEBP or GIF image.", 400);
+  }
+  const typed = extension;
+  if (!hasImageSignature(file.buffer, typed)) {
+    throw new AppError(
+      "This file is not a valid image. Please choose another photo.",
+      400
+    );
+  }
+  return {
+    buffer: file.buffer,
+    extension: typed,
+    // From our own table, not the request: the browser-supplied MIME type is
+    // never stored or served back.
+    mimeType: AVATAR_MIME_TYPES[typed],
+    fileName: file.originalname,
+    size: file.buffer.length
+  };
+};
+var VIDEO_EXTENSIONS = ["mp4", "mov", "webm", "mkv", "avi"];
+var VIDEO_MIME_TYPES = {
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  avi: "video/x-msvideo"
+};
+var resolveVideoExtension = (fileName) => {
+  const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+  if (!VIDEO_EXTENSIONS.includes(extension)) {
+    throw new AppError(
+      "Your presentation must be an MP4, MOV, WEBM, MKV or AVI video.",
+      400
+    );
+  }
+  return extension;
+};
+var videoMimeType = (extension) => VIDEO_MIME_TYPES[extension];
+var hasVideoSignature = (head, extension) => {
+  switch (extension) {
+    // ISO base media: a size field, then the "ftyp" box type at offset 4.
+    // Covers MP4 and QuickTime alike.
+    case "mp4":
+    case "mov":
+      return head.subarray(4, 8).toString("latin1") === "ftyp";
+    // EBML header, shared by WebM and Matroska.
+    case "webm":
+    case "mkv":
+      return head.subarray(0, 4).equals(Buffer.from([26, 69, 223, 163]));
+    // RIFF container with an AVI fourcc at offset 8.
+    case "avi":
+      return head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 11).toString("latin1") === "AVI";
+    default:
+      return false;
+  }
+};
+var assertVideoSize = (size) => {
+  if (size === null) {
+    throw new AppError(
+      "That upload could not be found. Please try again.",
+      400
+    );
+  }
+  if (size === 0) {
+    throw new AppError("That file is empty. Please choose another video.", 400);
+  }
+  if (size > VIDEO_MAX_BYTES) {
+    throw new AppError("Your presentation must be smaller than 50 MB.", 400);
+  }
+  return size;
+};
+
 // server/controllers/auth.controller.ts
 var signToken = (id, role) => {
   return jwt.sign({ id, role }, getJwtSecret(), {
@@ -394,7 +711,7 @@ var mapPlanToTier = (plan) => {
 };
 var slugify = (name) => {
   const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto2.randomBytes(3).toString("hex");
+  const suffix = crypto3.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
 var createCompanyForRecruiter = async (recruiterProfileId, companyName) => {
@@ -526,33 +843,55 @@ var getMe = async (req, res, next) => {
   }
 };
 var updateMyAvatar = async (req, res, next) => {
+  let storedPath = null;
   try {
-    const file = req.file;
-    if (!file?.path) {
-      return next(new AppError("Please upload an image.", 400));
-    }
+    const image = validateAvatarUpload(req.file);
     const user = await prisma_default.user.findUnique({
       where: { id: req.user.id }
     });
     if (!user) {
       return next(new AppError("User not found.", 404));
     }
-    const avatarAsset = await prisma_default.fileAsset.create({
-      data: {
-        url: file.path,
-        provider: "cloudinary",
-        publicId: file.filename,
-        mimeType: file.mimetype,
-        size: file.size
-      }
-    });
     const previousAvatarId = user.avatarId;
-    const updatedUser = await prisma_default.user.update({
-      where: { id: user.id },
-      data: { avatarId: avatarAsset.id },
-      include: { avatar: true }
+    storedPath = await uploadObject({
+      bucket: AVATAR_BUCKET,
+      path: buildObjectPath(user.id, image.extension),
+      buffer: image.buffer,
+      mimeType: image.mimeType
     });
-    if (previousAvatarId && previousAvatarId !== avatarAsset.id) {
+    let updatedUser;
+    try {
+      updatedUser = await prisma_default.$transaction(async (tx) => {
+        const asset = await tx.fileAsset.create({
+          data: {
+            url: getPublicUrl(AVATAR_BUCKET, storedPath),
+            provider: "supabase",
+            publicId: storedPath,
+            fileName: image.fileName,
+            mimeType: image.mimeType,
+            extension: image.extension,
+            size: image.size
+          }
+        });
+        return tx.user.update({
+          where: { id: user.id },
+          data: { avatarId: asset.id },
+          include: { avatar: true }
+        });
+      });
+    } catch (dbErr) {
+      await removeObject(AVATAR_BUCKET, storedPath);
+      throw dbErr;
+    }
+    if (previousAvatarId && previousAvatarId !== updatedUser.avatarId) {
+      const previous = await prisma_default.fileAsset.findUnique({
+        where: { id: previousAvatarId }
+      });
+      if (previous?.provider === "supabase" && previous.publicId) {
+        await removeObject(AVATAR_BUCKET, previous.publicId);
+      } else if (previous?.provider === "cloudinary") {
+        await destroyCloudinaryAsset(previous.publicId, "image");
+      }
       await prisma_default.fileAsset.delete({ where: { id: previousAvatarId } }).catch(() => null);
     }
     res.status(200).json({
@@ -567,17 +906,17 @@ var updateMyAvatar = async (req, res, next) => {
 };
 
 // server/controllers/googleAuth.controller.ts
-import crypto4 from "crypto";
+import crypto5 from "crypto";
 import jwt2 from "jsonwebtoken";
 import passport2 from "passport";
 
 // server/services/oauth.service.ts
 init_prisma();
-import crypto3 from "crypto";
+import crypto4 from "crypto";
 var PROVIDER = "google";
 var slugify2 = (name) => {
   const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  return `${base || "company"}-${crypto3.randomBytes(3).toString("hex")}`;
+  return `${base || "company"}-${crypto4.randomBytes(3).toString("hex")}`;
 };
 async function findOrCreateUserFromGoogle(identity, requestedRole) {
   const existingAccount = await prisma_default.account.findUnique({
@@ -670,7 +1009,7 @@ var googleAuthStart = (req, res, next) => {
     return next(new AppError(getGoogleConfigError() ?? "Google sign-in is unavailable.", 503));
   }
   const requestedRole = req.query.role === "employer" ? "RECRUITER" : "CANDIDATE";
-  const nonce = crypto4.randomBytes(24).toString("hex");
+  const nonce = crypto5.randomBytes(24).toString("hex");
   const state = jwt2.sign({ nonce, role: requestedRole }, getJwtSecret(), { expiresIn: "10m" });
   res.cookie(STATE_COOKIE, nonce, cookieOptions(10 * 60 * 1e3));
   passport2.authenticate("google", {
@@ -792,41 +1131,6 @@ var protect = (req, res, next) => {
   }
 };
 
-// server/utils/cloudinary.ts
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
-import multer from "multer";
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
-var videoStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "job-portal-presentations",
-    resource_type: "video",
-    allowed_formats: ["mp4", "mov", "avi", "webm", "mkv"]
-  }
-});
-var presentationUpload = multer({
-  storage: videoStorage
-});
-var avatarStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "job-portal-avatars",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif"],
-    resource_type: "image",
-    transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }]
-  }
-});
-var avatarUpload = multer({
-  storage: avatarStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }
-  // 5MB — plenty for a profile photo
-});
-
 // server/routes/auth.routes.ts
 var router = Router();
 router.post("/register", register);
@@ -836,7 +1140,7 @@ router.get("/google/callback", googleAuthCallback);
 router.post("/google/session", googleAuthSession);
 router.get("/google/status", googleAuthStatus);
 router.get("/me", protect, getMe);
-router.patch("/me/avatar", protect, avatarUpload.single("avatar"), updateMyAvatar);
+router.patch("/me/avatar", protect, handleAvatarUpload, updateMyAvatar);
 var auth_routes_default = router;
 
 // server/routes/job.routes.ts
@@ -844,10 +1148,10 @@ import { Router as Router2 } from "express";
 
 // server/controllers/job.controller.ts
 init_prisma();
-import crypto5 from "crypto";
+import crypto6 from "crypto";
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto5.randomBytes(3).toString("hex");
+  const suffix = crypto6.randomBytes(3).toString("hex");
   return `${base || "job"}-${suffix}`;
 };
 var getAllJobs = async (req, res, next) => {
@@ -2560,117 +2864,6 @@ import mammoth from "mammoth";
 
 // server/services/cvFile.service.ts
 import axios from "axios";
-
-// server/utils/supabaseStorage.ts
-import { createClient } from "@supabase/supabase-js";
-import crypto6 from "crypto";
-var BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
-var SIGNED_URL_TTL_SECONDS = 300;
-var MAX_CV_BYTES = 10 * 1024 * 1024;
-var cachedClient = null;
-var getClient = () => {
-  if (cachedClient) return cachedClient;
-  const url = process.env.SUPABASE_URL?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!url || !serviceRoleKey) {
-    throw new AppError(
-      "CV storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
-      500
-    );
-  }
-  cachedClient = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-  return cachedClient;
-};
-var BUCKET_SETTINGS = {
-  public: false,
-  fileSizeLimit: MAX_CV_BYTES,
-  // Explicitly null, not omitted: updateBucket only changes the fields it is
-  // given, so leaving this out would silently preserve an allow-list set by an
-  // earlier version of this code.
-  allowedMimeTypes: null
-};
-var bucketReady = null;
-var ensureBucket = async () => {
-  if (bucketReady) return bucketReady;
-  bucketReady = (async () => {
-    const storage = getClient().storage;
-    const { error } = await storage.createBucket(BUCKET, BUCKET_SETTINGS);
-    if (!error) return;
-    if (!/already exists/i.test(error.message)) {
-      throw new AppError(`Could not prepare CV storage: ${error.message}`, 500);
-    }
-    const { error: updateError } = await storage.updateBucket(BUCKET, BUCKET_SETTINGS);
-    if (updateError) {
-      throw new AppError(
-        `Could not verify CV storage settings: ${updateError.message}`,
-        500
-      );
-    }
-  })();
-  try {
-    await bucketReady;
-  } catch (err) {
-    bucketReady = null;
-    throw err;
-  }
-};
-var uploadCvObject = async (params) => {
-  const { candidateProfileId, buffer, extension, mimeType } = params;
-  await ensureBucket();
-  const path = `${candidateProfileId}/${crypto6.randomUUID()}.${extension}`;
-  const { error } = await getClient().storage.from(BUCKET).upload(path, buffer, { contentType: mimeType, upsert: false });
-  if (error) {
-    throw new AppError(`CV upload failed: ${error.message}`, 502);
-  }
-  return path;
-};
-var createCvUploadTicket = async (params) => {
-  const { candidateProfileId, extension } = params;
-  await ensureBucket();
-  const path = `${candidateProfileId}/${crypto6.randomUUID()}.${extension}`;
-  const { data, error } = await getClient().storage.from(BUCKET).createSignedUploadUrl(path);
-  if (error || !data) {
-    throw new AppError(
-      `Could not start the CV upload: ${error?.message ?? "unknown error"}`,
-      502
-    );
-  }
-  return { path, token: data.token, signedUrl: data.signedUrl };
-};
-var createSignedCvUrl = async (path, expiresIn = SIGNED_URL_TTL_SECONDS) => {
-  const { data, error } = await getClient().storage.from(BUCKET).createSignedUrl(path, expiresIn);
-  if (error || !data?.signedUrl) {
-    throw new AppError(
-      `Could not generate CV link: ${error?.message ?? "unknown error"}`,
-      502
-    );
-  }
-  return data.signedUrl;
-};
-var downloadCvObject = async (path) => {
-  const { data, error } = await getClient().storage.from(BUCKET).download(path);
-  if (error || !data) {
-    throw new AppError(
-      `Could not read CV from storage: ${error?.message ?? "unknown error"}`,
-      502
-    );
-  }
-  return Buffer.from(await data.arrayBuffer());
-};
-var removeCvObject = async (path) => {
-  try {
-    const { error } = await getClient().storage.from(BUCKET).remove([path]);
-    if (error) {
-      console.error(`CV cleanup failed for ${path}: ${error.message}`);
-    }
-  } catch (err) {
-    console.error(`CV cleanup failed for ${path}:`, err);
-  }
-};
-
-// server/services/cvFile.service.ts
 var SUPABASE_URL_SCHEME = "supabase://cvs/";
 var isPrivatelyStored = (asset) => asset.provider === "supabase";
 var getCvAccessUrl = async (asset) => {
@@ -3292,28 +3485,52 @@ var application_routes_default = router4;
 import { Router as Router5 } from "express";
 
 // server/controllers/contact.controller.ts
+var DEFAULT_CONTACT_INBOX = "contact@darlemploi.dz";
+var escapeHtml = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+var EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var sendContactMessage = async (req, res) => {
   try {
     const { email, subject, message } = req.body;
     if (!email || !subject || !message) {
       return res.status(400).json({ message: "All fields are required" });
     }
-    const contactEmail = process.env.CONTACT_EMAIL || process.env.EMAIL_USER;
-    if (!contactEmail) {
-      console.error("No contact email configured");
-      return res.status(500).json({ message: "Server configuration error" });
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      return res.status(400).json({ message: "Please provide a valid email address" });
     }
+    if (message.length > 5e3 || subject.length > 200) {
+      return res.status(400).json({ message: "Your message is too long" });
+    }
+    const contactInbox = process.env.CONTACT_EMAIL?.trim() || DEFAULT_CONTACT_INBOX;
     const html = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>New Contact Form Submission</h2>
-        <p><strong>From:</strong> ${email}</p>
-        <p><strong>Subject:</strong> ${subject}</p>
-        <div style="background: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <p>${message}</p>
-        </div>
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2B3442;">
+        <h2 style="color:#173E7D;">Nouveau message depuis le formulaire de contact</h2>
+        <p><strong>De :</strong> ${escapeHtml(email)}</p>
+        <p><strong>Sujet :</strong> ${escapeHtml(subject)}</p>
+        <div style="background:#F5F7FA; padding:16px; border-radius:8px; margin:20px 0; white-space:pre-wrap;">${escapeHtml(
+      message
+    )}</div>
+        <p style="color:#6B7686; font-size:12px;">
+          R\xE9pondez directement \xE0 cet email pour joindre l'exp\xE9diteur.
+        </p>
       </div>
     `;
-    await sendEmail(contactEmail, `Contact Form: ${subject}`, html);
+    const text = [
+      "Nouveau message depuis le formulaire de contact",
+      "",
+      `De : ${email}`,
+      `Sujet : ${subject}`,
+      "",
+      message
+    ].join("\n");
+    const sent = await sendEmail(contactInbox, `Contact : ${subject}`, html, {
+      replyTo: email.trim(),
+      text
+    });
+    if (!sent) {
+      return res.status(502).json({
+        message: "Votre message n'a pas pu \xEAtre envoy\xE9. R\xE9essayez plus tard ou \xE9crivez-nous directement \xE0 " + DEFAULT_CONTACT_INBOX + "."
+      });
+    }
     res.status(200).json({ message: "Message sent successfully" });
   } catch (error) {
     console.error("Error in sendContactMessage:", error);
@@ -3895,9 +4112,46 @@ var preselection_routes_default = router7;
 // server/routes/oralPresentation.routes.ts
 import express from "express";
 
+// server/controllers/oralPresentation.controller.ts
+init_prisma();
+
 // server/services/oralPresentation.service.ts
 init_prisma();
 import { OralPresentationStatus } from "@prisma/client";
+var SAFE_CANDIDATE_USER = {
+  select: {
+    id: true,
+    firstName: true,
+    lastName: true,
+    email: true,
+    phone: true,
+    avatar: { select: { url: true } }
+  }
+};
+var playableUrl = async (video) => {
+  if (!video) return null;
+  if (video.provider !== "supabase") return video.url;
+  if (!video.publicId) return null;
+  return createSignedUrl(PRESENTATION_BUCKET, video.publicId, VIDEO_URL_TTL_SECONDS);
+};
+var withPlayableVideo = async (presentation) => {
+  if (!presentation?.video) return presentation;
+  const url = await playableUrl(presentation.video);
+  return { ...presentation, video: { ...presentation.video, url } };
+};
+var withPlayableVideos = async (items) => {
+  const paths = items.filter((i) => i.video?.provider === "supabase" && i.video.publicId).map((i) => i.video.publicId);
+  const signed = await createSignedUrls(
+    PRESENTATION_BUCKET,
+    paths,
+    VIDEO_URL_TTL_SECONDS
+  );
+  return items.map((item) => {
+    if (!item.video) return item;
+    const url = item.video.provider === "supabase" ? signed.get(item.video.publicId ?? "") ?? null : item.video.url;
+    return { ...item, video: { ...item.video, url } };
+  });
+};
 var OralPresentationService = class {
   /**
    * Candidate: Upload or replace their profile presentation video.
@@ -3907,10 +4161,17 @@ var OralPresentationService = class {
    * directly to Cloudinary (see getUploadSignature) — we only ever
    * receive the resulting metadata here, never the file itself.
    */
-  async uploadPresentation(userId, meta) {
-    if (!meta?.url) {
-      throw new AppError("Please upload a video.", 400);
-    }
+  /**
+   * Attaches an already-stored, already-validated video to the candidate's
+   * presentation.
+   *
+   * Called only from the confirm endpoint, which checks that the object exists,
+   * sits in this candidate's own folder, is within the size limit and really is
+   * the video format it claims. The previous version took a URL straight from
+   * the browser and saved it, so a candidate could point their "presentation"
+   * at any video on the internet.
+   */
+  async savePresentation(userId, video) {
     const user = await prisma_default.user.findUnique({
       where: { id: userId },
       include: { candidateProfile: { include: { oralPresentation: true } } }
@@ -3921,12 +4182,16 @@ var OralPresentationService = class {
     const candidateId = user.candidateProfile.id;
     const fileAsset = await prisma_default.fileAsset.create({
       data: {
-        url: meta.url,
-        provider: "cloudinary",
-        publicId: meta.publicId,
-        mimeType: meta.mimeType,
-        extension: meta.extension,
-        size: meta.size
+        // Not a fetchable address: the bucket is private, so readers sign a
+        // URL from publicId. Stored in this deliberately non-HTTP form so code
+        // that renders it blindly fails loudly.
+        url: `supabase://${PRESENTATION_BUCKET}/${video.path}`,
+        provider: "supabase",
+        publicId: video.path,
+        fileName: video.fileName,
+        mimeType: video.mimeType,
+        extension: video.extension,
+        size: video.size
       }
     });
     const existing = user.candidateProfile.oralPresentation;
@@ -3940,9 +4205,17 @@ var OralPresentationService = class {
         include: { video: true }
       });
       if (existing.videoId && existing.videoId !== fileAsset.id) {
+        const previous = await prisma_default.fileAsset.findUnique({
+          where: { id: existing.videoId }
+        });
+        if (previous?.provider === "supabase" && previous.publicId) {
+          await removeObject(PRESENTATION_BUCKET, previous.publicId);
+        } else if (previous?.provider === "cloudinary") {
+          await destroyCloudinaryAsset(previous.publicId, "video");
+        }
         await prisma_default.fileAsset.delete({ where: { id: existing.videoId } }).catch(() => null);
       }
-      return presentation2;
+      return withPlayableVideo(presentation2);
     }
     const presentation = await prisma_default.oralPresentation.create({
       data: {
@@ -3952,7 +4225,7 @@ var OralPresentationService = class {
       },
       include: { video: true }
     });
-    return presentation;
+    return withPlayableVideo(presentation);
   }
   /**
    * Candidate: Get own presentation
@@ -3969,7 +4242,7 @@ var OralPresentationService = class {
       where: { candidateId: user.candidateProfile.id },
       include: { video: true }
     });
-    return presentation;
+    return withPlayableVideo(presentation);
   }
   /**
    * Recruiter/Admin: View a candidate's presentation.
@@ -3981,7 +4254,7 @@ var OralPresentationService = class {
       where: { candidateId },
       include: {
         video: true,
-        candidate: { include: { user: true } }
+        candidate: { include: { user: SAFE_CANDIDATE_USER } }
       }
     });
     if (!presentation) {
@@ -4006,7 +4279,7 @@ var OralPresentationService = class {
         throw new AppError("Unauthorized.", 403);
       }
     }
-    return presentation;
+    return withPlayableVideo(presentation);
   }
   /**
    * Recruiter: Score a candidate's presentation.
@@ -4078,6 +4351,7 @@ var OralPresentationService = class {
     if (!presentation) {
       throw new AppError("Presentation not found.", 404);
     }
+    const video = presentation.videoId ? await prisma_default.fileAsset.findUnique({ where: { id: presentation.videoId } }) : null;
     await prisma_default.$transaction(async (tx) => {
       await tx.oralPresentation.delete({
         where: { candidateId: user.candidateProfile.id }
@@ -4086,6 +4360,11 @@ var OralPresentationService = class {
         await tx.fileAsset.delete({ where: { id: presentation.videoId } });
       }
     });
+    if (video?.provider === "supabase" && video.publicId) {
+      await removeObject(PRESENTATION_BUCKET, video.publicId);
+    } else if (video?.provider === "cloudinary") {
+      await destroyCloudinaryAsset(video.publicId, "video");
+    }
     return { success: true, message: "Presentation deleted successfully." };
   }
   /**
@@ -4111,7 +4390,7 @@ var OralPresentationService = class {
     const [items, total] = await prisma_default.$transaction([
       prisma_default.oralPresentation.findMany({
         where,
-        include: { video: true, candidate: { include: { user: true } } },
+        include: { video: true, candidate: { include: { user: SAFE_CANDIDATE_USER } } },
         skip,
         take: limit,
         orderBy: { createdAt: "desc" }
@@ -4119,7 +4398,7 @@ var OralPresentationService = class {
       prisma_default.oralPresentation.count({ where })
     ]);
     return {
-      items,
+      items: await withPlayableVideos(items),
       pagination: { total, page, limit, pages: Math.ceil(total / limit) }
     };
   }
@@ -4130,7 +4409,7 @@ var OralPresentationService = class {
     const skip = (page - 1) * limit;
     const [items, total] = await prisma_default.$transaction([
       prisma_default.oralPresentation.findMany({
-        include: { video: true, candidate: { include: { user: true } } },
+        include: { video: true, candidate: { include: { user: SAFE_CANDIDATE_USER } } },
         skip,
         take: limit,
         orderBy: { createdAt: "desc" }
@@ -4138,7 +4417,7 @@ var OralPresentationService = class {
       prisma_default.oralPresentation.count()
     ]);
     return {
-      items,
+      items: await withPlayableVideos(items),
       pagination: { total, page, limit, pages: Math.ceil(total / limit) }
     };
   }
@@ -4179,37 +4458,85 @@ var OralPresentationService = class {
 var oralPresentation_service_default = new OralPresentationService();
 
 // server/controllers/oralPresentation.controller.ts
-var getUploadSignature = async (req, res, next) => {
+var requireOwnCandidateProfile = async (req) => {
+  const user = await prisma_default.user.findUnique({
+    where: { id: req.user.id },
+    include: { candidateProfile: true }
+  });
+  if (!user?.candidateProfile) {
+    throw new AppError("Candidate profile not found.", 404);
+  }
+  return user.candidateProfile;
+};
+var assertOwnObjectPath = (path, profileId) => {
+  if (typeof path !== "string" || !path) {
+    throw new AppError("Missing upload reference.", 400);
+  }
+  const segments = path.split("/");
+  if (segments.length !== 2) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+  const [folder, object] = segments;
+  if (folder !== profileId || !OBJECT_NAME_PATTERN.test(object)) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+  return path;
+};
+var createPresentationUploadUrl = async (req, res, next) => {
   try {
-    const timestamp = Math.round(Date.now() / 1e3);
-    const folder = "job-portal-presentations";
-    const paramsToSign = {
-      timestamp,
-      folder
-    };
-    const signature = cloudinary.utils.api_sign_request(
-      paramsToSign,
-      process.env.CLOUDINARY_API_SECRET
-    );
+    const { fileName } = req.body;
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Please choose a video to upload.", 400));
+    }
+    const extension = resolveVideoExtension(fileName);
+    const profile = await requireOwnCandidateProfile(req);
+    const ticket = await createUploadTicket({
+      bucket: PRESENTATION_BUCKET,
+      path: buildObjectPath(profile.id, extension)
+    });
     res.status(200).json({
       status: "success",
-      data: {
-        timestamp,
-        folder,
-        signature,
-        apiKey: process.env.CLOUDINARY_API_KEY,
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME
-      }
+      data: { path: ticket.path, signedUrl: ticket.signedUrl, token: ticket.token }
     });
   } catch (err) {
     next(err);
   }
 };
-var uploadPresentation = async (req, res, next) => {
+var confirmPresentationUpload = async (req, res, next) => {
   try {
-    const presentation = await oralPresentation_service_default.uploadPresentation(
+    const { path, fileName } = req.body;
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Missing file name.", 400));
+    }
+    const extension = resolveVideoExtension(fileName);
+    const profile = await requireOwnCandidateProfile(req);
+    const storedPath = assertOwnObjectPath(path, profile.id);
+    let size;
+    try {
+      size = assertVideoSize(await getObjectSize(PRESENTATION_BUCKET, storedPath));
+      const head = await downloadObjectHead(PRESENTATION_BUCKET, storedPath, 4096);
+      if (!hasVideoSignature(head, extension)) {
+        throw new AppError(
+          `This file is not a valid ${extension.toUpperCase()} video. Please try again.`,
+          400
+        );
+      }
+    } catch (validationErr) {
+      await removeObject(PRESENTATION_BUCKET, storedPath);
+      throw validationErr;
+    }
+    const presentation = await oralPresentation_service_default.savePresentation(
       req.user.id,
-      req.body
+      {
+        path: storedPath,
+        fileName,
+        extension,
+        mimeType: videoMimeType(extension),
+        size
+      }
+    );
+    console.log(
+      `Presentation stored candidate=${profile.id} format=${extension} bytes=${size}`
     );
     res.status(201).json({
       status: "success",
@@ -4328,15 +4655,15 @@ var getRecruiterStatistics2 = async (req, res, next) => {
 // server/routes/oralPresentation.routes.ts
 var router8 = express.Router();
 router8.use(protect);
-router8.get(
-  "/upload-signature",
+router8.post(
+  "/me/upload-url",
   restrictTo("CANDIDATE"),
-  getUploadSignature
+  createPresentationUploadUrl
 );
 router8.post(
-  "/me",
+  "/me/confirm",
   restrictTo("CANDIDATE"),
-  uploadPresentation
+  confirmPresentationUpload
 );
 router8.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
 router8.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
@@ -5117,7 +5444,7 @@ init_prisma();
 // server/middleware/cvUpload.middleware.ts
 import multer2 from "multer";
 var CV_EXTENSIONS = ["pdf", "doc", "docx"];
-var CV_MAX_BYTES = 10 * 1024 * 1024;
+var CV_MAX_BYTES2 = 10 * 1024 * 1024;
 var CV_MIME_TYPES = {
   pdf: "application/pdf",
   doc: "application/msword",
@@ -5125,7 +5452,7 @@ var CV_MIME_TYPES = {
 };
 var cvUpload = multer2({
   storage: multer2.memoryStorage(),
-  limits: { fileSize: CV_MAX_BYTES, files: 1 },
+  limits: { fileSize: CV_MAX_BYTES2, files: 1 },
   fileFilter: (_req, file, cb) => {
     const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
     if (!CV_EXTENSIONS.includes(extension)) {
@@ -5163,7 +5490,7 @@ var validateCvBuffer = (buffer, fileName) => {
   if (buffer.length === 0) {
     throw new AppError("That file is empty. Please choose another CV.", 400);
   }
-  if (buffer.length > CV_MAX_BYTES) {
+  if (buffer.length > CV_MAX_BYTES2) {
     throw new AppError("Your CV must be smaller than 10 MB.", 400);
   }
   const extension = resolveCvExtension(fileName);
@@ -5260,7 +5587,7 @@ var finalizeCv = async (profileId, previousResumeId, storedPath, cv) => {
   );
   return resume;
 };
-var requireOwnCandidateProfile = async (req) => {
+var requireOwnCandidateProfile2 = async (req) => {
   const user = await prisma_default.user.findUnique({
     where: { id: req.user.id },
     include: { candidateProfile: true }
@@ -5271,7 +5598,7 @@ var requireOwnCandidateProfile = async (req) => {
   return user.candidateProfile;
 };
 var CV_OBJECT_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|doc|docx)$/;
-var assertOwnObjectPath = (path, profileId) => {
+var assertOwnObjectPath2 = (path, profileId) => {
   if (typeof path !== "string" || !path) {
     throw new AppError("Missing upload reference.", 400);
   }
@@ -5306,7 +5633,7 @@ var uploadCV = async (req, res, next) => {
   let storedPath = null;
   try {
     const cv = validateCvUpload(req.file);
-    const profile = await requireOwnCandidateProfile(req);
+    const profile = await requireOwnCandidateProfile2(req);
     storedPath = await uploadCvObject({
       candidateProfileId: profile.id,
       buffer: cv.buffer,
@@ -5531,7 +5858,7 @@ var createCvUploadUrl = async (req, res, next) => {
       return next(new AppError("Please choose a CV file to upload.", 400));
     }
     const extension = resolveCvExtension(fileName);
-    const profile = await requireOwnCandidateProfile(req);
+    const profile = await requireOwnCandidateProfile2(req);
     const ticket = await createCvUploadTicket({
       candidateProfileId: profile.id,
       extension
@@ -5550,8 +5877,8 @@ var confirmCvUpload = async (req, res, next) => {
     if (!fileName || typeof fileName !== "string") {
       return next(new AppError("Missing file name.", 400));
     }
-    const profile = await requireOwnCandidateProfile(req);
-    const storedPath = assertOwnObjectPath(path, profile.id);
+    const profile = await requireOwnCandidateProfile2(req);
+    const storedPath = assertOwnObjectPath2(path, profile.id);
     let cv;
     try {
       const buffer = await downloadCvObject(storedPath);
@@ -5930,6 +6257,17 @@ function createApp() {
   });
   app2.use("/api/auth/login", authLimiter);
   app2.use("/api/auth/register", authLimiter);
+  const contactLimiter = rateLimit({
+    windowMs: 60 * 60 * 1e3,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      status: "error",
+      message: "Trop de messages envoy\xE9s. R\xE9essayez dans une heure."
+    }
+  });
+  app2.use("/api/contact", contactLimiter);
   app2.use("/api/auth", auth_routes_default);
   app2.use("/api/jobs", job_routes_default);
   app2.use("/api/categories", category_routes_default);

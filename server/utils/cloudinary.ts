@@ -1,6 +1,4 @@
 import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
-import multer from "multer";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -8,37 +6,36 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// NOTE: CVs are no longer stored here. They contain personal data and now
-// live in a private Supabase Storage bucket, read only through short-lived
-// signed URLs — see server/utils/supabaseStorage.ts. Cloudinary keeps the
-// public media: avatars, company logos and oral presentations.
+/**
+ * Legacy media store.
+ *
+ * Nothing new is written here. CVs, profile photos and oral presentations all
+ * live in Supabase Storage now — see server/utils/supabaseStorage.ts — where
+ * the personal ones sit in private buckets read through short-lived signed
+ * URLs rather than permanent public links.
+ *
+ * This file remains because files uploaded before the move are still hosted on
+ * Cloudinary and must keep working: candidates are not going to re-upload, and
+ * recruiters still open applications from before the change. FileAsset.provider
+ * records which store a given row belongs to, and readers branch on it.
+ */
 
-const videoStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "job-portal-presentations",
-    resource_type: "video",
-    allowed_formats: ["mp4", "mov", "avi", "webm", "mkv"],
-  } as any,
-});
-
-export const presentationUpload = multer({
-  storage: videoStorage,
-});
-
-const avatarStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "job-portal-avatars",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif"],
-    resource_type: "image",
-    transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
-  } as any,
-});
-
-export const avatarUpload = multer({
-  storage: avatarStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB — plenty for a profile photo
-});
+/**
+ * Deletes a Cloudinary object left over from before the migration.
+ *
+ * Never throws: cleanup runs after the replacement is already live, so a failed
+ * tidy-up must not turn a successful upload into an error.
+ */
+export const destroyCloudinaryAsset = async (
+  publicId: string | null | undefined,
+  resourceType: "image" | "video" | "raw" = "image"
+): Promise<void> => {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+  } catch (err) {
+    console.error(`Cloudinary cleanup failed for ${publicId}:`, err);
+  }
+};
 
 export { cloudinary };

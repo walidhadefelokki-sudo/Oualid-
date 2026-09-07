@@ -157,7 +157,33 @@ const button = (href: string, label: string) => `
 const paragraph = (text: string) =>
   `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 
-export const sendEmail = async (to: string, subject: string, html: string) => {
+export interface SendEmailOptions {
+  /**
+   * Where a reply should go, when that is not the sender.
+   *
+   * Mail is always *sent* from the platform's own verified address so it
+   * passes SPF/DKIM; putting a visitor's address in `from` would fail
+   * alignment and land in spam. replyTo keeps Reply working anyway.
+   */
+  replyTo?: string;
+  /** Plain-text alternative, for clients that do not render HTML. */
+  text?: string;
+}
+
+/**
+ * Sends one email. Resolves true when the provider accepted it.
+ *
+ * Callers that must not fail because mail failed (registration, job matches)
+ * can ignore the result; the contact form checks it, because telling someone
+ * their message was sent when it was not is worse than telling them to try
+ * again.
+ */
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  options: SendEmailOptions = {}
+): Promise<boolean> => {
   if (resend) {
     // Resend reports failures in the response body rather than by throwing,
     // so an unchecked call looks exactly like a successful one.
@@ -166,6 +192,8 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       to,
       subject,
       html,
+      ...(options.text ? { text: options.text } : {}),
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     });
 
     if (error) {
@@ -174,11 +202,11 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       console.error(
         `Email to ${to} was NOT sent (Resend ${error.name}): ${error.message}`
       );
-      return;
+      return false;
     }
 
     console.log('Message sent via Resend: %s', data?.id);
-    return;
+    return true;
   }
 
   try {
@@ -190,7 +218,9 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       console.log(`To: ${to}`);
       console.log(`Subject: ${subject}`);
       console.log('----------------------------------------------------------------------');
-      return;
+      // Nothing was sent, and saying otherwise would let a caller report
+      // success on an environment with no mail configured at all.
+      return false;
     }
 
     const info = await transporter.sendMail({
@@ -198,10 +228,14 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       to,
       subject,
       html,
+      ...(options.text ? { text: options.text } : {}),
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     });
     console.log('Message sent: %s', info.messageId);
+    return true;
   } catch (error) {
     console.error(`Email to ${to} was NOT sent:`, error);
+    return false;
   }
 };
 

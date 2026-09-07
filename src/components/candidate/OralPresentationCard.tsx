@@ -7,6 +7,7 @@ import {
   Loader2,
   CheckCircle,
   Languages,
+  AlertCircle,
 } from "lucide-react";
 
 import oralPresentationService from "../../services/oralPresentation.service";
@@ -32,6 +33,7 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isDemo) {
@@ -60,22 +62,49 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
     }
   }
 
+  /**
+   * Formats a browser can both upload and play back. Checked before the file
+   * leaves the machine: a rejected 80MB video is a slow, silent failure
+   * otherwise, and there was no client-side check at all.
+   */
+  const VIDEO_EXTENSIONS = ["mp4", "mov", "webm", "mkv", "avi"];
+  const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+
   async function handleUpload(
     e: React.ChangeEvent<HTMLInputElement>
   ) {
     const file = e.target.files?.[0];
 
+    // Cleared immediately so picking the same file again still fires onChange,
+    // which is what a retry after a failure needs.
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
     if (!file) return;
 
     if (isDemo) {
-      alert("Créez un compte pour téléverser une présentation orale.");
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      setError("Créez un compte pour téléverser une présentation orale.");
+      return;
+    }
+
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!file.type.startsWith("video/") || !VIDEO_EXTENSIONS.includes(extension)) {
+      setError(
+        `Format non pris en charge (.${extension}). Utilisez MP4, MOV, AVI, WEBM ou MKV.`
+      );
+      return;
+    }
+
+    if (file.size > VIDEO_MAX_BYTES) {
+      setError(
+        `Votre vidéo fait ${(file.size / 1024 / 1024).toFixed(0)} Mo. La taille maximale est de 50 Mo.`
+      );
       return;
     }
 
     try {
+      setError(null);
       setUploading(true);
       setUploadProgress(0);
 
@@ -84,8 +113,8 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
       await loadPresentation();
     } catch (err: any) {
       console.error(err);
-      alert(
-        `Impossible de téléverser la présentation.\n\n${err?.message || "Erreur inconnue."}`
+      setError(
+        `Impossible de téléverser la présentation. ${err?.message || "Erreur inconnue."}`
       );
     } finally {
       setUploading(false);
@@ -105,11 +134,17 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
       return;
 
     try {
+      setError(null);
       await oralPresentationService.deletePresentation();
 
       setPresentation(null);
-    } catch (err) {
+    } catch (err: any) {
+      // Previously only logged, so a failed delete looked like nothing had
+      // happened and the video silently stayed.
       console.error(err);
+      setError(
+        `Impossible de supprimer la présentation. ${err?.response?.data?.message || err?.message || ""}`
+      );
     }
   }
 
@@ -147,6 +182,16 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
           </p>
         </div>
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex gap-3 items-start rounded-xl border border-red-200 bg-red-50 p-4 mb-5"
+        >
+          <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={20} />
+          <p className="text-sm font-medium text-red-700">{error}</p>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-12 flex justify-center">

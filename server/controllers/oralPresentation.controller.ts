@@ -1,58 +1,158 @@
 import { Request, Response, NextFunction } from "express";
+import prisma from "../utils/prisma";
+import { AppError } from "../middleware/error.middleware";
 import oralPresentationService from "../services/oralPresentation.service";
-import { cloudinary } from "../utils/cloudinary";
+import {
+  resolveVideoExtension,
+  videoMimeType,
+  hasVideoSignature,
+  assertVideoSize,
+} from "../middleware/mediaUpload.middleware";
+import {
+  PRESENTATION_BUCKET,
+  OBJECT_NAME_PATTERN,
+  buildObjectPath,
+  createUploadTicket,
+  downloadObjectHead,
+  getObjectSize,
+  removeObject,
+} from "../utils/supabaseStorage";
+
+/** The candidate profile of the authenticated user, or a 404. */
+const requireOwnCandidateProfile = async (req: Request) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user!.id },
+    include: { candidateProfile: true },
+  });
+
+  if (!user?.candidateProfile) {
+    throw new AppError("Candidate profile not found.", 404);
+  }
+
+  return user.candidateProfile;
+};
 
 /**
- * Candidate: Generate a short-lived signature so the browser can upload
- * the video FILE directly to Cloudinary, bypassing our own server
- * entirely for the (potentially large) video bytes. This is required
- * because our API runs as a Vercel serverless function, which enforces
- * a hard ~4.5MB request body limit — most presentation videos exceed
- * that, so routing the file through our server would fail outright.
+ * The path comes back from the browser at confirm time, so it is untrusted
+ * input. Matching it against the exact shape this server hands out is what
+ * stops a candidate confirming a path inside someone else's folder, or walking
+ * out of the bucket with "..".
  */
-export const getUploadSignature = async (
+const assertOwnObjectPath = (path: unknown, profileId: string): string => {
+  if (typeof path !== "string" || !path) {
+    throw new AppError("Missing upload reference.", 400);
+  }
+
+  const segments = path.split("/");
+  if (segments.length !== 2) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+
+  const [folder, object] = segments;
+  if (folder !== profileId || !OBJECT_NAME_PATTERN.test(object)) {
+    throw new AppError("Invalid upload reference.", 400);
+  }
+
+  return path;
+};
+
+/**
+ * Candidate: start a direct-to-storage upload of a presentation video.
+ *
+ * Returns a one-time URL the browser PUTs the file to, bypassing this server
+ * entirely for the video bytes — a Vercel function rejects a request body over
+ * ~4.5 MB, and a presentation is allowed to be 100 MB. Nothing is recorded
+ * yet: an issued ticket that is never confirmed leaves the profile untouched,
+ * so an abandoned upload cannot displace an existing presentation.
+ */
+export const createPresentationUploadUrl = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const timestamp = Math.round(Date.now() / 1000);
-    const folder = "job-portal-presentations";
+    const { fileName } = req.body as { fileName?: string };
 
-    const paramsToSign: Record<string, string | number> = {
-      timestamp,
-      folder,
-    };
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Please choose a video to upload.", 400));
+    }
 
-    const signature = cloudinary.utils.api_sign_request(
-      paramsToSign,
-      process.env.CLOUDINARY_API_SECRET as string
-    );
+    // Rejects a name that is not a video before a place to upload to exists.
+    const extension = resolveVideoExtension(fileName);
+
+    const profile = await requireOwnCandidateProfile(req);
+
+    const ticket = await createUploadTicket({
+      bucket: PRESENTATION_BUCKET,
+      path: buildObjectPath(profile.id, extension),
+    });
 
     res.status(200).json({
       status: "success",
-      data: {
-        timestamp,
-        folder,
-        signature,
-        apiKey: process.env.CLOUDINARY_API_KEY,
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-      },
+      data: { path: ticket.path, signedUrl: ticket.signedUrl, token: ticket.token },
     });
   } catch (err) {
     next(err);
   }
 };
 
-export const uploadPresentation = async (
+/**
+ * Candidate: confirm a direct upload and attach it to their presentation.
+ *
+ * The bytes arrived without passing through this server, so they are checked
+ * here — that the object exists, sits in this candidate's own folder, is within
+ * the size limit, and really is the video container it claims to be. Only the
+ * head of the file is read: enough to identify the format without pulling 100 MB
+ * into a serverless function. Anything that fails is deleted rather than left
+ * in the bucket, and the candidate keeps the presentation they already had.
+ */
+export const confirmPresentationUpload = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const presentation = await oralPresentationService.uploadPresentation(
+    const { path, fileName } = req.body as { path?: string; fileName?: string };
+
+    if (!fileName || typeof fileName !== "string") {
+      return next(new AppError("Missing file name.", 400));
+    }
+
+    const extension = resolveVideoExtension(fileName);
+    const profile = await requireOwnCandidateProfile(req);
+    const storedPath = assertOwnObjectPath(path, profile.id);
+
+    let size: number;
+    try {
+      size = assertVideoSize(await getObjectSize(PRESENTATION_BUCKET, storedPath));
+
+      const head = await downloadObjectHead(PRESENTATION_BUCKET, storedPath, 4096);
+      if (!hasVideoSignature(head, extension)) {
+        throw new AppError(
+          `This file is not a valid ${extension.toUpperCase()} video. Please try again.`,
+          400
+        );
+      }
+    } catch (validationErr) {
+      // Whatever was uploaded is not a usable presentation. Do not keep it.
+      await removeObject(PRESENTATION_BUCKET, storedPath);
+      throw validationErr;
+    }
+
+    const presentation = await oralPresentationService.savePresentation(
       req.user!.id,
-      req.body
+      {
+        path: storedPath,
+        fileName,
+        extension,
+        mimeType: videoMimeType(extension),
+        size,
+      }
+    );
+
+    // Metadata only — never the file.
+    console.log(
+      `Presentation stored candidate=${profile.id} format=${extension} bytes=${size}`
     );
 
     res.status(201).json({

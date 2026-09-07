@@ -125,6 +125,24 @@ export function createApp() {
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", authLimiter);
 
+  // The contact form is public and unauthenticated, and every submission sends
+  // an email. Without a limit on it, it is an open relay for whoever finds it.
+  //
+  // Rejected submissions count too, which keeps the limit meaningful against
+  // probing — so the ceiling is set high enough that someone mistyping their
+  // own address a few times is not locked out of contacting you for an hour.
+  const contactLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      status: "error",
+      message: "Trop de messages envoyés. Réessayez dans une heure.",
+    },
+  });
+  app.use("/api/contact", contactLimiter);
+
   // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/jobs", jobRoutes);

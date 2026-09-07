@@ -26,48 +26,50 @@ class OralPresentationService {
    * Candidate
    * Upload or replace my presentation.
    *
-   * The video is uploaded directly from the browser to Cloudinary
-   * (using a short-lived signature from our backend), never through
-   * our own API server. Our API runs as a Vercel serverless function,
-   * which enforces a hard ~4.5MB request body limit — routing a real
-   * presentation video through it would fail almost every time. Once
-   * Cloudinary has the file, we send it only the small resulting
-   * metadata (url, publicId, etc.) to save.
+   * Three steps, because the video never passes through our own API: a Vercel
+   * function's request body is capped at ~4.5MB, far under the 50MB a
+   * presentation is allowed to be, so anything real would fail there no matter
+   * how the endpoint were written.
+   *
+   *   1. ask the server for a one-time upload URL
+   *   2. send the bytes straight to storage, reporting progress
+   *   3. tell the server to check them and attach the result
+   *
+   * Step 3 is where format and size are verified, against the file's own bytes
+   * rather than anything the browser claims. Nothing is recorded until it
+   * passes, so a failed or abandoned upload leaves the existing presentation
+   * exactly as it was.
    */
   async uploadPresentation(
     file: File,
     onProgress?: (percent: number) => void
   ): Promise<OralPresentation> {
-    // 1. Get a signed upload signature from our backend
-    let timestamp, folder, signature, apiKey, cloudName;
+    // 1. A place to upload to.
+    let path: string;
+    let signedUrl: string;
     try {
-      const sigResponse = await api.get("/oral-presentations/upload-signature");
-      ({ timestamp, folder, signature, apiKey, cloudName } = sigResponse.data.data);
+      const ticket = await api.post("/oral-presentations/me/upload-url", {
+        fileName: file.name,
+      });
+      ({ path, signedUrl } = ticket.data.data);
     } catch (err: any) {
       const detail = err?.response?.data?.message || err?.message || String(err);
-      throw new Error(`[signature] ${detail}`);
+      throw new Error(detail);
     }
 
-    if (!cloudName || !apiKey) {
-      throw new Error(
-        "[signature] Le serveur n'a pas renvoyé de configuration Cloudinary valide (cloudName/apiKey manquant)."
-      );
-    }
+    // 2. The bytes. XHR rather than fetch, because it is the only way to
+    //    report upload progress on a file this size.
+    //
+    //    The shape Supabase Storage expects on a signed upload URL: a PUT whose
+    //    body is form data carrying the file under an empty field name.
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", file);
 
-    // 2. Upload the file directly to Cloudinary
-    const cloudinaryForm = new FormData();
-    cloudinaryForm.append("file", file);
-    cloudinaryForm.append("api_key", apiKey);
-    cloudinaryForm.append("timestamp", timestamp);
-    cloudinaryForm.append("signature", signature);
-    cloudinaryForm.append("folder", folder);
-
-    const cloudinaryResponse = await new Promise<any>((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open(
-        "POST",
-        `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`
-      );
+      xhr.open("PUT", signedUrl);
+      xhr.setRequestHeader("x-upsert", "false");
 
       xhr.upload.onprogress = (event) => {
         if (onProgress && event.lengthComputable) {
@@ -76,18 +78,12 @@ class OralPresentationService {
       };
 
       xhr.onload = () => {
-        let data: any = null;
-        try {
-          data = JSON.parse(xhr.responseText);
-        } catch {
-          // response wasn't JSON — fall through, data stays null
-        }
-        if (xhr.status >= 200 && xhr.status < 300 && data) {
-          resolve(data);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
         } else {
           reject(
             new Error(
-              `[cloudinary ${xhr.status}] ${data?.error?.message || xhr.responseText || "Échec du téléversement vers Cloudinary."}`
+              `Le téléversement a échoué (${xhr.status}). Vérifiez votre connexion et réessayez.`
             )
           );
         }
@@ -96,29 +92,24 @@ class OralPresentationService {
       xhr.onerror = () =>
         reject(
           new Error(
-            "[cloudinary] Erreur réseau pendant le téléversement (CORS, connexion, ou domaine bloqué)."
+            "Erreur réseau pendant le téléversement. Vérifiez votre connexion et réessayez."
           )
         );
 
-      xhr.send(cloudinaryForm);
+      xhr.send(form);
     });
 
-    // 3. Save the resulting metadata (not the file) on our backend
+    // 3. Server-side validation, then the record.
     try {
-      const response = await api.post("/oral-presentations/me", {
-        url: cloudinaryResponse.secure_url,
-        publicId: cloudinaryResponse.public_id,
-        mimeType: cloudinaryResponse.resource_type
-          ? `${cloudinaryResponse.resource_type}/${cloudinaryResponse.format}`
-          : undefined,
-        extension: cloudinaryResponse.format,
-        size: cloudinaryResponse.bytes,
+      const response = await api.post("/oral-presentations/me/confirm", {
+        path,
+        fileName: file.name,
       });
 
       return response.data.data.presentation;
     } catch (err: any) {
       const detail = err?.response?.data?.message || err?.message || String(err);
-      throw new Error(`[save] ${detail}`);
+      throw new Error(detail);
     }
   }
 

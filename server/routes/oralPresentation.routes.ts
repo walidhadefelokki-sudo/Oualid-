@@ -1,8 +1,8 @@
 import express from "express";
 
 import {
-  getUploadSignature,
-  uploadPresentation,
+  createPresentationUploadUrl,
+  confirmPresentationUpload,
   getMyPresentation,
   getPresentationByCandidateId,
   updateRecruiterScore,
@@ -24,20 +24,21 @@ router.use(protect);
 /*                               Candidate Routes                             */
 /* -------------------------------------------------------------------------- */
 
-// Get a signature so the browser can upload the video file directly to
-// Cloudinary (bypasses our server's request body size limit)
-router.get(
-  "/upload-signature",
+// Direct-to-storage upload, in two steps. A Vercel function rejects a request
+// body over ~4.5MB, so a presentation video can never reach this server as
+// multipart. The browser PUTs the bytes to Supabase, then confirms — and the
+// confirm step validates them, because a file that skipped our server is a
+// file we have not checked.
+router.post(
+  "/me/upload-url",
   restrictTo("CANDIDATE"),
-  getUploadSignature
+  createPresentationUploadUrl
 );
 
-// Save the resulting video metadata after a direct-to-Cloudinary upload
-// (profile-level, not tied to an application)
 router.post(
-  "/me",
+  "/me/confirm",
   restrictTo("CANDIDATE"),
-  uploadPresentation
+  confirmPresentationUpload
 );
 
 // Get own presentation

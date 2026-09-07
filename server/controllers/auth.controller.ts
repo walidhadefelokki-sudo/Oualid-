@@ -8,6 +8,15 @@ import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import crypto from "crypto";
 import { getJwtSecret } from "../utils/jwt";
+import { destroyCloudinaryAsset } from "../utils/cloudinary";
+import { validateAvatarUpload } from "../middleware/mediaUpload.middleware";
+import {
+  AVATAR_BUCKET,
+  buildObjectPath,
+  getPublicUrl,
+  removeObject,
+  uploadObject,
+} from "../utils/supabaseStorage";
 
 const signToken = (id: string, role: string) => {
   return jwt.sign({ id, role }, getJwtSecret(), {
@@ -212,19 +221,30 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
 /**
  * Any authenticated user: upload or replace their profile picture.
  */
+/**
+ * Any authenticated user: upload or replace their profile photo.
+ *
+ * Proxied through this server rather than uploaded directly, unlike CVs and
+ * presentations: a photo is capped at 4 MB, comfortably under the ~4.5 MB a
+ * Vercel function accepts as a request body, and handling the bytes here means
+ * the file signature is checked before anything is stored rather than after.
+ *
+ * The avatars bucket is public. A profile photo is shown in every recruiter
+ * list, so a permanent URL under an unguessable path keeps those lists one
+ * query instead of a signing round trip per row — and it is what every
+ * existing consumer of `avatarUrl` already expects.
+ */
 export const updateMyAvatar = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  try {
-    const file = req.file as
-      | { path?: string; filename?: string; mimetype?: string; size?: number }
-      | undefined;
+  let storedPath: string | null = null;
 
-    if (!file?.path) {
-      return next(new AppError("Please upload an image.", 400));
-    }
+  try {
+    // Throws a 400 for the wrong format, an empty file, or bytes that do not
+    // match the extension they claim.
+    const image = validateAvatarUpload(req.file);
 
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
@@ -234,25 +254,58 @@ export const updateMyAvatar = async (
       return next(new AppError("User not found.", 404));
     }
 
-    const avatarAsset = await prisma.fileAsset.create({
-      data: {
-        url: file.path,
-        provider: "cloudinary",
-        publicId: file.filename,
-        mimeType: file.mimetype,
-        size: file.size,
-      },
-    });
-
     const previousAvatarId = user.avatarId;
 
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: { avatarId: avatarAsset.id },
-      include: { avatar: true },
+    // Storage first: the profile must never point at an object that was never
+    // written.
+    storedPath = await uploadObject({
+      bucket: AVATAR_BUCKET,
+      path: buildObjectPath(user.id, image.extension),
+      buffer: image.buffer,
+      mimeType: image.mimeType,
     });
 
-    if (previousAvatarId && previousAvatarId !== avatarAsset.id) {
+    let updatedUser;
+    try {
+      updatedUser = await prisma.$transaction(async (tx) => {
+        const asset = await tx.fileAsset.create({
+          data: {
+            url: getPublicUrl(AVATAR_BUCKET, storedPath!),
+            provider: "supabase",
+            publicId: storedPath!,
+            fileName: image.fileName,
+            mimeType: image.mimeType,
+            extension: image.extension,
+            size: image.size,
+          },
+        });
+
+        return tx.user.update({
+          where: { id: user.id },
+          data: { avatarId: asset.id },
+          include: { avatar: true },
+        });
+      });
+    } catch (dbErr) {
+      // Written but unreferenced. Remove it rather than leave a stray photo.
+      await removeObject(AVATAR_BUCKET, storedPath);
+      throw dbErr;
+    }
+
+    // Only now is the old photo safe to release.
+    if (previousAvatarId && previousAvatarId !== updatedUser.avatarId) {
+      const previous = await prisma.fileAsset.findUnique({
+        where: { id: previousAvatarId },
+      });
+
+      // The stored file, not just the row — deleting only the row left the old
+      // photo hosted forever, still reachable by anyone holding its URL.
+      if (previous?.provider === "supabase" && previous.publicId) {
+        await removeObject(AVATAR_BUCKET, previous.publicId);
+      } else if (previous?.provider === "cloudinary") {
+        await destroyCloudinaryAsset(previous.publicId, "image");
+      }
+
       await prisma.fileAsset
         .delete({ where: { id: previousAvatarId } })
         .catch(() => null);

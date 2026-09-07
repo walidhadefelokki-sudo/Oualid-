@@ -7,7 +7,7 @@ import {
   googleAuthStatus,
 } from "../controllers/googleAuth.controller";
 import { protect } from "../middleware/auth.middleware";
-import { avatarUpload } from "../utils/cloudinary";
+import { handleAvatarUpload } from "../middleware/mediaUpload.middleware";
 
 const router = Router();
 
@@ -25,6 +25,6 @@ router.post("/google/session", googleAuthSession);
 router.get("/google/status", googleAuthStatus);
 
 router.get("/me", protect, getMe);
-router.patch("/me/avatar", protect, avatarUpload.single("avatar"), updateMyAvatar);
+router.patch("/me/avatar", protect, handleAvatarUpload, updateMyAvatar);
 
 export default router;

@@ -2782,12 +2782,56 @@ import { GoogleGenAI } from "@google/genai";
 var ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY
 });
+var MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
+var RETRYABLE = [429, 500, 502, 503, 504];
+var ATTEMPT_TIMEOUT_MS = 15e3;
+var BACKOFF_MS = [1e3, 2500];
+var statusOf = (err) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const match = message.match(/"code"\s*:\s*(\d{3})/);
+  return match ? Number(match[1]) : null;
+};
+var wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var AttemptTimeout = class extends Error {
+};
+var withTimeout = async (work, ms) => {
+  let timer;
+  try {
+    return await Promise.race([
+      work,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new AttemptTimeout(`timed out after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
 async function askAI(prompt) {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt
-  });
-  return response.text ?? "";
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({ model: MODEL, contents: prompt }),
+        ATTEMPT_TIMEOUT_MS
+      );
+      return response.text ?? "";
+    } catch (err) {
+      const timedOut = err instanceof AttemptTimeout;
+      const status = statusOf(err);
+      const canRetry = timedOut || status !== null && RETRYABLE.includes(status);
+      if (!canRetry) throw err;
+      if (attempt >= BACKOFF_MS.length) {
+        throw new AppError(
+          "The AI service is busy right now. Please try again in a moment.",
+          503
+        );
+      }
+      console.warn(
+        `Gemini ${timedOut ? "timeout" : status} on attempt ${attempt + 1}; retrying in ${BACKOFF_MS[attempt]}ms`
+      );
+      await wait(BACKOFF_MS[attempt]);
+    }
+  }
 }
 
 // server/services/ai/prompt.builder.ts
@@ -4705,21 +4749,37 @@ import { QuizStatus } from "@prisma/client";
 function stripFences(raw) {
   return raw.replace(/```json/gi, "").replace(/```/g, "").trim();
 }
+var MIN_QUESTIONS = 5;
+var MAX_QUESTIONS = 10;
 async function generateQuizQuestions(cvText) {
   const prompt = `
 You are an expert technical recruiter.
 
-Read this candidate's CV and write EXACTLY 5 interview questions that are
-directly based on what is actually written in the CV: technologies used,
-real projects, education, professional experience, and responsibilities.
+Read this candidate's CV and write between ${MIN_QUESTIONS} and ${MAX_QUESTIONS}
+interview questions that are directly based on what is actually written in it:
+technologies used, real projects, education, professional experience, and
+responsibilities.
+
+Choose how many to write based on how much substance the CV contains. A short
+CV with little detail should get ${MIN_QUESTIONS}. A rich CV covering several
+roles, projects and technologies should get closer to ${MAX_QUESTIONS}. Never
+invent material to reach a number: it is better to return ${MIN_QUESTIONS}
+strong questions than ${MAX_QUESTIONS} where half are padding.
 
 Do NOT write generic interview questions. Each question must reference
 something specific found in the CV text below.
 
+Write the questions in the same language as the CV. If that is unclear, write
+them in French. Never mix languages within the set: candidates on this platform
+are Algerian and answer in French or Arabic, and a French CV that comes back
+with English questions reads as a broken feature. The "skill" label follows the
+same language as the question.
+
 CANDIDATE CV:
 ${cvText}
 
-Return ONLY valid JSON, an array of exactly 5 objects:
+Return ONLY valid JSON, an array of between ${MIN_QUESTIONS} and
+${MAX_QUESTIONS} objects:
 [
   {
     "question": "",
@@ -4742,7 +4802,7 @@ Return ONLY valid JSON, an array of exactly 5 objects:
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new AppError("AI did not return a valid question list.", 500);
   }
-  const questions = parsed.slice(0, 5).map((q) => ({
+  const questions = parsed.slice(0, MAX_QUESTIONS).map((q) => ({
     question: String(q.question ?? "").trim(),
     skill: q.skill ? String(q.skill) : void 0,
     difficulty: ["EASY", "MEDIUM", "HARD"].includes(q.difficulty) ? q.difficulty : "MEDIUM"
@@ -4750,8 +4810,11 @@ Return ONLY valid JSON, an array of exactly 5 objects:
   if (questions.some((q) => !q.question)) {
     throw new AppError("AI returned one or more empty questions.", 500);
   }
-  if (questions.length !== 5) {
-    throw new AppError("AI did not return exactly 5 questions.", 500);
+  if (questions.length < MIN_QUESTIONS) {
+    throw new AppError(
+      `AI returned only ${questions.length} question(s); at least ${MIN_QUESTIONS} are needed.`,
+      500
+    );
   }
   return questions;
 }

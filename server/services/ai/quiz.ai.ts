@@ -19,8 +19,18 @@ function stripFences(raw: string): string {
     .trim();
 }
 
+/** The quiz is always at least this long, and never longer than MAX. */
+export const MIN_QUESTIONS = 5;
+export const MAX_QUESTIONS = 10;
+
 /**
- * Generate exactly 5 personalised questions based on a candidate's CV text.
+ * Generate personalised interview questions from a candidate's CV text.
+ *
+ * Between 5 and 10, scaled to how much the CV actually supports: a one-page
+ * junior CV yields five real questions, a dense senior one yields ten. Asking
+ * for a fixed count on a thin CV is what produces filler — the model pads to
+ * hit the number, and the padding is exactly the generic material the prompt
+ * is trying to avoid.
  */
 export async function generateQuizQuestions(
   cvText: string
@@ -28,17 +38,31 @@ export async function generateQuizQuestions(
   const prompt = `
 You are an expert technical recruiter.
 
-Read this candidate's CV and write EXACTLY 5 interview questions that are
-directly based on what is actually written in the CV: technologies used,
-real projects, education, professional experience, and responsibilities.
+Read this candidate's CV and write between ${MIN_QUESTIONS} and ${MAX_QUESTIONS}
+interview questions that are directly based on what is actually written in it:
+technologies used, real projects, education, professional experience, and
+responsibilities.
+
+Choose how many to write based on how much substance the CV contains. A short
+CV with little detail should get ${MIN_QUESTIONS}. A rich CV covering several
+roles, projects and technologies should get closer to ${MAX_QUESTIONS}. Never
+invent material to reach a number: it is better to return ${MIN_QUESTIONS}
+strong questions than ${MAX_QUESTIONS} where half are padding.
 
 Do NOT write generic interview questions. Each question must reference
 something specific found in the CV text below.
 
+Write the questions in the same language as the CV. If that is unclear, write
+them in French. Never mix languages within the set: candidates on this platform
+are Algerian and answer in French or Arabic, and a French CV that comes back
+with English questions reads as a broken feature. The "skill" label follows the
+same language as the question.
+
 CANDIDATE CV:
 ${cvText}
 
-Return ONLY valid JSON, an array of exactly 5 objects:
+Return ONLY valid JSON, an array of between ${MIN_QUESTIONS} and
+${MAX_QUESTIONS} objects:
 [
   {
     "question": "",
@@ -67,7 +91,7 @@ Return ONLY valid JSON, an array of exactly 5 objects:
     throw new AppError("AI did not return a valid question list.", 500);
   }
 
-  const questions: GeneratedQuestion[] = parsed.slice(0, 5).map((q: any) => ({
+  const questions: GeneratedQuestion[] = parsed.slice(0, MAX_QUESTIONS).map((q: any) => ({
     question: String(q.question ?? "").trim(),
     skill: q.skill ? String(q.skill) : undefined,
     difficulty: ["EASY", "MEDIUM", "HARD"].includes(q.difficulty)
@@ -79,8 +103,14 @@ Return ONLY valid JSON, an array of exactly 5 objects:
     throw new AppError("AI returned one or more empty questions.", 500);
   }
 
-  if (questions.length !== 5) {
-    throw new AppError("AI did not return exactly 5 questions.", 500);
+  // Only the lower bound is enforced: anything above MAX was already trimmed
+  // by the slice above, so a model that over-delivers gives a valid quiz
+  // rather than an error the candidate has to retry.
+  if (questions.length < MIN_QUESTIONS) {
+    throw new AppError(
+      `AI returned only ${questions.length} question(s); at least ${MIN_QUESTIONS} are needed.`,
+      500
+    );
   }
 
   return questions;

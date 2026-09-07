@@ -6199,6 +6199,7 @@ if (!process.env.JWT_SECRET) {
 }
 function createApp() {
   const app2 = express4();
+  app2.set("trust proxy", 1);
   if (process.env.NODE_ENV === "production") {
     app2.use(helmet());
   } else {

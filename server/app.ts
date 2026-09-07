@@ -43,6 +43,17 @@ if (!process.env.JWT_SECRET) {
 export function createApp() {
   const app = express();
 
+  // Behind Vercel's proxy, Express otherwise sees the proxy's address for
+  // every request, so express-rate-limit cannot tell one visitor from
+  // another — brute-force protection on /login, /register and /contact was
+  // effectively off in production, and every rate-limited request logged an
+  // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR validation error.
+  //
+  // 1, not true: trusting only the nearest proxy. `true` would trust the
+  // whole X-Forwarded-For chain, letting a client forge a leading address and
+  // hand itself a fresh rate-limit bucket per request.
+  app.set("trust proxy", 1);
+
   if (process.env.NODE_ENV === "production") {
     app.use(helmet());
   } else {

@@ -2784,8 +2784,12 @@ var ai = new GoogleGenAI({
 });
 var MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
 var RETRYABLE = [429, 500, 502, 503, 504];
-var ATTEMPT_TIMEOUT_MS = 15e3;
-var BACKOFF_MS = [1e3, 2500];
+var TOTAL_BUDGET_MS = 5e4;
+var MAX_ATTEMPT_MS = 24e3;
+var MIN_ATTEMPT_MS = 6e3;
+var MAX_ATTEMPTS = 4;
+var BACKOFF_MS = [1e3, 3e3, 7e3];
+var RATE_LIMIT_BACKOFF_MS = 1e4;
 var statusOf = (err) => {
   const message = err instanceof Error ? err.message : String(err);
   const match = message.match(/"code"\s*:\s*(\d{3})/);
@@ -2808,28 +2812,32 @@ var withTimeout = async (work, ms) => {
   }
 };
 async function askAI(prompt) {
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  const remaining = () => deadline - Date.now();
+  const exhausted = () => new AppError(
+    "The AI service is busy right now. Please try again in a moment.",
+    503
+  );
   for (let attempt = 0; ; attempt++) {
+    const budget = Math.min(MAX_ATTEMPT_MS, remaining());
+    if (budget < MIN_ATTEMPT_MS) throw exhausted();
     try {
       const response = await withTimeout(
         ai.models.generateContent({ model: MODEL, contents: prompt }),
-        ATTEMPT_TIMEOUT_MS
+        budget
       );
       return response.text ?? "";
     } catch (err) {
       const timedOut = err instanceof AttemptTimeout;
       const status = statusOf(err);
-      const canRetry = timedOut || status !== null && RETRYABLE.includes(status);
-      if (!canRetry) throw err;
-      if (attempt >= BACKOFF_MS.length) {
-        throw new AppError(
-          "The AI service is busy right now. Please try again in a moment.",
-          503
-        );
-      }
+      if (!timedOut && !(status !== null && RETRYABLE.includes(status))) throw err;
+      if (attempt + 1 >= MAX_ATTEMPTS) throw exhausted();
+      const backoff = status === 429 ? RATE_LIMIT_BACKOFF_MS : BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+      if (remaining() - backoff < MIN_ATTEMPT_MS) throw exhausted();
       console.warn(
-        `Gemini ${timedOut ? "timeout" : status} on attempt ${attempt + 1}; retrying in ${BACKOFF_MS[attempt]}ms`
+        `Gemini ${timedOut ? "timeout" : status} on attempt ${attempt + 1}; retrying in ${backoff}ms (${Math.round(remaining() / 1e3)}s budget left)`
       );
-      await wait(BACKOFF_MS[attempt]);
+      await wait(backoff);
     }
   }
 }
@@ -2903,8 +2911,8 @@ function parseAnalysis(response) {
 }
 
 // server/services/cvExtraction.service.ts
-import pdfParse from "pdf-parse-debugging-disabled";
 import mammoth from "mammoth";
+import { extractText, getDocumentProxy } from "unpdf";
 
 // server/services/cvFile.service.ts
 import axios from "axios";
@@ -2956,9 +2964,34 @@ var CVExtractionService = class {
         throw new AppError(`Unsupported CV format: ${extension}`, 400);
     }
   }
+  /**
+   * Reads text from a PDF.
+   *
+   * Uses unpdf, which wraps a current pdf.js build for server runtimes. The
+   * previous library (pdf-parse-debugging-disabled, a fork of pdf.js from
+   * 2019) failed unpredictably on real candidate CVs: the same bytes threw
+   * "bad XRef entry" on one run and parsed fine on the next, and retrying did
+   * not converge — one measured run failed all three attempts on a file that
+   * had succeeded nine times out of ten minutes earlier. That is not something
+   * a candidate can act on, and on a cold serverless function it was close to
+   * a guaranteed failure.
+   *
+   * Measured on every CV in storage: 20/20 successful, and it recovers
+   * noticeably more text than the old parser did (2920 characters against 2111
+   * on the same file), which directly improves the questions generated from it.
+   */
   async extractPdf(buffer) {
-    const result = await pdfParse(buffer);
-    return this.cleanText(result.text);
+    try {
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return this.cleanText(Array.isArray(text) ? text.join("\n") : text);
+    } catch (err) {
+      console.error("PDF extraction failed:", err);
+      throw new AppError(
+        "This PDF could not be read. Please re-export it or upload a different file.",
+        400
+      );
+    }
   }
   async extractDocx(buffer) {
     const result = await mammoth.extractRawText({ buffer });

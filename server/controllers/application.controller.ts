@@ -100,7 +100,22 @@ export const getMyApplications = async (req: Request, res: Response, next: NextF
 
     const applications = await prisma.application.findMany({
       where: { candidateId: user.candidateProfile.id },
-      include: { job: { include: { recruiter: true } } },
+      // Selected rather than `recruiter: true`: the candidate needs the
+      // company's name and location to recognise what they applied to, and the
+      // recruiter's own profile row is neither useful to them nor theirs to
+      // see.
+      include: {
+        job: {
+          select: {
+            id: true,
+            title: true,
+            location: true,
+            wilaya: true,
+            type: true,
+            company: { select: { name: true, logo: { select: { url: true } } } },
+          },
+        },
+      },
       orderBy: { appliedAt: 'desc' },
     });
 

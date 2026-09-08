@@ -25,12 +25,24 @@ export interface ApplicationCandidate {
   };
 }
 
+/** The job an application points at, as returned to the candidate. */
+export interface ApplicationJob {
+  id: string;
+  title: string;
+  location?: string | null;
+  wilaya?: string | null;
+  type?: string | null;
+  company?: { name: string; logo?: { url: string } | null } | null;
+}
+
 export interface ApplicationRecord {
   id: string;
   jobId: string;
   status: ApplicationStatus;
   appliedAt: string;
   isPreselected?: boolean;
+  /** Present on the candidate's own list; absent from the recruiter's. */
+  job?: ApplicationJob | null;
 
   aiScore?: number | null;
   quizScore?: number | null;

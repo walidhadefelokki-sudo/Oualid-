@@ -2,6 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
+import SubscriptionBanner from "./recruiter/SubscriptionBanner";
+import RecruiterPlanCard, {
+  RECRUITER_PLANS,
+  HOME_PLAN_PRICING,
+} from "../constants/recruiterPlans";
 import QuizResults from "./recruiter/QuizResults";
 import OralPresentationResults from "./recruiter/OralPresentationResults";
 import PreselectedCandidates from "./recruiter/PreselectedCandidates";
@@ -13,7 +18,7 @@ import OralPresentationCard from "./candidate/OralPresentationCard";
 import OralPresentationViewer from "./recruiter/OralPresentationViewer";
 import AIQuiz from "./candidate/AIQuiz";
 import CandidatesSection from './recruiter/CandidatesSection.tsx';
-import { 
+import { AlertCircle, 
   BarChart3, 
   Briefcase, 
   ClipboardList, 
@@ -602,6 +607,10 @@ export default function Dashboard({
     loadQuizResults();
     loadPresentations();
     loadPreselectedCandidates();
+
+    if (user?.role !== 'employer') {
+      loadMyApplications();
+    }
 
     if (user && !isDemo) {
       candidateProfileService
@@ -1424,6 +1433,59 @@ export default function Dashboard({
   }, [user?.uid, isDemo]);
 
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
+
+  // The candidate's own applications, for "Mes candidatures".
+  const [myApplications, setMyApplications] = useState<
+    import('../services/application.service').ApplicationRecord[]
+  >([]);
+  const [loadingMyApplications, setLoadingMyApplications] = useState(false);
+  const [myApplicationsError, setMyApplicationsError] = useState<string | null>(null);
+
+  const loadMyApplications = async () => {
+    if (isDemo) {
+      // A demo session has no real token, so the request would 401. Show the
+      // empty state rather than a doomed call.
+      setMyApplications([]);
+      return;
+    }
+    try {
+      setMyApplicationsError(null);
+      setLoadingMyApplications(true);
+      setMyApplications(await applicationService.getMyApplications());
+    } catch (error: any) {
+      console.error('Failed to load applications:', error);
+      setMyApplicationsError(
+        error?.response?.data?.message ||
+          lt('Could not load your applications.', 'Impossible de charger vos candidatures.', 'تعذر تحميل ترشيحاتك.')
+      );
+    } finally {
+      setLoadingMyApplications(false);
+    }
+  };
+
+  /**
+   * How an application's status reads to the candidate.
+   *
+   * Distinct from mapApplicationStatus, which labels the same enum for the
+   * recruiter: "Nouveau" is meaningful to whoever received the application and
+   * meaningless to whoever sent it.
+   */
+  const candidateStatusLabel = (status: string): { label: string; className: string } => {
+    switch (status) {
+      case 'REJECTED':
+        return { label: lt('Not selected', 'Non retenue', 'غير مقبولة'), className: 'text-red-600 bg-red-50 border-red-100' };
+      case 'HIRED':
+        return { label: lt('Hired', 'Recruté(e)', 'تم التوظيف'), className: 'text-emerald-700 bg-emerald-50 border-emerald-100' };
+      case 'INTERVIEW':
+        return { label: lt('Interview', 'Entretien', 'مقابلة'), className: 'text-orange-600 bg-orange-50 border-orange-100' };
+      case 'SHORTLISTED':
+        return { label: lt('Shortlisted', 'Présélectionné(e)', 'مرشح مختار'), className: 'text-[#173E7D] bg-blue-50 border-blue-100' };
+      case 'REVIEWING':
+        return { label: lt('Under review', 'En cours d\'examen', 'قيد المراجعة'), className: 'text-blue-600 bg-blue-50 border-blue-100' };
+      default:
+        return { label: lt('Sent', 'Envoyée', 'تم الإرسال'), className: 'text-gray-600 bg-gray-50 border-gray-200' };
+    }
+  };
 
   /**
    * Rows for the recruiter's CV Directory, derived from the applications
@@ -3448,98 +3510,69 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           );
         case 'subscription':
           return (
-            <div className="space-y-8">
+            <div className="space-y-10">
               <div className={isRTL ? 'text-right' : ''}>
-                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">Abonnement</h2>
-                <p className="text-gray-500 mt-1 font-medium">Choisissez le plan qui correspond à vos besoins de croissance.</p>
+                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
+                  {lt('Subscription', 'Abonnement', 'الاشتراك')}
+                </h2>
+                <p className="text-gray-500 mt-1 font-medium">
+                  {lt(
+                    'Choose the plan that fits your growth.',
+                    'Choisissez le plan qui correspond à vos besoins de croissance.',
+                    'اختر الباقة التي تناسب نموك.'
+                  )}
+                </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {[
-                  { name: 'Gratuit', price: '0', features: ["1 offre d'emploi gratuite"], color: 'gray', icon: <Zap size={32} /> },
-                  { name: 'Annonces', price: '5 900', features: ["Publication d'offres payantes", 'Multi-comptes (Gestionnaire)'], color: 'orange', popular: true, icon: <Briefcase size={32} /> },
-                  { name: 'Corporate', price: 'Sur mesure', features: ['Publication illimitée', 'Filtrage par IA Gemini', 'Répertoire CV & Support'], color: 'blue', icon: <Building2 size={32} /> },
-                ].map((plan, i) => (
-                  <motion.div 
-                    key={i}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    whileHover={{ y: -15, scale: 1.02 }}
-                    transition={{ duration: 0.5 }}
-                    className={`group relative bg-white p-12 rounded-[3.5rem] flex flex-col h-full border transition-all duration-500 overflow-hidden ${
-                      plan.popular 
-                        ? 'border-[#F68D58] shadow-[0_40px_100px_-20px_rgba(246,141,88,0.2)] z-10' 
-                        : 'border-gray-100 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.08)]'
-                    }`}
-                  >
-                    {/* Decorative corner */}
-                    <div className={`absolute top-0 right-0 w-32 h-32 rounded-bl-[4rem] -z-0 ${plan.popular ? 'bg-[#F68D58]/5' : 'bg-gray-50'}`} />
 
-                    {plan.popular && (
-                      <div className="absolute top-8 right-8 bg-[#F68D58] text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl whitespace-nowrap z-20">
-                        {lt('Most Popular', 'Plus populaire', 'الأكثر شعبية')}
-                      </div>
-                    )}
+              {/* The same cards as the home page and the login chooser, from
+                  the same RECRUITER_PLANS data. This page used to hand-write
+                  its own, listing different plan names and features, so what a
+                  recruiter compared before signing up did not match what they
+                  found once inside. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
+                {RECRUITER_PLANS.map((plan) => {
+                  const pricing = HOME_PLAN_PRICING[plan.tier];
+                  const isCurrent = plan.tier === recruiterTier;
 
-                    <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-10 shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-all duration-700 relative z-10 ${
-                      plan.popular ? 'bg-orange-50 text-[#F68D58]' : 'bg-gray-50 text-gray-400'
-                    }`}>
-                      {plan.icon}
+                  return (
+                    <div key={plan.tier} className="relative flex">
+                      {isCurrent && (
+                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg whitespace-nowrap">
+                          {lt('Your plan', 'Votre plan', 'باقتك')}
+                        </span>
+                      )}
+                      <RecruiterPlanCard
+                        plan={plan}
+                        language={language === 'ar' ? 'ar' : 'fr'}
+                        size="lg"
+                        price={pricing.price}
+                        priceSuffix={pricing.suffix}
+                        featuredLabel={lt('Best choice', 'Meilleur choix', 'الخيار الأفضل')}
+                        ctaLabel={
+                          isCurrent
+                            ? lt('Current plan', 'Plan actuel', 'الباقة الحالية')
+                            : language === 'ar'
+                              ? pricing.ctaAr
+                              : pricing.cta
+                        }
+                        onSelect={() => {
+                          // The free tier needs no checkout, and there is
+                          // nothing to buy on the plan already held.
+                          if (isCurrent || plan.tier === 'free') return;
+
+                          setSelectedPlan({ name: plan.name, price: pricing.price, tier: plan.tier });
+                          setSettingsTab('billing');
+                          setBillingView('payment');
+                          setActiveTab('settings');
+                        }}
+                      />
                     </div>
-
-                    <div className="relative z-10 mb-8">
-                      <h3 className="text-3xl font-black text-[#173E7D] mb-2 tracking-tight">{plan.name}</h3>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-                        {plan.name === 'Gratuit' ? 'Pour tester nos services' : plan.name === 'Pro' ? 'Packs flexibles' : 'Solution annuelle'}
-                      </p>
-                    </div>
-
-                        <div className="relative z-10 mb-12">
-                          <div className="flex items-baseline gap-2">
-                            <span className={plan.price === 'Sur mesure' ? "text-4xl font-black text-[#173E7D] tracking-tighter uppercase" : "text-6xl font-black text-[#173E7D] tracking-tighter"}>{plan.price}</span>
-                            {plan.price !== 'Sur mesure' && <span className="text-gray-400 font-bold text-xl uppercase tracking-widest">DA</span>}
-                          </div>
-                          {plan.name === 'Annonces' && (
-                            <div className="mt-3 inline-flex px-4 py-1.5 bg-orange-100/50 text-[#F68D58] rounded-full text-[9px] font-black uppercase tracking-[0.2em] border border-orange-200/30">
-                              PAR OFFRE
-                            </div>
-                          )}
-                        </div>
-
-                    <ul className="relative z-10 space-y-5 mb-16 flex-1">
-                      <p className="text-[9px] font-black text-[#173E7D]/30 uppercase tracking-[0.3em] mb-6">Ce qui est inclus</p>
-                      {plan.features.map((f, j) => (
-                        <li key={j} className="flex items-start gap-4 group/item">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-sm transition-transform group-hover/item:scale-110 ${
-                            plan.popular ? 'bg-orange-50 text-[#F68D58] border-orange-100' : 'bg-emerald-50 text-emerald-500 border-emerald-100'
-                          }`}>
-                            <Check size={12} strokeWidth={4} />
-                          </div>
-                          <span className="text-sm font-bold text-gray-600">{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <button 
-                      onClick={() => {
-                        setSelectedPlan(plan);
-                        setSettingsTab('billing');
-                        setBillingView('payment');
-                        setActiveTab('settings');
-                      }}
-                      className={`relative z-10 w-full py-6 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-500 ${
-                        plan.popular 
-                          ? 'bg-[#F68D58] text-white shadow-[0_20px_40px_-5px_rgba(246,141,88,0.3)] hover:bg-[#e57d47]' 
-                          : 'bg-white text-[#173E7D] border-2 border-[#173E7D] hover:bg-[#173E7D] hover:text-white'
-                      }`}
-                    >
-                      {lt('Choose this plan', 'Choisir ce plan', 'اختيار هذه الباقة')}
-                    </button>
-                  </motion.div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
+
         case 'post-job':
           return (
             <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-12 space-y-12">
@@ -4938,38 +4971,118 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
           </div>
         );
-      case 'applications':
+      case 'applications': {
+        const dateFormat = isRTL ? 'ar' : 'fr-FR';
+
         return (
           <div className="space-y-8">
-            <h2 className={`text-3xl font-display font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>{t('myApplications')}</h2>
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className={`w-full ${isRTL ? 'text-right' : 'text-left'}`}>
-                  <thead className="bg-gray-50 border-b border-gray-100">
-                    <tr>
-                      <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('company')}</th>
-                      <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('position')}</th>
-                      <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('date')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {[
-                      { company: 'Ooredoo', role: 'UX Designer', date: language === 'ar' ? '12 مارس 2024' : '12 Mars 2024', status: language === 'ar' ? 'قيد المراجعة' : 'En examen', color: 'text-blue-600 bg-blue-50' },
-                      { company: 'Yassir', role: 'Product Manager', date: language === 'ar' ? '10 مارس 2024' : '10 Mars 2024', status: language === 'ar' ? 'مقابلة' : 'Entretien', color: 'text-orange-600 bg-orange-50' },
-                      { company: 'Sonatrach', role: 'Ingénieur IT', date: language === 'ar' ? '05 مارس 2024' : '05 Mars 2024', status: language === 'ar' ? 'مرفوض' : 'Refusé', color: 'text-red-600 bg-red-50' },
-                    ].map((app, i) => (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-8 py-6 font-bold text-[#173E7D]">{app.company}</td>
-                        <td className="px-8 py-6 text-gray-600 font-medium">{app.role}</td>
-                        <td className="px-8 py-6 text-gray-400 text-sm">{app.date}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className={`flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={isRTL ? 'text-right' : ''}>
+                <h2 className="text-3xl font-display font-bold text-[#173E7D]">{t('myApplications')}</h2>
+                <p className="text-gray-500 mt-1 font-medium">
+                  {loadingMyApplications
+                    ? lt('Loading…', 'Chargement…', 'جارٍ التحميل…')
+                    : lt(
+                        `${myApplications.length} application(s)`,
+                        `${myApplications.length} candidature(s)`,
+                        `${myApplications.length} ترشيح`
+                      )}
+                </p>
               </div>
+              <button
+                onClick={loadMyApplications}
+                disabled={loadingMyApplications}
+                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all disabled:opacity-50"
+              >
+                {lt('Refresh', 'Actualiser', 'تحديث')}
+              </button>
             </div>
+
+            {myApplicationsError && (
+              <div role="alert" className={`flex gap-3 items-start rounded-2xl border border-red-200 bg-red-50 p-5 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={20} />
+                <p className="text-sm font-medium text-red-700">{myApplicationsError}</p>
+              </div>
+            )}
+
+            {loadingMyApplications ? (
+              <div className="bg-white rounded-3xl border border-gray-100 py-20 flex justify-center">
+                <span className="w-8 h-8 border-2 border-[#173E7D]/20 border-t-[#173E7D] rounded-full animate-spin" />
+              </div>
+            ) : myApplications.length === 0 && !myApplicationsError ? (
+              <div className="bg-white rounded-3xl border border-dashed border-gray-200 py-16 px-8 text-center">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-gray-50 text-gray-300 flex items-center justify-center">
+                  <ClipboardList size={26} />
+                </div>
+                <h3 className="font-black text-[#173E7D] mt-5">
+                  {lt('No applications yet', 'Aucune candidature', 'لا توجد ترشيحات')}
+                </h3>
+                <p className="text-gray-400 font-medium mt-2 max-w-sm mx-auto">
+                  {lt(
+                    'Applications you send will appear here so you can track their progress.',
+                    'Les candidatures que vous envoyez apparaîtront ici pour que vous puissiez suivre leur avancement.',
+                    'ستظهر ترشيحاتك هنا لتتمكن من متابعتها.'
+                  )}
+                </p>
+                <button
+                  onClick={() => setActiveTab('jobs')}
+                  className="mt-7 px-8 py-3.5 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
+                >
+                  {lt('Browse jobs', 'Explorer les offres', 'تصفح العروض')}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className={`w-full ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('company')}</th>
+                        <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('position')}</th>
+                        <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{lt('Location', 'Localisation', 'الموقع')}</th>
+                        <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{t('date')}</th>
+                        <th className="px-8 py-4 text-[11px] font-black text-gray-400 uppercase tracking-widest">{lt('Status', 'Statut', 'الحالة')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {myApplications.map((application) => {
+                        const status = candidateStatusLabel(application.status);
+                        const job = application.job;
+
+                        return (
+                          <tr key={application.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-8 py-6 font-bold text-[#173E7D]">
+                              {job?.company?.name ?? lt('Company', 'Entreprise', 'شركة')}
+                            </td>
+                            <td className="px-8 py-6 text-gray-600 font-medium">
+                              {job?.title ?? '—'}
+                            </td>
+                            <td className="px-8 py-6 text-gray-500 text-sm">
+                              {job?.location || job?.wilaya || '—'}
+                            </td>
+                            <td className="px-8 py-6 text-gray-400 text-sm whitespace-nowrap">
+                              {new Date(application.appliedAt).toLocaleDateString(dateFormat, {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric',
+                              })}
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`inline-block px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border ${status.className}`}>
+                                {status.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         );
+      }
       case 'profile':
         return (
           <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-12 space-y-12">
@@ -6908,6 +7021,18 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
+              {/* Promotes the next paid tier, above whatever page the
+                  recruiter is on. Hidden on the subscription page itself,
+                  where the full plans are already displayed. */}
+              {user?.role === 'employer' && (
+                <SubscriptionBanner
+                  tier={recruiterTier}
+                  language={language}
+                  hidden={activeTab === 'subscription'}
+                  onUpgrade={() => setActiveTab('subscription')}
+                />
+              )}
+
               {renderContent()}
             </motion.div>
           </AnimatePresence>

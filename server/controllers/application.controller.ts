@@ -3,6 +3,10 @@ import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import aiAnalysisService from "../services/aiAnalysis.service";
 import { sendApplicationSentEmail } from "../utils/email";
+import {
+  notifyApplicationStatus,
+  notifyNewApplication,
+} from "../services/notification.service";
 
 export const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -11,7 +15,10 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
-      include: { company: { select: { name: true } } },
+      include: {
+        company: { select: { name: true } },
+        recruiter: { select: { userId: true } },
+      },
     });
 
     if (!job) {
@@ -64,6 +71,18 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
             error
           );
         });
+
+    // Tell the recruiter, in-app. Fire-and-forget for the same reason as the
+    // email below: the application is saved, and a notification failure must
+    // not surface as a failed application.
+    if (job.recruiter?.userId) {
+      notifyNewApplication({
+        recruiterUserId: job.recruiter.userId,
+        candidateName:
+          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
+        jobTitle: job.title,
+      });
+    }
 
     // Confirm to the candidate that their application went through.
     // Not awaited: the application is already saved, and a mail failure must
@@ -231,7 +250,15 @@ export const updateApplicationStatus = async (req: Request, res: Response, next:
 
     const application = await prisma.application.findUnique({
       where: { id },
-      include: { job: { include: { recruiter: true } } },
+      include: {
+        job: {
+          include: {
+            recruiter: true,
+            company: { select: { name: true } },
+          },
+        },
+        candidate: { select: { userId: true } },
+      },
     });
 
     if (!application) return next(new AppError("Application not found", 404));
@@ -250,6 +277,18 @@ export const updateApplicationStatus = async (req: Request, res: Response, next:
       where: { id },
       data: { status },
     });
+
+    // Only on an actual change: re-saving the same status should not notify
+    // the candidate again, and a recruiter clicking through a list can easily
+    // set a status to what it already was.
+    if (application.status !== updatedApplication.status) {
+      notifyApplicationStatus({
+        candidateUserId: application.candidate.userId,
+        status: updatedApplication.status,
+        jobTitle: application.job.title,
+        company: application.job.company?.name ?? "L'entreprise",
+      });
+    }
 
     res.status(200).json({
       status: "success",

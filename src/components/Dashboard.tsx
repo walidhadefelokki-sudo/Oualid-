@@ -632,7 +632,7 @@ export default function Dashboard({
             name: [fullUser?.firstName, fullUser?.lastName].filter(Boolean).join(' ') || prev.name,
             email: fullUser?.email || prev.email,
             phone: cp?.phone ?? prev.phone,
-            wilaya: cp?.wilaya ?? prev.wilaya,
+            wilaya: normaliseWilaya(cp?.wilaya) || prev.wilaya,
             bio: cp?.bio ?? prev.bio,
             jobTitle: cp?.currentJobTitle ?? prev.jobTitle,
             location: cp?.city || cp?.wilaya || prev.location,
@@ -666,6 +666,30 @@ export default function Dashboard({
       clearInterval(intervalId);
     };
   }, [user, isDemo]);
+
+  /**
+   * Matches a stored wilaya to the exact option string the select uses.
+   *
+   * The options are numbered ("16 - Alger") but records hold bare names
+   * ("Alger"), and a <select> whose value matches no option silently shows the
+   * first one — so a candidate in Alger was shown "01 - Adrar", and saving
+   * without touching the field would have written Adrar over their real
+   * wilaya. Accents and case are ignored because the two sources disagree on
+   * both ("Bejaia" against "06 - Béjaïa").
+   */
+  const normaliseWilaya = (stored?: string | null): string => {
+    if (!stored?.trim()) return '';
+
+    const simplify = (v: string) =>
+      v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    const target = simplify(stored);
+    const match = WILAYAS.find(
+      (w) => simplify(w) === target || simplify(w.split(' - ')[1] ?? '') === target
+    );
+
+    return match ?? '';
+  };
 
   /** Accepted CV formats — must match the Cloudinary folder's allowed_formats. */
   const CV_EXTENSIONS = ['pdf', 'doc', 'docx'];
@@ -1095,12 +1119,21 @@ export default function Dashboard({
 
         <div className="p-6 border-t border-gray-100">
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-            <img
-              src={displayPhotoURL || 'https://i.pravatar.cc/150?u=oualid'}
-              alt={user.displayName}
-              className="w-10 h-10 rounded-xl object-cover"
-              referrerPolicy="no-referrer"
-            />
+            {/* Initials when there is no photo, rather than a stock portrait
+                of a stranger — and no <img src=""> either, which makes the
+                browser refetch the whole page. */}
+            {displayPhotoURL ? (
+              <img
+                src={displayPhotoURL}
+                alt={user.displayName ?? ''}
+                className="w-10 h-10 rounded-xl object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-[#173E7D] text-white flex items-center justify-center font-black text-sm shrink-0">
+                {(user.displayName || user.email || '?').trim().charAt(0).toUpperCase()}
+              </div>
+            )}
 
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-[#173E7D] truncate">
@@ -1268,14 +1301,18 @@ export default function Dashboard({
   );
 
   // Profile State
+  // Empty, not sample data. These defaults used to describe a fictional
+  // "Ahmed Benali, Développeur Full Stack, Alger, +213 555 123 456", which
+  // every real candidate saw on their own profile — and which the Save button
+  // would have written to their record had they not noticed and corrected it.
   const [profileData, setProfileData] = useState({
-    name: user?.displayName || 'Ahmed Benali',
-    email: user?.email || 'ahmed.benali@email.com',
-    phone: '+213 555 123 456',
-    wilaya: 'Alger',
+    name: user?.displayName || '',
+    email: user?.email || '',
+    phone: '',
+    wilaya: '',
     bio: '',
-    jobTitle: 'Développeur Full Stack',
-    location: 'Alger',
+    jobTitle: '',
+    location: '',
     resumeUrl: user?.resumeUrl || user?.resume_url || ''
   });
 
@@ -1485,6 +1522,67 @@ export default function Dashboard({
       default:
         return { label: lt('Sent', 'Envoyée', 'تم الإرسال'), className: 'text-gray-600 bg-gray-50 border-gray-200' };
     }
+  };
+
+  /**
+   * Everything the recruiter dashboard shows, derived from the applications
+   * already loaded rather than fetched again.
+   *
+   * All of it used to be invented: 8 active offers, 145 applications, 42
+   * AI-filtered, 6 hires, and four candidates named Ahmed Benali, Fatima Zohra
+   * Kaci, Mohammed Saidi and Amina Bouzid with stock-photo avatars — identical
+   * for every recruiter, including one with no jobs posted at all.
+   */
+  const recruiterStats = useMemo(() => {
+    const applications = candidatesByJob.flatMap((g: any) => g.candidates ?? []);
+
+    return {
+      activeJobs: candidatesByJob.length,
+      totalApplications: applications.length,
+      aiFiltered: applications.filter((c: any) => (c.match ?? 0) > 0).length,
+      hired: applications.filter((c: any) => c.status === 'Recruté').length,
+    };
+  }, [candidatesByJob]);
+
+  /** The most recent applications across every job, newest first. */
+  const recentApplications = useMemo(
+    () =>
+      candidatesByJob
+        .flatMap((g: any) =>
+          (g.candidates ?? []).map((c: any) => ({ ...c, jobTitle: g.jobTitle }))
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.appliedAt ?? 0).getTime() - new Date(a.appliedAt ?? 0).getTime()
+        )
+        .slice(0, 4),
+    [candidatesByJob]
+  );
+
+  /** Open jobs with their real application counts, busiest first. */
+  const activeJobSummaries = useMemo(
+    () =>
+      candidatesByJob
+        .map((g: any) => ({
+          jobId: g.jobId,
+          title: g.jobTitle,
+          applications: (g.candidates ?? []).length,
+        }))
+        .sort((a: any, b: any) => b.applications - a.applications)
+        .slice(0, 5),
+    [candidatesByJob]
+  );
+
+  /** How long ago, in the shape the dashboard already used ("Il y a 3h"). */
+  const timeAgo = (iso?: string): string => {
+    if (!iso) return '';
+    const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (minutes < 1) return lt('just now', "à l'instant", 'الآن');
+    if (minutes < 60) return lt(`${minutes}m ago`, `Il y a ${minutes} min`, `منذ ${minutes} د`);
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return lt(`${hours}h ago`, `Il y a ${hours}h`, `منذ ${hours} س`);
+    const days = Math.floor(hours / 24);
+    return lt(`${days}d ago`, `Il y a ${days}j`, `منذ ${days} ي`);
   };
 
   /**
@@ -2910,11 +3008,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* `change` is gone: there was no historical data behind
+                    "+23%" or "Top 30%", and a trend nobody measures is worse
+                    than no trend at all. */}
                 {[
-                  { label: 'Offres actives', value: '8', change: '+2', icon: Briefcase, color: 'emerald' },
-                  { label: 'Candidatures', value: '145', change: '+23%', icon: UsersIcon, color: 'blue' },
-                  { label: 'Filtrés par IA', value: '42', change: 'Top 30%', icon: Cpu, color: 'purple' },
-                  { label: 'Recrutements', value: '6', change: '+2', icon: CheckCircle2, color: 'orange' },
+                  { label: lt('Active offers', 'Offres actives', 'العروض النشطة'), value: String(recruiterStats.activeJobs), icon: Briefcase, color: 'emerald' },
+                  { label: lt('Applications', 'Candidatures', 'الترشيحات'), value: String(recruiterStats.totalApplications), icon: UsersIcon, color: 'blue' },
+                  { label: lt('AI analysed', 'Analysés par IA', 'تم تحليلها'), value: String(recruiterStats.aiFiltered), icon: Cpu, color: 'purple' },
+                  { label: lt('Hires', 'Recrutements', 'التوظيفات'), value: String(recruiterStats.hired), icon: CheckCircle2, color: 'orange' },
                 ].map((stat, i) => (
                   <motion.div 
                     key={i}
@@ -2931,14 +3032,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       }`}>
                         <stat.icon size={24} />
                       </div>
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-sm border ${
-                        stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                        stat.color === 'blue' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                        stat.color === 'purple' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                        'bg-orange-50 text-orange-600 border-orange-100'
-                      }`}>
-                        {stat.change}
-                      </span>
                     </div>
                     <div className="relative z-10">
                       <p className="text-5xl font-black text-[#173E7D] tracking-tighter group-hover:text-[#F68D58] transition-colors">{stat.value}</p>
@@ -2961,38 +3054,71 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       Voir tout
                     </button>
                   </div>
-                  <div className="space-y-8">
-                    {[
-                      { name: 'Ahmed Benali', role: 'Dev Full Stack', score: 92, location: 'Alger', time: 'Il y a 1h', avatar: 'https://i.pravatar.cc/150?u=ahmed', email: 'ahmed.benali@email.dz', phone: '+213 550 12 34 56' },
-                      { name: 'Fatima Zohra Kaci', role: 'Analyste Données', score: 87, location: 'Oran', time: 'Il y a 3h', avatar: 'https://i.pravatar.cc/150?u=fatima', email: 'fatima.kaci@email.dz', phone: '+213 660 98 76 54' },
-                      { name: 'Mohammed Saidi', role: 'Designer UI/UX', score: 78, location: 'Constantine', time: 'Il y a 6h', avatar: 'https://i.pravatar.cc/150?u=mohammed', email: 'm.saidi@email.dz', phone: '+213 770 11 22 33' },
-                      { name: 'Amina Bouzid', role: 'Comptable', score: 85, location: 'Blida', time: 'Il y a 1j', avatar: 'https://i.pravatar.cc/150?u=amina', email: 'amina.b@email.dz', phone: '+213 555 44 33 22' },
-                    ].map((candidate, i) => (
-                      <div key={i} className="flex items-center justify-between group p-4 hover:bg-gray-50 rounded-3xl transition-all cursor-pointer">
-                        <div className="flex items-center gap-6">
-                          <div className="relative">
-                            <div className="w-16 h-16 bg-blue-50 rounded-2xl overflow-hidden border-2 border-white shadow-sm">
-                              <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            </div>
-                            <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center border border-gray-50">
-                              <span className="text-[10px] font-black text-emerald-600">{candidate.score}%</span>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-lg font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{candidate.name}</p>
-                            <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">{candidate.role}</p>
-                          </div>
-                        </div>
-                        <div className="text-right hidden sm:block">
-                          <p className="text-sm font-black text-[#173E7D]">{candidate.location}</p>
-                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">{candidate.time}</p>
-                        </div>
-                        <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 group-hover:text-[#F68D58] group-hover:border-[#F68D58] transition-all">
-                          <ChevronRight size={20} />
-                        </button>
+                  {recentApplications.length === 0 ? (
+                    <div className="py-14 text-center">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-gray-50 text-gray-300 flex items-center justify-center">
+                        <UsersIcon size={26} />
                       </div>
-                    ))}
-                  </div>
+                      <p className="font-black text-[#173E7D] mt-5">
+                        {lt('No applications yet', 'Aucune candidature', 'لا توجد ترشيحات')}
+                      </p>
+                      <p className="text-gray-400 font-medium mt-2 max-w-sm mx-auto text-sm">
+                        {lt(
+                          'Applications to your offers will appear here.',
+                          'Les candidatures à vos offres apparaîtront ici.',
+                          'ستظهر هنا الترشيحات على عروضك.'
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      {recentApplications.map((candidate: any) => (
+                        <div
+                          key={candidate.id}
+                          onClick={() => setActiveTab('candidates')}
+                          className="flex items-center justify-between group p-4 hover:bg-gray-50 rounded-3xl transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center gap-6">
+                            <div className="relative">
+                              <div className="w-16 h-16 bg-blue-50 rounded-2xl overflow-hidden border-2 border-white shadow-sm flex items-center justify-center">
+                                {/* Only render an img when there is a real URL —
+                                    src="" makes the browser refetch the page. */}
+                                {candidate.avatar ? (
+                                  <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <span className="text-xl font-black text-[#173E7D]">
+                                    {(candidate.name || candidate.email || '?').trim().charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                              {candidate.match > 0 && (
+                                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center border border-gray-50">
+                                  <span className="text-[10px] font-black text-emerald-600">{candidate.match}%</span>
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-lg font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">
+                                {candidate.name || candidate.email}
+                              </p>
+                              <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">
+                                {candidate.role || candidate.jobTitle}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right hidden sm:block">
+                            <p className="text-sm font-black text-[#173E7D]">{candidate.location ?? ''}</p>
+                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">
+                              {timeAgo(candidate.appliedAt)}
+                            </p>
+                          </div>
+                          <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 group-hover:text-[#F68D58] group-hover:border-[#F68D58] transition-all">
+                            <ChevronRight size={20} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column: Active Jobs & AI Insights */}
@@ -3001,21 +3127,40 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
                     <h3 className="text-xl font-black mb-8 relative z-10">Offres actives</h3>
                     <div className="space-y-6 relative z-10">
-                      {[
-                        { title: 'Full Stack Dev', apps: 23, trend: 'up' },
-                        { title: 'Data Analyst', apps: 18, trend: 'stable' },
-                        { title: 'UI/UX Designer', apps: 12, trend: 'up' },
-                      ].map((job, i) => (
-                        <div key={i} className="flex justify-between items-center group cursor-pointer">
-                          <div>
-                            <p className="font-bold text-sm group-hover:text-[#F68D58] transition-colors">{job.title}</p>
-                            <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-1">{job.apps} candidatures</p>
+                      {activeJobSummaries.length === 0 ? (
+                        <p className="text-blue-100/70 text-sm font-medium">
+                          {lt(
+                            'You have no published offers yet.',
+                            "Vous n'avez pas encore publié d'offre.",
+                            'لم تنشر أي عرض بعد.'
+                          )}
+                        </p>
+                      ) : (
+                        activeJobSummaries.map((job: any) => (
+                          <div
+                            key={job.jobId}
+                            onClick={() => setActiveTab('manage-jobs')}
+                            className="flex justify-between items-center group cursor-pointer"
+                          >
+                            <div>
+                              <p className="font-bold text-sm group-hover:text-[#F68D58] transition-colors">{job.title}</p>
+                              <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-1">
+                                {lt(
+                                  `${job.applications} application(s)`,
+                                  `${job.applications} candidature(s)`,
+                                  `${job.applications} ترشيح`
+                                )}
+                              </p>
+                            </div>
+                            {/* Only for offers that actually received something —
+                                an "up" arrow on a job with no applicants is a
+                                decoration pretending to be data. */}
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${job.applications > 0 ? 'bg-emerald-400/20 text-emerald-400' : 'bg-white/10 text-blue-200'}`}>
+                              <TrendingUp size={14} />
+                            </div>
                           </div>
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${job.trend === 'up' ? 'bg-emerald-400/20 text-emerald-400' : 'bg-blue-400/20 text-blue-400'}`}>
-                            <TrendingUp size={14} />
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                     <button 
                       onClick={() => setActiveTab('manage-jobs')}
@@ -3025,26 +3170,49 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     </button>
                   </div>
 
-                  <div className="bg-white rounded-[3rem] border border-gray-100 p-10 shadow-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
-                        <Cpu size={20} />
+                  {/* Only shown once the AI has actually scored something.
+                      This panel used to assert that an offer named "Full Stack
+                      Dev" was attracting strong profiles and recommend
+                      contacting Ahmed Benali — to every recruiter, whatever
+                      they had posted. */}
+                  {recruiterStats.aiFiltered > 0 && (
+                    <div className="bg-white rounded-[3rem] border border-gray-100 p-10 shadow-sm">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
+                          <Cpu size={20} />
+                        </div>
+                        <h3 className="text-lg font-black text-[#173E7D]">{lt('AI analysis', 'Analyse IA', 'تحليل الذكاء الاصطناعي')}</h3>
                       </div>
-                      <h3 className="text-lg font-black text-[#173E7D]">IA Insights</h3>
+                      <p className="text-sm text-gray-500 leading-relaxed font-medium">
+                        {lt(
+                          `${recruiterStats.aiFiltered} of your ${recruiterStats.totalApplications} application(s) have been scored.`,
+                          `${recruiterStats.aiFiltered} de vos ${recruiterStats.totalApplications} candidature(s) ont été analysées.`,
+                          `تم تحليل ${recruiterStats.aiFiltered} من ${recruiterStats.totalApplications} ترشيح.`
+                        )}
+                      </p>
+                      {(() => {
+                        const scored = candidatesByJob
+                          .flatMap((g: any) => g.candidates ?? [])
+                          .filter((c: any) => (c.match ?? 0) > 0);
+                        const average = Math.round(
+                          scored.reduce((sum: number, c: any) => sum + c.match, 0) / scored.length
+                        );
+                        return (
+                          <div className="mt-6 p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest">
+                                {lt('Average match', 'Score moyen', 'المعدل')}
+                              </span>
+                              <span className="text-sm font-black text-purple-600">{average}%</span>
+                            </div>
+                            <div className="w-full h-2 bg-purple-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-purple-600 rounded-full" style={{ width: `${average}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
-                    <p className="text-sm text-gray-500 leading-relaxed font-medium">
-                      Votre offre "Full Stack Dev" attire des profils très qualifiés. Nous vous suggérons de contacter Ahmed Benali en priorité.
-                    </p>
-                    <div className="mt-6 p-4 bg-purple-50 rounded-2xl border border-purple-100">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Qualité moyenne</span>
-                        <span className="text-sm font-black text-purple-600">84%</span>
-                      </div>
-                      <div className="w-full h-2 bg-purple-200 rounded-full overflow-hidden">
-                        <div className="w-[84%] h-full bg-purple-600 rounded-full" />
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3352,159 +3520,80 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           }
 
           return (
-            <div className="space-y-12">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">Sourcing IA Stratégique</h2>
-                    <PremiumBadge />
-                  </div>
-                  <p className="text-gray-500 font-medium max-w-2xl">
-                    Découvrez des talents "dormants" qui n'ont pas encore postulé mais dont le profil correspond à 95% à vos besoins. Propulsé par Gemini Pro.
-                  </p>
+            <div className="space-y-10">
+              <div className={isRTL ? 'text-right' : ''}>
+                <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
+                    {lt('Strategic AI Sourcing', 'Sourcing IA Stratégique', 'التوظيف الذكي')}
+                  </h2>
+                  <PremiumBadge />
                 </div>
-                <div className="bg-white p-2 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-2">
-                  <select 
-                    value={sourcingJobFilter}
-                    onChange={(e) => setSourcingJobFilter(e.target.value)}
-                    className="bg-transparent border-none text-sm font-bold text-[#173E7D] focus:ring-0 px-4 py-2"
-                  >
-                    <option>Tous les postes</option>
-                    <option>Dev Full Stack</option>
-                    <option>Data Analyst</option>
-                    <option>Chef de Projet</option>
-                  </select>
-                </div>
+                <p className="text-gray-500 font-medium max-w-2xl">
+                  {lt(
+                    'Surface qualified candidates who have not applied to your offers yet.',
+                    "Identifiez des profils qualifiés qui n'ont pas encore postulé à vos offres.",
+                    'اكتشف ملفات مؤهلة لم تترشح بعد لعروضك.'
+                  )}
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {[
-                  { name: 'Kamel Driss', role: 'DevOps Engineer', location: 'Alger', match: 98, exp: '8 ans', tags: ['Kubernetes', 'Cloud Computing'], score: 'Excellent' },
-                  { name: 'Sami Rahmani', role: 'Architecte Cloud', location: 'Oran', match: 94, exp: '12 ans', tags: ['AWS', 'Azure'], score: 'Profil Rare' },
-                  { name: 'Lydia Meziane', role: 'Lead Data Scientist', location: 'Bejaia', match: 91, exp: '6 ans', tags: ['Python', 'MLOps'], score: 'Top Talent' },
-                ].map((talent, i) => (
-                  <div key={i} className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-purple-100 transition-colors" />
-                    
-                    <div className="flex justify-between items-start mb-6 relative z-10">
-                      <div className="w-20 h-20 rounded-2xl bg-gray-50 border-4 border-white shadow-lg overflow-hidden">
-                        <img src={`https://i.pravatar.cc/150?u=${talent.name}`} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-1">Match IA</div>
-                        <div className="text-3xl font-black text-[#173E7D]">{talent.match}%</div>
-                      </div>
-                    </div>
-
-                    <div className="relative z-10">
-                      <h4 className="text-xl font-black text-[#173E7D] mb-1">{talent.name}</h4>
-                      <p className="text-xs font-bold text-[#F68D58] uppercase tracking-wider mb-4">{talent.role}</p>
-                      
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {talent.tags.map(t => (
-                          <span key={t} className="px-3 py-1 bg-gray-50 text-gray-500 rounded-lg text-[9px] font-black uppercase tracking-wider border border-gray-100 group-hover:bg-white transition-colors">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-white transition-colors">
-                          <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mb-1">Expérience</p>
-                          <p className="text-sm font-black text-[#173E7D]">{talent.exp}</p>
-                        </div>
-                        <div className="bg-purple-50 p-4 rounded-2xl">
-                          <p className="text-[8px] text-purple-400 font-black uppercase tracking-widest mb-1">Status IA</p>
-                          <p className="text-sm font-black text-purple-600">{talent.score}</p>
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={() => alert('Contacting talent...')}
-                        className="w-full bg-[#173E7D] text-white py-4 rounded-2xl font-bold text-sm hover:bg-[#F68D58] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/10"
-                      >
-                        <Zap size={18} />
-                        Débloquer & Contacter
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="bg-white rounded-[3rem] border border-dashed border-gray-200 py-20 px-8 text-center">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-50 text-purple-400 flex items-center justify-center">
+                  <Cpu size={30} />
+                </div>
+                <h3 className="text-xl font-black text-[#173E7D] mt-6">
+                  {lt('Not available yet', 'Bientôt disponible', 'قريبًا')}
+                </h3>
+                <p className="text-gray-400 font-medium mt-3 max-w-md mx-auto">
+                  {lt(
+                    'This feature is being built. In the meantime, the CV Directory lists every candidate who has applied to your offers.',
+                    "Cette fonctionnalité est en cours de développement. En attendant, le Répertoire CV regroupe tous les candidats ayant postulé à vos offres.",
+                    'هذه الميزة قيد التطوير. في الأثناء، يعرض دليل السير الذاتية كل من ترشح لعروضك.'
+                  )}
+                </p>
+                <button
+                  onClick={() => setActiveTab('repertoire-cv')}
+                  className="mt-8 px-8 py-3.5 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
+                >
+                  {lt('Open CV Directory', 'Ouvrir le Répertoire CV', 'فتح دليل السير')}
+                </button>
               </div>
             </div>
           );
-          }
+        }
         case 'analytics-wilaya':
           return (
-            <div className="space-y-12">
-              <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden relative">
-                <div className="absolute top-10 right-10 flex gap-4">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-black uppercase tracking-widest">Temps Réel</span>
-                  </div>
+            <div className="space-y-10">
+              <div className={isRTL ? 'text-right' : ''}>
+                <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
+                    {lt('Talent heatmap', 'Carte de Chaleur des Talents', 'خريطة المواهب')}
+                  </h2>
                   <PremiumBadge />
                 </div>
-
-                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight mb-2">Carte de Chaleur des Talents</h2>
-                <p className="text-gray-500 font-medium mb-10 max-w-xl">
-                  Découvrez la concentration des candidats qualifiés par région en Algérie pour optimiser votre recrutement local.
+                <p className="text-gray-500 font-medium max-w-2xl">
+                  {lt(
+                    'Where qualified candidates are concentrated across Algeria.',
+                    'La concentration des candidats qualifiés par région en Algérie.',
+                    'توزع المترشحين المؤهلين حسب الولاية.'
+                  )}
                 </p>
+              </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                  <div className="bg-gray-50 rounded-[2rem] p-8 min-h-[400px] flex items-center justify-center relative border border-gray-100">
-                    <div className="text-center">
-                      <MapPin size={64} className="text-[#173E7D]/10 mx-auto mb-6" />
-                      <p className="text-gray-400 font-black text-sm uppercase tracking-widest">Heatmap interactive activée</p>
-                      <p className="text-xs text-gray-400 mt-2">Visualisation des 48 Wilayas disponible en plan Entreprise</p>
-                    </div>
-                    {/* Simplified Heatmap Overlay */}
-                    <div className="absolute inset-0 p-10 flex flex-col justify-center space-y-4">
-                       <div className="flex items-center gap-4">
-                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
-                           <div className="absolute inset-0 bg-blue-600 w-[85%]" />
-                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-white uppercase">Alger (42%)</span>
-                         </div>
-                       </div>
-                       <div className="flex items-center gap-4">
-                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
-                           <div className="absolute inset-0 bg-blue-400 w-[15%]" />
-                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-[#173E7D] uppercase tracking-widest">Oran (15%)</span>
-                         </div>
-                       </div>
-                       <div className="flex items-center gap-4">
-                         <div className="w-full bg-blue-100 h-8 rounded-xl overflow-hidden relative">
-                           <div className="absolute inset-0 bg-blue-300 w-[10%]" />
-                           <span className="absolute inset-y-0 left-4 flex items-center text-[10px] font-black text-[#173E7D] uppercase tracking-widest">Constantine (10%)</span>
-                         </div>
-                       </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <h4 className="text-xl font-black text-[#173E7D] tracking-tight">Top Regions ce mois-ci</h4>
-                    {[
-                      { region: 'Alger Centre', count: 1240, trend: '+12%', color: 'blue' },
-                      { region: 'Oran Ouest', count: 860, trend: '+18%', color: 'emerald' },
-                      { region: 'Sétif / Bordj', count: 540, trend: '-2%', color: 'orange' },
-                      { region: 'Annaba / Skikda', count: 420, trend: '+5%', color: 'purple' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between p-6 bg-white border border-gray-100 rounded-3xl hover:border-[#173E7D] transition-all cursor-pointer group">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${item.color}-50 text-${item.color}-600 group-hover:bg-${item.color}-600 group-hover:text-white transition-colors`}>
-                            <TrendingUp size={20} />
-                          </div>
-                          <div>
-                            <p className="font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">{item.region}</p>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.count} Talents actifs</p>
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${item.trend.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
-                          {item.trend}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              <div className="bg-white rounded-[3rem] border border-dashed border-gray-200 py-20 px-8 text-center">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-50 text-[#173E7D]/40 flex items-center justify-center">
+                  <MapPin size={30} />
                 </div>
+                <h3 className="text-xl font-black text-[#173E7D] mt-6">
+                  {lt('Not enough data yet', 'Pas encore assez de données', 'لا توجد بيانات كافية')}
+                </h3>
+                <p className="text-gray-400 font-medium mt-3 max-w-md mx-auto">
+                  {lt(
+                    'Regional figures will appear here once enough candidates have applied to your offers.',
+                    "Les statistiques régionales apparaîtront ici lorsque suffisamment de candidats auront postulé à vos offres.",
+                    'ستظهر الإحصائيات الجهوية بمجرد ترشح عدد كافٍ من المترشحين.'
+                  )}
+                </p>
               </div>
             </div>
           );
@@ -3622,7 +3711,12 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       onChange={(e) => setNewJobData({...newJobData, wilaya: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
+                      {/* Without this, a candidate who has never chosen one is
+                      shown Adrar and looks like they picked it. */}
+                  <option value="">
+                    {lt('Select your wilaya', 'Sélectionnez votre wilaya', 'اختر ولايتك')}
+                  </option>
+                  {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
@@ -3741,7 +3835,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className="flex flex-col md:flex-row gap-12">
                 <div className="flex flex-col items-center gap-4">
                   <div className="w-40 h-40 rounded-[2.5rem] overflow-hidden border-4 border-gray-50 shadow-lg group relative">
-                    <img src={user?.photoURL || 'https://picsum.photos/seed/company/200/200'} alt="Logo de l'entreprise" className="w-full h-full object-cover" />
+                    {/* Initials, not a stock photograph of somebody else's
+                        building — and no <img src=""> either. */}
+                    {user?.photoURL ? (
+                      <img src={user.photoURL} alt="Logo de l'entreprise" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-[#173E7D] text-white flex items-center justify-center font-black text-3xl">
+                        {(user?.displayName || user?.email || '?').trim().charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <button className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                       <Camera size={24} />
                     </button>
@@ -4748,8 +4850,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <TrendingUp size={24} />
                   </div>
                   <div className={isRTL ? 'text-right' : ''}>
-                    <div className="text-2xl font-bold text-[#173E7D]">12</div>
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t('newOffers')}</div>
+                    {/* The real number of open offers. It said 12 regardless. */}
+                    <div className="text-2xl font-bold text-[#173E7D]">{realJobs.length}</div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t('availableOffers')}</div>
                   </div>
                 </div>
               </div>
@@ -4761,7 +4864,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <ClipboardList size={28} />
                 </div>
                 <h3 className="text-xl font-bold text-[#173E7D]">{t('applicationsTitle')}</h3>
-                <p className="text-gray-400 text-sm">{t('applicationsCount', { count: 5 })}</p>
+                <p className="text-gray-400 text-sm">{t('applicationsCount', { count: myApplications.length })}</p>
                 <button onClick={() => setActiveTab('applications')} className={`text-[#F68D58] font-bold text-sm flex items-center gap-2 hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {t('viewAll')} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
                 </button>
@@ -4771,7 +4874,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <Bookmark size={28} />
                 </div>
                 <h3 className="text-xl font-bold text-[#173E7D]">{t('savedTitle')}</h3>
-                <p className="text-gray-400 text-sm">{t('savedOffersCount', { count: 3 })}</p>
+                <p className="text-gray-400 text-sm">{t('savedOffersCount', { count: savedJobs.length })}</p>
                 <button onClick={() => setActiveTab('saved')} className={`text-[#F68D58] font-bold text-sm flex items-center gap-2 hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {t('viewAll')} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
                 </button>
@@ -4781,7 +4884,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <Bell size={28} />
                 </div>
                 <h3 className="text-xl font-bold text-[#173E7D]">{t('alertsTitle')}</h3>
-                <p className="text-gray-400 text-sm">{t('alertsCount', { count: 2, query: 'Développeur React' })}</p>
+                <p className="text-gray-400 text-sm">{t('alertsCount', { count: notifications.filter((n) => !n.is_read).length })}</p>
                 <button onClick={() => setActiveTab('notifications')} className={`text-[#F68D58] font-bold text-sm flex items-center gap-2 hover:gap-3 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {t('viewAll')} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
                 </button>
@@ -5090,10 +5193,19 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className={`space-y-4 ${isRTL ? 'text-right' : ''}`}>
                 <h2 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">{profileData.name}</h2>
                 <p className="text-gray-400 font-medium">{profileData.email}</p>
-                <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <span className="px-4 py-1.5 bg-blue-50 text-[#173E7D] text-xs font-bold rounded-full">{profileData.jobTitle}</span>
-                  <span className="px-4 py-1.5 bg-gray-50 text-gray-500 text-xs font-bold rounded-full">{profileData.location}</span>
-                </div>
+                {/* Rendered only when set — an empty chip is worse than none,
+                    and these used to show a job title and city the candidate
+                    had never entered. */}
+                {(profileData.jobTitle || profileData.location) && (
+                  <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    {profileData.jobTitle && (
+                      <span className="px-4 py-1.5 bg-blue-50 text-[#173E7D] text-xs font-bold rounded-full">{profileData.jobTitle}</span>
+                    )}
+                    {profileData.location && (
+                      <span className="px-4 py-1.5 bg-gray-50 text-gray-500 text-xs font-bold rounded-full">{profileData.location}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <button
                 onClick={handleChangePhotoClick}
@@ -7004,7 +7116,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
               </div>
               <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-gray-100">
-                <img src={displayPhotoURL || 'https://picsum.photos/seed/user/100/100'} alt="Profile" className="w-full h-full object-cover" />
+                {displayPhotoURL ? (
+                  <img src={displayPhotoURL} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-[#173E7D] text-white flex items-center justify-center font-black">
+                    {(user?.displayName || user?.email || '?').trim().charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
             </div>
           </div>

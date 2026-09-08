@@ -3,6 +3,7 @@ import crypto from "crypto";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { sendJobMatchEmail, sendJobPublishedEmail } from "../utils/email";
+import { notifyJobMatch } from "../services/notification.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 
 // Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
@@ -271,6 +272,15 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
           include: { user: true }
         });
 
+        // One insert for the whole batch rather than a round trip per
+        // candidate, and in French like every other notification — these
+        // were the only English ones in the app.
+        await notifyJobMatch({
+          candidateUserIds: matchingCandidates.map((c) => c.userId),
+          jobTitle: job.title,
+          company: membership.company.name,
+        });
+
         for (const candidate of matchingCandidates) {
           await sendJobMatchEmail(
             candidate.user.email, 
@@ -278,16 +288,6 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
             membership.company.name, 
             job.id
           );
-          
-          // Also create an in-app notification
-          await prisma.notification.create({
-            data: {
-              userId: candidate.userId,
-              title: 'New Job Match!',
-              message: `A new job matches your profile: ${job.title} at ${membership.company.name}`,
-              type: 'INFO'
-            }
-          });
         }
       } catch (err) {
         console.error('Error in job match background task:', err);

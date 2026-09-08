@@ -1338,6 +1338,100 @@ import { Router as Router2 } from "express";
 // server/controllers/job.controller.ts
 init_prisma();
 import crypto6 from "crypto";
+
+// server/services/notification.service.ts
+init_prisma();
+import { NotificationType } from "@prisma/client";
+var notify = async (input) => {
+  try {
+    await prisma_default.notification.create({
+      data: {
+        userId: input.userId,
+        title: input.title,
+        message: input.message,
+        type: input.type ?? NotificationType.INFO
+      }
+    });
+  } catch (err) {
+    console.error(`Notification for user ${input.userId} failed:`, err);
+  }
+};
+var notifyMany = async (inputs) => {
+  if (inputs.length === 0) return;
+  try {
+    await prisma_default.notification.createMany({
+      data: inputs.map((i) => ({
+        userId: i.userId,
+        title: i.title,
+        message: i.message,
+        type: i.type ?? NotificationType.INFO
+      }))
+    });
+  } catch (err) {
+    console.error(`Batch of ${inputs.length} notifications failed:`, err);
+  }
+};
+var statusNotification = (status, jobTitle, company) => {
+  switch (status) {
+    case "REVIEWING":
+      return {
+        title: "Votre candidature est en cours d'examen",
+        message: `${company} examine votre candidature pour le poste de \xAB ${jobTitle} \xBB.`,
+        type: NotificationType.INFO
+      };
+    case "SHORTLISTED":
+      return {
+        title: "Vous \xEAtes pr\xE9s\xE9lectionn\xE9(e) !",
+        message: `${company} a retenu votre profil pour le poste de \xAB ${jobTitle} \xBB.`,
+        type: NotificationType.SUCCESS
+      };
+    case "INTERVIEW":
+      return {
+        title: "Entretien propos\xE9",
+        message: `${company} souhaite vous rencontrer pour le poste de \xAB ${jobTitle} \xBB.`,
+        type: NotificationType.SUCCESS
+      };
+    case "HIRED":
+      return {
+        title: "F\xE9licitations, vous \xEAtes recrut\xE9(e) !",
+        message: `${company} vous a retenu(e) pour le poste de \xAB ${jobTitle} \xBB.`,
+        type: NotificationType.SUCCESS
+      };
+    case "REJECTED":
+      return {
+        title: "Candidature non retenue",
+        message: `${company} n'a pas retenu votre candidature pour \xAB ${jobTitle} \xBB. Continuez, d'autres opportunit\xE9s vous attendent.`,
+        type: NotificationType.WARNING
+      };
+    default:
+      return null;
+  }
+};
+var notifyApplicationStatus = async (params) => {
+  const content = statusNotification(params.status, params.jobTitle, params.company);
+  if (!content) return;
+  await notify({ userId: params.candidateUserId, ...content });
+};
+var notifyNewApplication = async (params) => {
+  await notify({
+    userId: params.recruiterUserId,
+    title: "Nouvelle candidature",
+    message: `${params.candidateName} a postul\xE9 au poste de \xAB ${params.jobTitle} \xBB.`,
+    type: NotificationType.INFO
+  });
+};
+var notifyJobMatch = async (params) => {
+  await notifyMany(
+    params.candidateUserIds.map((userId) => ({
+      userId,
+      title: "Nouvelle offre pour vous",
+      message: `\xAB ${params.jobTitle} \xBB chez ${params.company} correspond \xE0 votre profil.`,
+      type: NotificationType.INFO
+    }))
+  );
+};
+
+// server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const suffix = crypto6.randomBytes(3).toString("hex");
@@ -1549,6 +1643,11 @@ var createJob = async (req, res, next) => {
           },
           include: { user: true }
         });
+        await notifyJobMatch({
+          candidateUserIds: matchingCandidates.map((c) => c.userId),
+          jobTitle: job.title,
+          company: membership.company.name
+        });
         for (const candidate of matchingCandidates) {
           await sendJobMatchEmail(
             candidate.user.email,
@@ -1556,14 +1655,6 @@ var createJob = async (req, res, next) => {
             membership.company.name,
             job.id
           );
-          await prisma_default.notification.create({
-            data: {
-              userId: candidate.userId,
-              title: "New Job Match!",
-              message: `A new job matches your profile: ${job.title} at ${membership.company.name}`,
-              type: "INFO"
-            }
-          });
         }
       } catch (err) {
         console.error("Error in job match background task:", err);
@@ -3566,7 +3657,10 @@ var applyToJob = async (req, res, next) => {
     const candidateId = req.user.id;
     const job = await prisma_default.job.findUnique({
       where: { id: jobId },
-      include: { company: { select: { name: true } } }
+      include: {
+        company: { select: { name: true } },
+        recruiter: { select: { userId: true } }
+      }
     });
     if (!job) {
       return next(new AppError("Job not found", 404));
@@ -3607,6 +3701,13 @@ var applyToJob = async (req, res, next) => {
         error
       );
     });
+    if (job.recruiter?.userId) {
+      notifyNewApplication({
+        recruiterUserId: job.recruiter.userId,
+        candidateName: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
+        jobTitle: job.title
+      });
+    }
     sendApplicationSentEmail(user.email, {
       firstName: user.firstName,
       jobTitle: job.title,
@@ -3635,7 +3736,22 @@ var getMyApplications = async (req, res, next) => {
     }
     const applications = await prisma_default.application.findMany({
       where: { candidateId: user.candidateProfile.id },
-      include: { job: { include: { recruiter: true } } },
+      // Selected rather than `recruiter: true`: the candidate needs the
+      // company's name and location to recognise what they applied to, and the
+      // recruiter's own profile row is neither useful to them nor theirs to
+      // see.
+      include: {
+        job: {
+          select: {
+            id: true,
+            title: true,
+            location: true,
+            wilaya: true,
+            type: true,
+            company: { select: { name: true, logo: { select: { url: true } } } }
+          }
+        }
+      },
       orderBy: { appliedAt: "desc" }
     });
     res.status(200).json({
@@ -3733,7 +3849,15 @@ var updateApplicationStatus = async (req, res, next) => {
     const { status } = req.body;
     const application = await prisma_default.application.findUnique({
       where: { id },
-      include: { job: { include: { recruiter: true } } }
+      include: {
+        job: {
+          include: {
+            recruiter: true,
+            company: { select: { name: true } }
+          }
+        },
+        candidate: { select: { userId: true } }
+      }
     });
     if (!application) return next(new AppError("Application not found", 404));
     const user = await prisma_default.user.findUnique({
@@ -3747,6 +3871,14 @@ var updateApplicationStatus = async (req, res, next) => {
       where: { id },
       data: { status }
     });
+    if (application.status !== updatedApplication.status) {
+      notifyApplicationStatus({
+        candidateUserId: application.candidate.userId,
+        status: updatedApplication.status,
+        jobTitle: application.job.title,
+        company: application.job.company?.name ?? "L'entreprise"
+      });
+    }
     res.status(200).json({
       status: "success",
       data: { application: updatedApplication }

@@ -110,11 +110,23 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
     }
 
-    // Send Welcome Email. `user.role` is the persisted role, not the value
-    // from the request body, so the email always names the account that was
-    // actually created.
-    const name = firstName ? `${firstName} ${lastName || ''}`.trim() : email;
-    await sendWelcomeEmail(email, name, user.role);
+    // Send the welcome email. `user.role` is the persisted role, not the
+    // value from the request body, so the message always matches the account
+    // that was actually created.
+    //
+    // Recruiters are greeted by company name because that is what the signup
+    // form collects for them — it sends no firstName at all, so the previous
+    // fallback addressed every company by its raw email address.
+    const greeting =
+      user.role === "RECRUITER"
+        ? companyName || "My Company"
+        : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
+
+    // Deliberately not awaited: a slow or failing mail server must not hold up
+    // or fail account creation, which has already been committed.
+    sendWelcomeEmail(email, greeting, user.role).catch((err) =>
+      console.error("Welcome email failed:", err)
+    );
 
     const token = signToken(user.id, user.role);
 

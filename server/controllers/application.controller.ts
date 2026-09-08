@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import aiAnalysisService from "../services/aiAnalysis.service";
+import { sendApplicationSentEmail } from "../utils/email";
 
 export const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -10,6 +11,7 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
+      include: { company: { select: { name: true } } },
     });
 
     if (!job) {
@@ -62,6 +64,19 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
             error
           );
         });
+
+    // Confirm to the candidate that their application went through.
+    // Not awaited: the application is already saved, and a mail failure must
+    // not turn a successful application into an error the candidate retries.
+    sendApplicationSentEmail(user.email, {
+      firstName: user.firstName,
+      jobTitle: job.title,
+      company: job.company?.name ?? "l'entreprise",
+      city: job.location,
+      appliedAt: application.appliedAt,
+    }).catch((error) =>
+      console.error("Application confirmation email failed:", error)
+    );
 
     res.status(201).json({
       status: "success",

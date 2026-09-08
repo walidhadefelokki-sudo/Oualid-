@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
-import { sendJobMatchEmail } from "../utils/email";
+import { sendJobMatchEmail, sendJobPublishedEmail } from "../utils/email";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 
 // Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
@@ -247,6 +247,17 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
         publishedAt: new Date(),
       },
     });
+
+    // Confirm to the recruiter that the offer is live. Not awaited: the job
+    // is already published, and a mail failure must not fail the request.
+    sendJobPublishedEmail(user.email, {
+      companyName: membership.company.name,
+      jobTitle: job.title,
+      city: job.location,
+      publishedAt: job.publishedAt ?? undefined,
+    }).catch((error) =>
+      console.error("Job published email failed:", error)
+    );
 
     // Background: Notify matching candidates
     (async () => {

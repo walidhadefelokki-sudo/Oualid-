@@ -5,17 +5,26 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
- * Mail transport. Two paths, tried in this order:
+ * Mail transport, preferred first:
  *
- * 1. RESEND_API_KEY — sends over HTTPS through Resend's API. This is the path
- *    that actually works in production. darlemploi.dz's own mail server
- *    (mail.darlemploi.dz) accepts no connection on 25, 465 or 587 from outside
- *    the hosting account, and a Vercel function sits outside it too, so no SMTP
- *    configuration can reach it. HTTPS is never firewalled.
+ * 1. SMTP_HOST — the domain's own mail server. Preferred because mail then
+ *    genuinely originates from the domain it claims: SPF and DKIM align
+ *    without extra DNS, replies land in the real inscription@darlemploi.dz
+ *    mailbox, and no third party sees the contents.
  *
- * 2. SMTP_HOST, or Gmail when that is unset — kept as a fallback so an
- *    environment configured before this migration keeps sending rather than
- *    quietly going dark.
+ *    The host is quantum.octenium.net, NOT mail.darlemploi.dz. That name has
+ *    no A record — the domain's MX still points at it, so inbound mail is
+ *    misrouted too — and the server's TLS certificate is issued for
+ *    quantum.octenium.net, so connecting under any other name fails
+ *    certificate verification rather than sending.
+ *
+ * 2. RESEND_API_KEY — HTTPS fallback, used when SMTP is unset or the send
+ *    fails. Worth keeping: a serverless platform can block outbound SMTP, and
+ *    a fallback that needs no ports is the difference between degraded mail
+ *    and none. It can only send from a domain verified in Resend, so it is a
+ *    safety net rather than an equal path.
+ *
+ * 3. Gmail — legacy, only when neither of the above is configured.
  */
 const resendApiKey = process.env.RESEND_API_KEY?.trim();
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -49,10 +58,10 @@ const transporter = smtpHost
     });
 
 /** Which transport is live — useful in a startup log or a health endpoint. */
-export const emailTransportName = resend
-  ? 'resend'
-  : smtpHost
-    ? `smtp:${smtpHost}:${smtpPort}`
+export const emailTransportName = smtpHost
+  ? `smtp:${smtpHost}:${smtpPort}`
+  : resend
+    ? 'resend'
     : 'gmail';
 
 /**
@@ -66,7 +75,7 @@ export const emailTransportName = resend
 export const verifyEmailTransport = async (): Promise<
   { ok: true } | { ok: false; error: string }
 > => {
-  if (resend) return { ok: true };
+  if (!smtpHost) return resend ? { ok: true } : { ok: false, error: 'No mail transport configured.' };
   try {
     await transporter.verify();
     return { ok: true };
@@ -88,7 +97,52 @@ const APP_URL = process.env.APP_URL || 'https://www.darlemploi.dz';
  * has not been configured yet.
  */
 const FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
-const FROM_NAME = "Dar L'emploi";
+const FROM_NAME = "Dar L'Emploi";
+
+/**
+ * Sender addresses, one per kind of message.
+ *
+ * Account-lifecycle mail comes from register@, transactional confirmations
+ * from info@, so a recipient can tell at a glance which is which and filter
+ * accordingly.
+ *
+ * Both fall back to EMAIL_FROM when unset. That matters: the SMTP server
+ * verifies the sender against real mailboxes and answers
+ * "550 No Such User Here" for one that does not exist, which would fail the
+ * send outright. Falling back keeps mail flowing until the mailbox is created
+ * in the hosting panel.
+ */
+const FROM_REGISTER = process.env.EMAIL_FROM_REGISTER?.trim() || FROM_ADDRESS;
+const FROM_INFO = process.env.EMAIL_FROM_INFO?.trim() || FROM_ADDRESS;
+
+/** dd/mm/yyyy, the convention used across the platform. */
+const formatDate = (date: Date = new Date()) =>
+  date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/** A labelled detail row, as used in the confirmation emails. */
+const detailRow = (icon: string, label: string, value: string) => `
+  <tr>
+    <td style="padding:6px 0;color:${BRAND.ink};font-size:15px;line-height:1.6;">
+      <span style="display:inline-block;width:22px;">${icon}</span>
+      <strong style="color:${BRAND.navy};">${label}</strong>&nbsp;${value}
+    </td>
+  </tr>`;
+
+const detailBlock = (rows: string) => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
+    <tr><td style="padding:18px 20px;"><table role="presentation" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+  </table>`;
+
+/** A short bulleted list of selling points, one per line with its icon. */
+const iconList = (items: Array<[string, string]>) => `
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+    ${items
+      .map(
+        ([icon, text]) => `<tr><td style="padding:5px 0;color:${BRAND.ink};font-size:15px;line-height:1.6;">
+          <span style="display:inline-block;width:24px;">${icon}</span>${text}</td></tr>`
+      )
+      .join('')}
+  </table>`;
 
 const BRAND = {
   navy: '#173E7D',
@@ -159,6 +213,12 @@ const paragraph = (text: string) =>
 
 export interface SendEmailOptions {
   /**
+   * Sender address for this message, overriding the default. Must be a real
+   * mailbox on the domain: the SMTP server verifies it and rejects the send
+   * with "550 No Such User Here" otherwise.
+   */
+  from?: string;
+  /**
    * Where a reply should go, when that is not the sender.
    *
    * Mail is always *sent* from the platform's own verified address so it
@@ -184,11 +244,36 @@ export const sendEmail = async (
   html: string,
   options: SendEmailOptions = {}
 ): Promise<boolean> => {
+  const from = `"${FROM_NAME}" <${options.from ?? FROM_ADDRESS}>`;
+
+  // --- 1. The domain's own mail server -------------------------------------
+  if (smtpHost) {
+    try {
+      const info = await transporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+        ...(options.text ? { text: options.text } : {}),
+        ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+      });
+      console.log(`Mail to ${to} sent via ${smtpHost}: ${info.messageId}`);
+      return true;
+    } catch (error) {
+      // Loud, then fall through. Mail silently never arriving is how the
+      // broken configuration went unnoticed for weeks.
+      console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      if (!resend) return false;
+      console.warn('Falling back to Resend.');
+    }
+  }
+
+  // --- 2. HTTPS fallback ----------------------------------------------------
   if (resend) {
     // Resend reports failures in the response body rather than by throwing,
     // so an unchecked call looks exactly like a successful one.
     const { data, error } = await resend.emails.send({
-      from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+      from,
       to,
       subject,
       html,
@@ -197,8 +282,6 @@ export const sendEmail = async (
     });
 
     if (error) {
-      // Non-fatal by design: registration must not fail because mail did.
-      // Loud, though — mail silently never arriving is how this went unnoticed.
       console.error(
         `Email to ${to} was NOT sent (Resend ${error.name}): ${error.message}`
       );
@@ -209,22 +292,21 @@ export const sendEmail = async (
     return true;
   }
 
-  try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      // Deliberately non-fatal: registration must still succeed on an
-      // environment where mail is not configured yet.
-      console.log('--- Email simulation (no RESEND_API_KEY, no EMAIL_USER/EMAIL_PASS) ---');
-      console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? 'unset'}>`);
-      console.log(`To: ${to}`);
-      console.log(`Subject: ${subject}`);
-      console.log('----------------------------------------------------------------------');
-      // Nothing was sent, and saying otherwise would let a caller report
-      // success on an environment with no mail configured at all.
-      return false;
-    }
+  // --- 3. Nothing configured ------------------------------------------------
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    // Deliberately non-fatal: registration must still succeed on an
+    // environment where mail is not configured yet.
+    console.log('--- Email simulation (no SMTP_HOST, no RESEND_API_KEY) ---');
+    console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? 'unset'}>`);
+    console.log(`To: ${to}`);
+    console.log(`Subject: ${subject}`);
+    console.log('----------------------------------------------------------');
+    return false;
+  }
 
+  try {
     const info = await transporter.sendMail({
-      from: `"${FROM_NAME}" <${FROM_ADDRESS}>`,
+      from,
       to,
       subject,
       html,
@@ -239,64 +321,269 @@ export const sendEmail = async (
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/*                          Account lifecycle — register@                     */
+/* -------------------------------------------------------------------------- */
+
 /**
- * Registration confirmation.
+ * Candidate: account created.
  *
- * `role` is optional so the existing two-argument calls keep working; when
- * given, the email names the account type that was created. There is no
- * verification link because the platform has no email-verification flow —
- * `User.emailVerified` exists but nothing issues or checks a token.
+ * There is no verification link because the platform has no email-verification
+ * flow — `User.emailVerified` exists but nothing issues or checks a token.
+ */
+export const sendCandidateWelcomeEmail = async (email: string, firstName?: string | null) => {
+  const greeting = firstName?.trim() || 'et bienvenue';
+
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${paragraph(
+      `Votre compte a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez maintenant d&eacute;couvrir des opportunit&eacute;s professionnelles adapt&eacute;es &agrave; votre profil et postuler en quelques clics.`
+    )}
+
+    ${iconList([
+      ['&#128188;', 'Explorez les offres'],
+      ['&#127919;', 'Trouvez celles qui correspondent &agrave; votre profil'],
+      ['&#9889;', 'Postulez simplement et rapidement'],
+    ])}
+
+    ${paragraph(`Votre prochaine opportunit&eacute; peut commencer ici.`)}
+
+    ${button(APP_URL, 'Explorer les offres')}
+
+    ${paragraph(`&Agrave; bient&ocirc;t sur Dar L'Emploi,`)}`;
+
+  const text = [
+    `Bonjour ${greeting},`,
+    '',
+    "Bienvenue sur Dar L'Emploi !",
+    '',
+    'Votre compte a été créé avec succès. Vous pouvez maintenant découvrir des opportunités professionnelles adaptées à votre profil et postuler en quelques clics.',
+    '',
+    '- Explorez les offres',
+    '- Trouvez celles qui correspondent à votre profil',
+    '- Postulez simplement et rapidement',
+    '',
+    'Votre prochaine opportunité peut commencer ici.',
+    APP_URL,
+    '',
+    "À bientôt sur Dar L'Emploi,",
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Bienvenue sur Dar L'Emploi — Votre recherche commence maintenant 🚀",
+    layout("Bienvenue sur Dar L'Emploi", body),
+    { from: FROM_REGISTER, text }
+  );
+};
+
+/** Recruiter: company account created. */
+export const sendRecruiterWelcomeEmail = async (email: string, companyName?: string | null) => {
+  const greeting = companyName?.trim() || 'et bienvenue';
+
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${paragraph(
+      `Votre compte entreprise a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez d&egrave;s maintenant publier votre premi&egrave;re offre d'emploi <strong>gratuitement</strong> et commencer &agrave; recevoir des candidatures de profils correspondant &agrave; vos besoins.`
+    )}
+
+    ${iconList([
+      ['&#128640;', 'Votre premi&egrave;re offre est offerte'],
+      ['&#128101;', 'Recevez des candidatures qualifi&eacute;es'],
+      ['&#9889;', 'G&eacute;rez vos recrutements simplement depuis votre espace entreprise'],
+    ])}
+
+    ${paragraph(`Votre prochain collaborateur est peut-&ecirc;tre d&eacute;j&agrave; sur Dar L'Emploi.`)}
+
+    ${button(APP_URL, 'Publier une offre')}
+
+    ${paragraph(`Merci de votre confiance.`)}`;
+
+  const text = [
+    `Bonjour ${greeting},`,
+    '',
+    "Bienvenue sur Dar L'Emploi !",
+    '',
+    "Votre compte entreprise a été créé avec succès. Vous pouvez dès maintenant publier votre première offre d'emploi gratuitement et commencer à recevoir des candidatures de profils correspondant à vos besoins.",
+    '',
+    '- Votre première offre est offerte',
+    '- Recevez des candidatures qualifiées',
+    '- Gérez vos recrutements simplement depuis votre espace entreprise',
+    '',
+    "Votre prochain collaborateur est peut-être déjà sur Dar L'Emploi.",
+    APP_URL,
+    '',
+    'Merci de votre confiance.',
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Bienvenue sur Dar L'Emploi — Votre première offre est gratuite 🎉",
+    layout("Bienvenue sur Dar L'Emploi", body),
+    { from: FROM_REGISTER, text }
+  );
+};
+
+/**
+ * Routes a new account to the right welcome email.
+ *
+ * Kept so the registration controller has one call regardless of role, and so
+ * the role decision lives beside the templates rather than in the controller.
  */
 export const sendWelcomeEmail = async (
   email: string,
-  name: string,
+  name?: string | null,
   role?: 'CANDIDATE' | 'RECRUITER' | string
-) => {
-  const isRecruiter = role === 'RECRUITER';
-  const accountLabel = isRecruiter ? 'Recruteur' : 'Candidat';
+) =>
+  role === 'RECRUITER'
+    ? sendRecruiterWelcomeEmail(email, name)
+    : sendCandidateWelcomeEmail(email, name);
 
-  const nextSteps = isRecruiter
-    ? `
-      <li style="margin-bottom:8px;">Compl&eacute;tez le profil de votre entreprise (logo, secteur, description).</li>
-      <li style="margin-bottom:8px;">Publiez votre premi&egrave;re offre d'emploi.</li>
-      <li style="margin-bottom:8px;">Consultez les candidatures et les analyses IA.</li>`
-    : `
-      <li style="margin-bottom:8px;">Compl&eacute;tez votre profil et t&eacute;l&eacute;versez votre CV.</li>
-      <li style="margin-bottom:8px;">Enregistrez votre pr&eacute;sentation vid&eacute;o en arabe.</li>
-      <li style="margin-bottom:8px;">Explorez les offres et postulez en un clic.</li>`;
+/* -------------------------------------------------------------------------- */
+/*                       Transactional confirmations — info@                  */
+/* -------------------------------------------------------------------------- */
+
+export interface ApplicationSentDetails {
+  firstName?: string | null;
+  jobTitle: string;
+  company: string;
+  city?: string | null;
+  appliedAt?: Date;
+}
+
+/** Candidate: their application reached the recruiter. */
+export const sendApplicationSentEmail = async (
+  email: string,
+  details: ApplicationSentDetails
+) => {
+  const greeting = details.firstName?.trim() || 'et merci';
+  const city = details.city?.trim() || 'Non pr&eacute;cis&eacute;e';
+  const date = formatDate(details.appliedAt);
 
   const body = `
-    ${paragraph(`Bonjour <strong>${name}</strong>,`)}
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(
-      `Votre compte Dar L'emploi a bien &eacute;t&eacute; cr&eacute;&eacute;. Vous rejoignez la plateforme de recrutement qui met l'intelligence artificielle au service des talents et des entreprises en Alg&eacute;rie.`
+      `Votre candidature pour le poste de &laquo;&nbsp;<strong>${details.jobTitle}</strong>&nbsp;&raquo; aupr&egrave;s de <strong>${details.company}</strong> a bien &eacute;t&eacute; envoy&eacute;e.`
     )}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
-      <tr>
-        <td style="padding:18px 20px;">
-          <p style="margin:0 0 10px;color:${BRAND.muted};font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;">Votre compte</p>
-          <p style="margin:0;color:${BRAND.ink};font-size:14px;line-height:1.8;">
-            <strong style="color:${BRAND.navy};">Email</strong> &nbsp;${email}<br>
-            <strong style="color:${BRAND.navy};">Type de compte</strong> &nbsp;${accountLabel}
-          </p>
-        </td>
-      </tr>
-    </table>
-
-    <p style="margin:0 0 10px;color:${BRAND.navy};font-size:15px;font-weight:700;">Pour bien commencer</p>
-    <ul style="margin:0 0 4px;padding-left:20px;color:${BRAND.ink};font-size:15px;line-height:1.6;">
-      ${nextSteps}
-    </ul>
-
-    ${button(APP_URL, 'Acc&eacute;der &agrave; mon espace')}
+    ${detailBlock(
+      detailRow('&#128204;', 'Poste', details.jobTitle) +
+        detailRow('&#127970;', 'Entreprise', details.company) +
+        detailRow('&#128205;', 'Localisation', city) +
+        detailRow('&#128197;', 'Date', date)
+    )}
 
     ${paragraph(
-      `<span style="color:${BRAND.muted};font-size:13px;">Vous n'&ecirc;tes pas &agrave; l'origine de cette inscription&nbsp;? Ignorez simplement ce message ou r&eacute;pondez-y pour nous en informer.</span>`
+      `Votre profil a &eacute;t&eacute; transmis &agrave; l'entreprise. Si celle-ci souhaite poursuivre le processus de recrutement, elle pourra vous contacter directement.`
+    )}
+    ${paragraph(`En attendant, continuez &agrave; explorer les opportunit&eacute;s disponibles sur Dar L'Emploi.`)}
+
+    ${button(APP_URL, 'Voir d\'autres offres')}
+
+    ${paragraph(
+      `<em>Une candidature aujourd'hui peut devenir une opportunit&eacute; demain.</em><br>Bonne chance&nbsp;! &#127808;`
     )}`;
 
-  await sendEmail(email, `Bienvenue sur Dar L'emploi, ${name}`, layout('Bienvenue sur Dar L\'emploi', body));
+  const text = [
+    `Bonjour ${greeting},`,
+    '',
+    `Votre candidature pour le poste de « ${details.jobTitle} » auprès de ${details.company} a bien été envoyée.`,
+    '',
+    `Poste : ${details.jobTitle}`,
+    `Entreprise : ${details.company}`,
+    `Localisation : ${details.city ?? 'Non précisée'}`,
+    `Date : ${date}`,
+    '',
+    "Votre profil a été transmis à l'entreprise. Si celle-ci souhaite poursuivre le processus de recrutement, elle pourra vous contacter directement.",
+    '',
+    "En attendant, continuez à explorer les opportunités disponibles sur Dar L'Emploi.",
+    APP_URL,
+    '',
+    'Bonne chance !',
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    `Candidature envoyée avec succès — ${details.jobTitle} ✅`,
+    layout('Candidature envoy&eacute;e', body),
+    { from: FROM_INFO, text }
+  );
 };
 
+export interface JobPublishedDetails {
+  companyName?: string | null;
+  jobTitle: string;
+  city?: string | null;
+  publishedAt?: Date;
+}
+
+/** Recruiter: their job offer is live. */
+export const sendJobPublishedEmail = async (
+  email: string,
+  details: JobPublishedDetails
+) => {
+  const greeting = details.companyName?.trim() || 'et merci';
+  const city = details.city?.trim() || 'Non pr&eacute;cis&eacute;e';
+  const date = formatDate(details.publishedAt);
+
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+      `Votre offre &laquo;&nbsp;<strong>${details.jobTitle}</strong>&nbsp;&raquo; a &eacute;t&eacute; publi&eacute;e avec succ&egrave;s sur Dar L'Emploi.`
+    )}
+    ${paragraph(`Elle est maintenant visible par les candidats correspondant &agrave; vos crit&egrave;res.`)}
+
+    <p style="margin:0 0 6px;color:${BRAND.navy};font-size:15px;font-weight:700;">D&eacute;tails de votre offre</p>
+    ${detailBlock(
+      detailRow('&#128204;', 'Poste', details.jobTitle) +
+        detailRow('&#128205;', 'Localisation', city) +
+        detailRow('&#128197;', 'Date de publication', date)
+    )}
+
+    ${paragraph(
+      `Vous pouvez suivre les candidatures et consulter les profils des candidats directement depuis votre espace entreprise.`
+    )}
+
+    ${button(APP_URL, 'Voir mes candidatures')}
+
+    ${paragraph(
+      `Dar L'Emploi vous accompagne pour trouver le bon profil, simplement et rapidement.<br>Merci de votre confiance.`
+    )}`;
+
+  const text = [
+    `Bonjour ${greeting},`,
+    '',
+    `Votre offre « ${details.jobTitle} » a été publiée avec succès sur Dar L'Emploi.`,
+    'Elle est maintenant visible par les candidats correspondant à vos critères.',
+    '',
+    'Détails de votre offre',
+    `Poste : ${details.jobTitle}`,
+    `Localisation : ${details.city ?? 'Non précisée'}`,
+    `Date de publication : ${date}`,
+    '',
+    'Vous pouvez suivre les candidatures et consulter les profils des candidats directement depuis votre espace entreprise.',
+    APP_URL,
+    '',
+    'Merci de votre confiance.',
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Votre offre d'emploi est publiée avec succès ✅",
+    layout('Offre publi&eacute;e', body),
+    { from: FROM_INFO, text }
+  );
+};
+
+/**
+ * Candidate: a newly posted job looks like a match for them.
+ *
+ * Not one of the four business templates — this is the pre-existing match
+ * notification the job controller sends in the background, kept so posting a
+ * job behaves as it did.
+ */
 export const sendJobMatchEmail = async (
   email: string,
   jobTitle: string,
@@ -306,20 +593,25 @@ export const sendJobMatchEmail = async (
   const body = `
     ${paragraph(`Une nouvelle offre correspond &agrave; votre profil&nbsp;:`)}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
-      <tr>
-        <td style="padding:18px 20px;">
-          <p style="margin:0;color:${BRAND.navy};font-size:17px;font-weight:700;">${jobTitle}</p>
-          <p style="margin:6px 0 0;color:${BRAND.muted};font-size:14px;">${company}</p>
-        </td>
-      </tr>
-    </table>
+    ${detailBlock(
+      detailRow('&#128204;', 'Poste', jobTitle) + detailRow('&#127970;', 'Entreprise', company)
+    )}
 
     ${button(`${APP_URL}/jobs/${jobId}`, `Voir l'offre`)}`;
 
-  await sendEmail(
+  const text = [
+    'Une nouvelle offre correspond à votre profil :',
+    '',
+    `Poste : ${jobTitle}`,
+    `Entreprise : ${company}`,
+    '',
+    `${APP_URL}/jobs/${jobId}`,
+  ].join('\n');
+
+  return sendEmail(
     email,
     `Nouvelle offre : ${jobTitle} chez ${company}`,
-    layout('Une offre pour vous', body)
+    layout('Une offre pour vous', body),
+    { from: FROM_INFO, text }
   );
 };

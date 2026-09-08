@@ -155,10 +155,31 @@ var transporter = smtpHost ? nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
-var emailTransportName = resend ? "resend" : smtpHost ? `smtp:${smtpHost}:${smtpPort}` : "gmail";
+var emailTransportName = smtpHost ? `smtp:${smtpHost}:${smtpPort}` : resend ? "resend" : "gmail";
 var APP_URL = process.env.APP_URL || "https://www.darlemploi.dz";
 var FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
-var FROM_NAME = "Dar L'emploi";
+var FROM_NAME = "Dar L'Emploi";
+var FROM_REGISTER = process.env.EMAIL_FROM_REGISTER?.trim() || FROM_ADDRESS;
+var FROM_INFO = process.env.EMAIL_FROM_INFO?.trim() || FROM_ADDRESS;
+var formatDate = (date = /* @__PURE__ */ new Date()) => date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+var detailRow = (icon, label, value) => `
+  <tr>
+    <td style="padding:6px 0;color:${BRAND.ink};font-size:15px;line-height:1.6;">
+      <span style="display:inline-block;width:22px;">${icon}</span>
+      <strong style="color:${BRAND.navy};">${label}</strong>&nbsp;${value}
+    </td>
+  </tr>`;
+var detailBlock = (rows) => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
+    <tr><td style="padding:18px 20px;"><table role="presentation" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+  </table>`;
+var iconList = (items) => `
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+    ${items.map(
+  ([icon, text]) => `<tr><td style="padding:5px 0;color:${BRAND.ink};font-size:15px;line-height:1.6;">
+          <span style="display:inline-block;width:24px;">${icon}</span>${text}</td></tr>`
+).join("")}
+  </table>`;
 var BRAND = {
   navy: "#173E7D",
   orange: "#F68D58",
@@ -215,9 +236,28 @@ var button = (href, label) => `
 </table>`;
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html, options = {}) => {
+  const from = `"${FROM_NAME}" <${options.from ?? FROM_ADDRESS}>`;
+  if (smtpHost) {
+    try {
+      const info = await transporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+        ...options.text ? { text: options.text } : {},
+        ...options.replyTo ? { replyTo: options.replyTo } : {}
+      });
+      console.log(`Mail to ${to} sent via ${smtpHost}: ${info.messageId}`);
+      return true;
+    } catch (error) {
+      console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      if (!resend) return false;
+      console.warn("Falling back to Resend.");
+    }
+  }
   if (resend) {
     const { data, error } = await resend.emails.send({
-      from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+      from,
       to,
       subject,
       html,
@@ -233,17 +273,17 @@ var sendEmail = async (to, subject, html, options = {}) => {
     console.log("Message sent via Resend: %s", data?.id);
     return true;
   }
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.log("--- Email simulation (no SMTP_HOST, no RESEND_API_KEY) ---");
+    console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? "unset"}>`);
+    console.log(`To: ${to}`);
+    console.log(`Subject: ${subject}`);
+    console.log("----------------------------------------------------------");
+    return false;
+  }
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log("--- Email simulation (no RESEND_API_KEY, no EMAIL_USER/EMAIL_PASS) ---");
-      console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? "unset"}>`);
-      console.log(`To: ${to}`);
-      console.log(`Subject: ${subject}`);
-      console.log("----------------------------------------------------------------------");
-      return false;
-    }
     const info = await transporter.sendMail({
-      from: `"${FROM_NAME}" <${FROM_ADDRESS}>`,
+      from,
       to,
       subject,
       html,
@@ -257,64 +297,211 @@ var sendEmail = async (to, subject, html, options = {}) => {
     return false;
   }
 };
-var sendWelcomeEmail = async (email, name, role) => {
-  const isRecruiter = role === "RECRUITER";
-  const accountLabel = isRecruiter ? "Recruteur" : "Candidat";
-  const nextSteps = isRecruiter ? `
-      <li style="margin-bottom:8px;">Compl&eacute;tez le profil de votre entreprise (logo, secteur, description).</li>
-      <li style="margin-bottom:8px;">Publiez votre premi&egrave;re offre d'emploi.</li>
-      <li style="margin-bottom:8px;">Consultez les candidatures et les analyses IA.</li>` : `
-      <li style="margin-bottom:8px;">Compl&eacute;tez votre profil et t&eacute;l&eacute;versez votre CV.</li>
-      <li style="margin-bottom:8px;">Enregistrez votre pr&eacute;sentation vid&eacute;o en arabe.</li>
-      <li style="margin-bottom:8px;">Explorez les offres et postulez en un clic.</li>`;
+var sendCandidateWelcomeEmail = async (email, firstName) => {
+  const greeting = firstName?.trim() || "et bienvenue";
   const body = `
-    ${paragraph(`Bonjour <strong>${name}</strong>,`)}
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
     ${paragraph(
-    `Votre compte Dar L'emploi a bien &eacute;t&eacute; cr&eacute;&eacute;. Vous rejoignez la plateforme de recrutement qui met l'intelligence artificielle au service des talents et des entreprises en Alg&eacute;rie.`
+    `Votre compte a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez maintenant d&eacute;couvrir des opportunit&eacute;s professionnelles adapt&eacute;es &agrave; votre profil et postuler en quelques clics.`
   )}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
-      <tr>
-        <td style="padding:18px 20px;">
-          <p style="margin:0 0 10px;color:${BRAND.muted};font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;">Votre compte</p>
-          <p style="margin:0;color:${BRAND.ink};font-size:14px;line-height:1.8;">
-            <strong style="color:${BRAND.navy};">Email</strong> &nbsp;${email}<br>
-            <strong style="color:${BRAND.navy};">Type de compte</strong> &nbsp;${accountLabel}
-          </p>
-        </td>
-      </tr>
-    </table>
+    ${iconList([
+    ["&#128188;", "Explorez les offres"],
+    ["&#127919;", "Trouvez celles qui correspondent &agrave; votre profil"],
+    ["&#9889;", "Postulez simplement et rapidement"]
+  ])}
 
-    <p style="margin:0 0 10px;color:${BRAND.navy};font-size:15px;font-weight:700;">Pour bien commencer</p>
-    <ul style="margin:0 0 4px;padding-left:20px;color:${BRAND.ink};font-size:15px;line-height:1.6;">
-      ${nextSteps}
-    </ul>
+    ${paragraph(`Votre prochaine opportunit&eacute; peut commencer ici.`)}
 
-    ${button(APP_URL, "Acc&eacute;der &agrave; mon espace")}
+    ${button(APP_URL, "Explorer les offres")}
+
+    ${paragraph(`&Agrave; bient&ocirc;t sur Dar L'Emploi,`)}`;
+  const text = [
+    `Bonjour ${greeting},`,
+    "",
+    "Bienvenue sur Dar L'Emploi !",
+    "",
+    "Votre compte a \xE9t\xE9 cr\xE9\xE9 avec succ\xE8s. Vous pouvez maintenant d\xE9couvrir des opportunit\xE9s professionnelles adapt\xE9es \xE0 votre profil et postuler en quelques clics.",
+    "",
+    "- Explorez les offres",
+    "- Trouvez celles qui correspondent \xE0 votre profil",
+    "- Postulez simplement et rapidement",
+    "",
+    "Votre prochaine opportunit\xE9 peut commencer ici.",
+    APP_URL,
+    "",
+    "\xC0 bient\xF4t sur Dar L'Emploi,"
+  ].join("\n");
+  return sendEmail(
+    email,
+    "Bienvenue sur Dar L'Emploi \u2014 Votre recherche commence maintenant \u{1F680}",
+    layout("Bienvenue sur Dar L'Emploi", body),
+    { from: FROM_REGISTER, text }
+  );
+};
+var sendRecruiterWelcomeEmail = async (email, companyName) => {
+  const greeting = companyName?.trim() || "et bienvenue";
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${paragraph(
+    `Votre compte entreprise a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez d&egrave;s maintenant publier votre premi&egrave;re offre d'emploi <strong>gratuitement</strong> et commencer &agrave; recevoir des candidatures de profils correspondant &agrave; vos besoins.`
+  )}
+
+    ${iconList([
+    ["&#128640;", "Votre premi&egrave;re offre est offerte"],
+    ["&#128101;", "Recevez des candidatures qualifi&eacute;es"],
+    ["&#9889;", "G&eacute;rez vos recrutements simplement depuis votre espace entreprise"]
+  ])}
+
+    ${paragraph(`Votre prochain collaborateur est peut-&ecirc;tre d&eacute;j&agrave; sur Dar L'Emploi.`)}
+
+    ${button(APP_URL, "Publier une offre")}
+
+    ${paragraph(`Merci de votre confiance.`)}`;
+  const text = [
+    `Bonjour ${greeting},`,
+    "",
+    "Bienvenue sur Dar L'Emploi !",
+    "",
+    "Votre compte entreprise a \xE9t\xE9 cr\xE9\xE9 avec succ\xE8s. Vous pouvez d\xE8s maintenant publier votre premi\xE8re offre d'emploi gratuitement et commencer \xE0 recevoir des candidatures de profils correspondant \xE0 vos besoins.",
+    "",
+    "- Votre premi\xE8re offre est offerte",
+    "- Recevez des candidatures qualifi\xE9es",
+    "- G\xE9rez vos recrutements simplement depuis votre espace entreprise",
+    "",
+    "Votre prochain collaborateur est peut-\xEAtre d\xE9j\xE0 sur Dar L'Emploi.",
+    APP_URL,
+    "",
+    "Merci de votre confiance."
+  ].join("\n");
+  return sendEmail(
+    email,
+    "Bienvenue sur Dar L'Emploi \u2014 Votre premi\xE8re offre est gratuite \u{1F389}",
+    layout("Bienvenue sur Dar L'Emploi", body),
+    { from: FROM_REGISTER, text }
+  );
+};
+var sendWelcomeEmail = async (email, name, role) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name) : sendCandidateWelcomeEmail(email, name);
+var sendApplicationSentEmail = async (email, details) => {
+  const greeting = details.firstName?.trim() || "et merci";
+  const city = details.city?.trim() || "Non pr&eacute;cis&eacute;e";
+  const date = formatDate(details.appliedAt);
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+    `Votre candidature pour le poste de &laquo;&nbsp;<strong>${details.jobTitle}</strong>&nbsp;&raquo; aupr&egrave;s de <strong>${details.company}</strong> a bien &eacute;t&eacute; envoy&eacute;e.`
+  )}
+
+    ${detailBlock(
+    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#127970;", "Entreprise", details.company) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date", date)
+  )}
 
     ${paragraph(
-    `<span style="color:${BRAND.muted};font-size:13px;">Vous n'&ecirc;tes pas &agrave; l'origine de cette inscription&nbsp;? Ignorez simplement ce message ou r&eacute;pondez-y pour nous en informer.</span>`
+    `Votre profil a &eacute;t&eacute; transmis &agrave; l'entreprise. Si celle-ci souhaite poursuivre le processus de recrutement, elle pourra vous contacter directement.`
+  )}
+    ${paragraph(`En attendant, continuez &agrave; explorer les opportunit&eacute;s disponibles sur Dar L'Emploi.`)}
+
+    ${button(APP_URL, "Voir d'autres offres")}
+
+    ${paragraph(
+    `<em>Une candidature aujourd'hui peut devenir une opportunit&eacute; demain.</em><br>Bonne chance&nbsp;! &#127808;`
   )}`;
-  await sendEmail(email, `Bienvenue sur Dar L'emploi, ${name}`, layout("Bienvenue sur Dar L'emploi", body));
+  const text = [
+    `Bonjour ${greeting},`,
+    "",
+    `Votre candidature pour le poste de \xAB ${details.jobTitle} \xBB aupr\xE8s de ${details.company} a bien \xE9t\xE9 envoy\xE9e.`,
+    "",
+    `Poste : ${details.jobTitle}`,
+    `Entreprise : ${details.company}`,
+    `Localisation : ${details.city ?? "Non pr\xE9cis\xE9e"}`,
+    `Date : ${date}`,
+    "",
+    "Votre profil a \xE9t\xE9 transmis \xE0 l'entreprise. Si celle-ci souhaite poursuivre le processus de recrutement, elle pourra vous contacter directement.",
+    "",
+    "En attendant, continuez \xE0 explorer les opportunit\xE9s disponibles sur Dar L'Emploi.",
+    APP_URL,
+    "",
+    "Bonne chance !"
+  ].join("\n");
+  return sendEmail(
+    email,
+    `Candidature envoy\xE9e avec succ\xE8s \u2014 ${details.jobTitle} \u2705`,
+    layout("Candidature envoy&eacute;e", body),
+    { from: FROM_INFO, text }
+  );
+};
+var sendJobPublishedEmail = async (email, details) => {
+  const greeting = details.companyName?.trim() || "et merci";
+  const city = details.city?.trim() || "Non pr&eacute;cis&eacute;e";
+  const date = formatDate(details.publishedAt);
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+    `Votre offre &laquo;&nbsp;<strong>${details.jobTitle}</strong>&nbsp;&raquo; a &eacute;t&eacute; publi&eacute;e avec succ&egrave;s sur Dar L'Emploi.`
+  )}
+    ${paragraph(`Elle est maintenant visible par les candidats correspondant &agrave; vos crit&egrave;res.`)}
+
+    <p style="margin:0 0 6px;color:${BRAND.navy};font-size:15px;font-weight:700;">D&eacute;tails de votre offre</p>
+    ${detailBlock(
+    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date de publication", date)
+  )}
+
+    ${paragraph(
+    `Vous pouvez suivre les candidatures et consulter les profils des candidats directement depuis votre espace entreprise.`
+  )}
+
+    ${button(APP_URL, "Voir mes candidatures")}
+
+    ${paragraph(
+    `Dar L'Emploi vous accompagne pour trouver le bon profil, simplement et rapidement.<br>Merci de votre confiance.`
+  )}`;
+  const text = [
+    `Bonjour ${greeting},`,
+    "",
+    `Votre offre \xAB ${details.jobTitle} \xBB a \xE9t\xE9 publi\xE9e avec succ\xE8s sur Dar L'Emploi.`,
+    "Elle est maintenant visible par les candidats correspondant \xE0 vos crit\xE8res.",
+    "",
+    "D\xE9tails de votre offre",
+    `Poste : ${details.jobTitle}`,
+    `Localisation : ${details.city ?? "Non pr\xE9cis\xE9e"}`,
+    `Date de publication : ${date}`,
+    "",
+    "Vous pouvez suivre les candidatures et consulter les profils des candidats directement depuis votre espace entreprise.",
+    APP_URL,
+    "",
+    "Merci de votre confiance."
+  ].join("\n");
+  return sendEmail(
+    email,
+    "Votre offre d'emploi est publi\xE9e avec succ\xE8s \u2705",
+    layout("Offre publi&eacute;e", body),
+    { from: FROM_INFO, text }
+  );
 };
 var sendJobMatchEmail = async (email, jobTitle, company, jobId) => {
   const body = `
     ${paragraph(`Une nouvelle offre correspond &agrave; votre profil&nbsp;:`)}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;background:#F7F9FC;border:1px solid ${BRAND.rule};border-radius:10px;">
-      <tr>
-        <td style="padding:18px 20px;">
-          <p style="margin:0;color:${BRAND.navy};font-size:17px;font-weight:700;">${jobTitle}</p>
-          <p style="margin:6px 0 0;color:${BRAND.muted};font-size:14px;">${company}</p>
-        </td>
-      </tr>
-    </table>
+    ${detailBlock(
+    detailRow("&#128204;", "Poste", jobTitle) + detailRow("&#127970;", "Entreprise", company)
+  )}
 
     ${button(`${APP_URL}/jobs/${jobId}`, `Voir l'offre`)}`;
-  await sendEmail(
+  const text = [
+    "Une nouvelle offre correspond \xE0 votre profil :",
+    "",
+    `Poste : ${jobTitle}`,
+    `Entreprise : ${company}`,
+    "",
+    `${APP_URL}/jobs/${jobId}`
+  ].join("\n");
+  return sendEmail(
     email,
     `Nouvelle offre : ${jobTitle} chez ${company}`,
-    layout("Une offre pour vous", body)
+    layout("Une offre pour vous", body),
+    { from: FROM_INFO, text }
   );
 };
 
@@ -763,8 +950,10 @@ var register = async (req, res, next) => {
     if (role === "RECRUITER" && user.recruiterProfile) {
       await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
     }
-    const name = firstName ? `${firstName} ${lastName || ""}`.trim() : email;
-    await sendWelcomeEmail(email, name, user.role);
+    const greeting = user.role === "RECRUITER" ? companyName || "My Company" : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
+    sendWelcomeEmail(email, greeting, user.role).catch(
+      (err) => console.error("Welcome email failed:", err)
+    );
     const token = signToken(user.id, user.role);
     res.status(201).json({
       status: "success",
@@ -1342,6 +1531,14 @@ var createJob = async (req, res, next) => {
         publishedAt: /* @__PURE__ */ new Date()
       }
     });
+    sendJobPublishedEmail(user.email, {
+      companyName: membership.company.name,
+      jobTitle: job.title,
+      city: job.location,
+      publishedAt: job.publishedAt ?? void 0
+    }).catch(
+      (error) => console.error("Job published email failed:", error)
+    );
     (async () => {
       try {
         const matchingCandidates = await prisma_default.candidateProfile.findMany({
@@ -3368,7 +3565,8 @@ var applyToJob = async (req, res, next) => {
     const { jobId, coverLetter } = req.body;
     const candidateId = req.user.id;
     const job = await prisma_default.job.findUnique({
-      where: { id: jobId }
+      where: { id: jobId },
+      include: { company: { select: { name: true } } }
     });
     if (!job) {
       return next(new AppError("Job not found", 404));
@@ -3409,6 +3607,15 @@ var applyToJob = async (req, res, next) => {
         error
       );
     });
+    sendApplicationSentEmail(user.email, {
+      firstName: user.firstName,
+      jobTitle: job.title,
+      company: job.company?.name ?? "l'entreprise",
+      city: job.location,
+      appliedAt: application.appliedAt
+    }).catch(
+      (error) => console.error("Application confirmation email failed:", error)
+    );
     res.status(201).json({
       status: "success",
       data: { application }

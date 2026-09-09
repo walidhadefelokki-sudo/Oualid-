@@ -4490,8 +4490,164 @@ router7.delete("/notes/:id", deleteNote);
 router7.get("/contacts", listContacts);
 var crm_routes_default = router7;
 
-// server/routes/preselection.routes.ts
+// server/routes/company.routes.ts
 import { Router as Router8 } from "express";
+
+// server/controllers/company.controller.ts
+init_prisma();
+var companySelect = {
+  id: true,
+  name: true,
+  slug: true,
+  description: true,
+  website: true,
+  industry: true,
+  size: true,
+  foundedYear: true,
+  country: true,
+  city: true,
+  address: true,
+  plan: true,
+  verified: true,
+  logo: { select: { id: true, url: true } }
+};
+var resolveMembership = async (userId) => {
+  const membership = await prisma_default.companyMember.findFirst({
+    where: { recruiter: { userId } },
+    orderBy: { createdAt: "asc" },
+    include: { company: { select: companySelect } }
+  });
+  if (!membership) {
+    throw new AppError("No company is attached to this account.", 404);
+  }
+  return membership;
+};
+var getMyCompany = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership(req.user.id);
+    res.status(200).json({
+      status: "success",
+      data: { company: membership.company, memberRole: membership.role }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMyCompany = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership(req.user.id);
+    if (membership.role !== "OWNER" && req.user.role !== "ADMIN") {
+      return next(new AppError("Only the company owner can edit this profile.", 403));
+    }
+    const body = req.body;
+    const data = {};
+    const text = (value) => {
+      const v = typeof value === "string" ? value.trim() : "";
+      return v.length ? v : null;
+    };
+    if (body.name !== void 0) {
+      const name = text(body.name);
+      if (!name) return next(new AppError("The company name is required.", 400));
+      data.name = name;
+    }
+    if (body.description !== void 0) data.description = text(body.description);
+    if (body.industry !== void 0) data.industry = text(body.industry);
+    if (body.size !== void 0) data.size = text(body.size);
+    if (body.country !== void 0) data.country = text(body.country);
+    if (body.city !== void 0) data.city = text(body.city);
+    if (body.address !== void 0) data.address = text(body.address);
+    if (body.website !== void 0) {
+      const website = text(body.website);
+      if (website && !/^https?:\/\/\S+\.\S+/.test(website)) {
+        return next(new AppError("The website must be a full URL, starting with http:// or https://", 400));
+      }
+      data.website = website;
+    }
+    if (body.foundedYear !== void 0) {
+      const year = Number(body.foundedYear);
+      if (body.foundedYear === null || body.foundedYear === "") {
+        data.foundedYear = null;
+      } else if (!Number.isInteger(year) || year < 1800 || year > (/* @__PURE__ */ new Date()).getFullYear()) {
+        return next(new AppError("Enter a valid founding year.", 400));
+      } else {
+        data.foundedYear = year;
+      }
+    }
+    const company = await prisma_default.company.update({
+      where: { id: membership.companyId },
+      data,
+      select: companySelect
+    });
+    res.status(200).json({ status: "success", data: { company } });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMyCompanyLogo = async (req, res, next) => {
+  let storedPath = null;
+  try {
+    const membership = await resolveMembership(req.user.id);
+    if (membership.role !== "OWNER" && req.user.role !== "ADMIN") {
+      return next(new AppError("Only the company owner can change the logo.", 403));
+    }
+    const image = validateAvatarUpload(req.file);
+    const previousLogoId = membership.company.logo?.id ?? null;
+    storedPath = await uploadObject({
+      bucket: AVATAR_BUCKET,
+      path: buildObjectPath(`company-${membership.companyId}`, image.extension),
+      buffer: image.buffer,
+      mimeType: image.mimeType
+    });
+    let company;
+    try {
+      company = await prisma_default.$transaction(async (tx) => {
+        const asset = await tx.fileAsset.create({
+          data: {
+            url: getPublicUrl(AVATAR_BUCKET, storedPath),
+            provider: "supabase",
+            publicId: storedPath,
+            fileName: image.fileName,
+            mimeType: image.mimeType,
+            extension: image.extension,
+            size: image.size
+          }
+        });
+        return tx.company.update({
+          where: { id: membership.companyId },
+          data: { logoId: asset.id },
+          select: companySelect
+        });
+      });
+    } catch (dbErr) {
+      await removeObject(AVATAR_BUCKET, storedPath);
+      throw dbErr;
+    }
+    if (previousLogoId && previousLogoId !== company.logo?.id) {
+      const previous = await prisma_default.fileAsset.findUnique({ where: { id: previousLogoId } });
+      if (previous?.provider === "supabase" && previous.publicId) {
+        await removeObject(AVATAR_BUCKET, previous.publicId);
+      } else if (previous?.provider === "cloudinary") {
+        await destroyCloudinaryAsset(previous.publicId, "image");
+      }
+      await prisma_default.fileAsset.delete({ where: { id: previousLogoId } }).catch(() => null);
+    }
+    res.status(200).json({ status: "success", data: { company } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/routes/company.routes.ts
+var router8 = Router8();
+router8.use(protect);
+router8.use(restrictTo("RECRUITER", "ADMIN"));
+router8.get("/me", getMyCompany);
+router8.patch("/me", updateMyCompany);
+router8.patch("/me/logo", handleAvatarUpload, updateMyCompanyLogo);
+var company_routes_default = router8;
+
+// server/routes/preselection.routes.ts
+import { Router as Router9 } from "express";
 
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
@@ -4709,94 +4865,94 @@ var preselection_controller_default = {
 };
 
 // server/routes/preselection.routes.ts
-var router8 = Router8();
-router8.get(
+var router9 = Router9();
+router9.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   preselection_controller_default.getMyPreselection
 );
-router8.get(
+router9.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getPreselection
 );
-router8.patch(
+router9.patch(
   "/application/:applicationId/review",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.reviewCandidate
 );
-router8.patch(
+router9.patch(
   "/application/:applicationId/shortlist",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.shortlistCandidate
 );
-router8.patch(
+router9.patch(
   "/application/:applicationId/reject",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.rejectCandidate
 );
-router8.patch(
+router9.patch(
   "/application/:applicationId/comment",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
 );
-router8.get(
+router9.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterPreselections
 );
-router8.get(
+router9.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterStatistics
 );
-router8.get(
+router9.get(
   "/recruiter/ranking",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRanking
 );
-router8.get(
+router9.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAllPreselections
 );
-router8.get(
+router9.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAdminStatistics
 );
-router8.patch(
+router9.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.recalculatePreselection
 );
-router8.delete(
+router9.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.deletePreselection
 );
-var preselection_routes_default = router8;
+var preselection_routes_default = router9;
 
 // server/routes/oralPresentation.routes.ts
 import express from "express";
@@ -5342,46 +5498,46 @@ var getRecruiterStatistics2 = async (req, res, next) => {
 };
 
 // server/routes/oralPresentation.routes.ts
-var router9 = express.Router();
-router9.use(protect);
-router9.post(
+var router10 = express.Router();
+router10.use(protect);
+router10.post(
   "/me/upload-url",
   restrictTo("CANDIDATE"),
   createPresentationUploadUrl
 );
-router9.post(
+router10.post(
   "/me/confirm",
   restrictTo("CANDIDATE"),
   confirmPresentationUpload
 );
-router9.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
-router9.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
-router9.get(
+router10.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
+router10.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
+router10.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterPresentations
 );
-router9.get(
+router10.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics2
 );
-router9.get(
+router10.get(
   "/candidate/:candidateId",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getPresentationByCandidateId
 );
-router9.patch(
+router10.patch(
   "/candidate/:candidateId/recruiter-score",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   updateRecruiterScore
 );
-router9.get("/", restrictTo("ADMIN"), getAllPresentations);
-var oralPresentation_routes_default = router9;
+router10.get("/", restrictTo("ADMIN"), getAllPresentations);
+var oralPresentation_routes_default = router10;
 
 // server/routes/quiz.routes.ts
 import express2 from "express";
@@ -5962,37 +6118,37 @@ var deleteAttempt = async (req, res, next) => {
 };
 
 // server/routes/quiz.routes.ts
-var router10 = express2.Router();
-router10.use(protect);
-router10.post("/start", restrictTo("CANDIDATE"), startQuiz);
-router10.get("/", restrictTo("CANDIDATE"), getQuiz);
-router10.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
-router10.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
-router10.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
-router10.get(
+var router11 = express2.Router();
+router11.use(protect);
+router11.post("/start", restrictTo("CANDIDATE"), startQuiz);
+router11.get("/", restrictTo("CANDIDATE"), getQuiz);
+router11.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
+router11.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
+router11.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
+router11.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterAttempts
 );
-router10.get(
+router11.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics3
 );
-router10.get(
+router11.get(
   "/attempt/:id",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getAttemptById
 );
-router10.get("/all", restrictTo("ADMIN"), getAllAttempts);
-router10.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
-var quiz_routes_default = router10;
+router11.get("/all", restrictTo("ADMIN"), getAllAttempts);
+router11.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
+var quiz_routes_default = router11;
 
 // server/routes/aiAnalysis.routes.ts
-import { Router as Router9 } from "express";
+import { Router as Router10 } from "express";
 
 // server/controllers/aiAnalysis.controller.ts
 var AIAnalysisController = class {
@@ -6105,43 +6261,43 @@ var AIAnalysisController = class {
 var aiAnalysis_controller_default = new AIAnalysisController();
 
 // server/routes/aiAnalysis.routes.ts
-var router11 = Router9();
-router11.use(protect);
-router11.get(
+var router12 = Router10();
+router12.use(protect);
+router12.get(
   "/:applicationId",
   restrictTo("CANDIDATE", "RECRUITER", "ADMIN"),
   aiAnalysis_controller_default.getAnalysis
 );
-router11.post(
+router12.post(
   "/:applicationId/analyze",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.analyzeApplication
 );
-router11.post(
+router12.post(
   "/:applicationId/recalculate",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.recalculate
 );
-router11.get(
+router12.get(
   "/recruiter/all",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getRecruiterAnalyses
 );
-router11.get(
+router12.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getStatistics
 );
-router11.delete(
+router12.delete(
   "/:applicationId",
   restrictTo("ADMIN"),
   aiAnalysis_controller_default.deleteAnalysis
 );
-var aiAnalysis_routes_default = router11;
+var aiAnalysis_routes_default = router12;
 
 // server/routes/candidateProfile.routes.ts
 import express3 from "express";
@@ -6606,30 +6762,30 @@ var confirmCvUpload = async (req, res, next) => {
 };
 
 // server/routes/candidateProfile.routes.ts
-var router12 = express3.Router();
-router12.use(protect);
-router12.get(
+var router13 = express3.Router();
+router13.use(protect);
+router13.get(
   "/:candidateId/cv-document",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvDocument
 );
-router12.get(
+router13.get(
   "/:candidateId/cv-file",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvFile
 );
-router12.use(restrictTo("CANDIDATE"));
-router12.patch("/me", updateMyProfile);
-router12.post("/me/cv/upload-url", createCvUploadUrl);
-router12.post("/me/cv/confirm", confirmCvUpload);
-router12.post("/me/cv", handleCvUpload, uploadCV);
-router12.get("/me/cv", getMyCV);
-router12.get("/me/cv-builder", getMyCvBuilder);
-router12.put("/me/cv-builder", saveMyCvBuilder);
-var candidateProfile_routes_default = router12;
+router13.use(restrictTo("CANDIDATE"));
+router13.patch("/me", updateMyProfile);
+router13.post("/me/cv/upload-url", createCvUploadUrl);
+router13.post("/me/cv/confirm", confirmCvUpload);
+router13.post("/me/cv", handleCvUpload, uploadCV);
+router13.get("/me/cv", getMyCV);
+router13.get("/me/cv-builder", getMyCvBuilder);
+router13.put("/me/cv-builder", saveMyCvBuilder);
+var candidateProfile_routes_default = router13;
 
 // server/routes/candidateScore.routes.ts
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 
 // server/controllers/candidateScore.controller.ts
 var getMyScore = async (req, res, next) => {
@@ -6779,71 +6935,71 @@ var deleteScore = async (req, res, next) => {
 };
 
 // server/routes/candidateScore.routes.ts
-var router13 = Router10();
-router13.get(
+var router14 = Router11();
+router14.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   getMyScore
 );
-router13.get(
+router14.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateScore
 );
-router13.patch(
+router14.patch(
   "/application/:applicationId/interview-score",
   protect,
   restrictTo("RECRUITER"),
   updateInterviewScore
 );
-router13.patch(
+router14.patch(
   "/application/:applicationId/recruiter-score",
   protect,
   restrictTo("RECRUITER"),
   updateRecruiterScore2
 );
-router13.get(
+router14.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterScores
 );
-router13.get(
+router14.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterStatistics4
 );
-router13.get(
+router14.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   getAllScores
 );
-router13.get(
+router14.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   getAdminStatistics3
 );
-router13.patch(
+router14.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   recalculateScore
 );
-router13.delete(
+router14.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   deleteScore
 );
-var candidateScore_routes_default = router13;
+var candidateScore_routes_default = router14;
 
 // server/routes/notification.routes.ts
-import { Router as Router11 } from "express";
+import { Router as Router12 } from "express";
 
 // server/controllers/notification.controller.ts
 init_prisma();
@@ -6891,12 +7047,12 @@ var markAllNotificationsRead = async (req, res, next) => {
 };
 
 // server/routes/notification.routes.ts
-var router14 = Router11();
-router14.use(protect);
-router14.get("/", getMyNotifications);
-router14.patch("/read-all", markAllNotificationsRead);
-router14.patch("/:id/read", markNotificationRead);
-var notification_routes_default = router14;
+var router15 = Router12();
+router15.use(protect);
+router15.get("/", getMyNotifications);
+router15.patch("/read-all", markAllNotificationsRead);
+router15.patch("/:id/read", markNotificationRead);
+var notification_routes_default = router15;
 
 // server/app.ts
 dotenv3.config();
@@ -6984,6 +7140,7 @@ function createApp() {
   app2.use("/api/contact", contact_routes_default);
   app2.use("/api/admin", admin_routes_default);
   app2.use("/api/crm", crm_routes_default);
+  app2.use("/api/companies", company_routes_default);
   app2.use("/api/preselection", preselection_routes_default);
   app2.use("/api/oral-presentations", oralPresentation_routes_default);
   app2.use("/api/quiz", quiz_routes_default);

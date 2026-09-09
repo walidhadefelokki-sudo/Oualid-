@@ -13,6 +13,7 @@ import applicationRoutes from "./routes/application.routes";
 import contactRoutes from "./routes/contact.routes";
 import adminRoutes from "./routes/admin.routes";
 import crmRoutes from "./routes/crm.routes";
+import companyRoutes from "./routes/company.routes";
 import preselectionRoutes from "./routes/preselection.routes";
 import oralPresentationRoutes from "./routes/oralPresentation.routes";
 import quizRoutes from "./routes/quiz.routes";
@@ -163,6 +164,7 @@ export function createApp() {
   app.use("/api/contact", contactRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/crm", crmRoutes);
+  app.use("/api/companies", companyRoutes);
   app.use("/api/preselection", preselectionRoutes);
   app.use("/api/oral-presentations", oralPresentationRoutes);
   app.use("/api/quiz", quizRoutes);

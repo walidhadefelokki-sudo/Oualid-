@@ -95,7 +95,8 @@ import { jsPDF } from "jspdf";
 import { useRef } from "react";
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/notifications';
 import candidateProfileService from '../services/candidateProfile.service';
-import { WILAYAS } from '../constants';
+import { WILAYAS, COMPANY_SECTORS, COMPANY_SIZES } from '../constants';
+import companyService, { Company } from '../services/company.service';
 import { translations, Language } from '../translations';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
@@ -626,6 +627,7 @@ export default function Dashboard({
     if (!isDemo && user?.role === 'employer') {
       loadCandidates();
       loadAICandidates();
+      loadCompany();
     }
     loadQuizResults();
     loadPresentations();
@@ -1493,6 +1495,109 @@ export default function Dashboard({
   }, [user?.uid, isDemo]);
 
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
+
+  /* ---------------------------- company profile --------------------------- */
+
+  const [company, setCompany] = useState<Company | null>(null);
+  const [companyForm, setCompanyForm] = useState({
+    name: '', industry: '', website: '', size: '', city: '', description: '',
+  });
+  const [companyRole, setCompanyRole] = useState<string>('');
+  const [loadingCompany, setLoadingCompany] = useState(false);
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const applyCompany = (c: Company) => {
+    setCompany(c);
+    setCompanyForm({
+      name: c.name ?? '',
+      industry: c.industry ?? '',
+      website: c.website ?? '',
+      size: c.size ?? '',
+      city: c.city ?? '',
+      description: c.description ?? '',
+    });
+  };
+
+  const loadCompany = async () => {
+    if (isDemo) return;
+    try {
+      setLoadingCompany(true);
+      const { company: c, memberRole } = await companyService.getMyCompany();
+      setCompanyRole(memberRole);
+      applyCompany(c);
+    } catch (error: any) {
+      // A recruiter with no company yet is not an error worth shouting about.
+      if (error?.response?.status !== 404) {
+        console.error('Failed to load company:', error);
+      }
+    } finally {
+      setLoadingCompany(false);
+    }
+  };
+
+  const handleSaveCompany = async () => {
+    if (isDemo) {
+      showToast(lt('Saved (demo).', 'Enregistré (démo).', 'تم الحفظ (تجربة).'));
+      return;
+    }
+    if (!companyForm.name.trim()) {
+      showToast(lt('The company name is required.', "Le nom de l'entreprise est requis.", 'اسم الشركة مطلوب.'), 'error');
+      return;
+    }
+
+    try {
+      setSavingCompany(true);
+      applyCompany(await companyService.updateMyCompany(companyForm));
+      showToast(lt('Company profile saved.', 'Profil entreprise enregistré.', 'تم حفظ ملف الشركة.'));
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message ||
+          lt('Could not save.', "Impossible d'enregistrer.", 'تعذر الحفظ.'),
+        'error'
+      );
+    } finally {
+      setSavingCompany(false);
+    }
+  };
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Cleared straight away so re-picking the same file still fires onChange.
+    if (logoInputRef.current) logoInputRef.current.value = '';
+    if (!file) return;
+
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!file.type.startsWith('image/') || !AVATAR_EXTENSIONS.includes(extension)) {
+      showToast(
+        lt('Choose a JPG, PNG, WEBP or GIF image.', 'Choisissez une image JPG, PNG, WEBP ou GIF.', 'اختر صورة JPG أو PNG أو WEBP أو GIF.'),
+        'error'
+      );
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      showToast(
+        lt('Your logo must be under 4 MB.', 'Votre logo doit faire moins de 4 Mo.', 'يجب أن يقل حجم الشعار عن 4 ميغابايت.'),
+        'error'
+      );
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      applyCompany(await companyService.updateLogo(file));
+      showToast(lt('Logo updated.', 'Logo mis à jour.', 'تم تحديث الشعار.'));
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message ||
+          lt('Could not upload the logo.', "Impossible de téléverser le logo.", 'تعذر رفع الشعار.'),
+        'error'
+      );
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   // The candidate's own applications, for "Mes candidatures".
   const [myApplications, setMyApplications] = useState<
@@ -3917,73 +4022,193 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </form>
             </div>
           );
-        case 'profile':
+        case 'profile': {
+          // Only the owner edits. On a multi-account plan the other members
+          // are recruiters working under the company, not administrators of
+          // it — and the server enforces the same rule.
+          const canEditCompany = companyRole === 'OWNER' || !companyRole;
+
           return (
             <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 p-12 space-y-12">
               <div className={isRTL ? 'text-right' : ''}>
                 <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">{t('companyProfile')}</h2>
-                <p className="text-gray-500 mt-1 font-medium">Gérez les informations de votre entreprise visibles par les candidats.</p>
+                <p className="text-gray-500 mt-1 font-medium">
+                  {lt(
+                    'Manage the company details candidates can see.',
+                    "Gérez les informations de votre entreprise visibles par les candidats.",
+                    'أدر معلومات شركتك الظاهرة للمترشحين.'
+                  )}
+                </p>
               </div>
-              
-              <div className="flex flex-col md:flex-row gap-12">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-40 h-40 rounded-[2.5rem] overflow-hidden border-4 border-gray-50 shadow-lg group relative">
-                    {/* Initials, not a stock photograph of somebody else's
-                        building — and no <img src=""> either. */}
-                    {user?.photoURL ? (
-                      <img src={user.photoURL} alt="Logo de l'entreprise" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-[#173E7D] text-white flex items-center justify-center font-black text-3xl">
-                        {(user?.displayName || user?.email || '?').trim().charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <button className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                      <Camera size={24} />
-                    </button>
-                  </div>
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Logo de l'entreprise</p>
-                </div>
 
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
+              {loadingCompany ? (
+                <div className="py-20 flex justify-center">
+                  <span className="w-8 h-8 border-2 border-[#173E7D]/20 border-t-[#173E7D] rounded-full animate-spin" />
+                </div>
+              ) : (
+                <>
+                  {!canEditCompany && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-800">
+                      {lt(
+                        'Only the company owner can edit this profile.',
+                        "Seul le propriétaire de l'entreprise peut modifier ce profil.",
+                        'يمكن لمالك الشركة فقط تعديل هذا الملف.'
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col md:flex-row gap-12">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-40 h-40 rounded-[2.5rem] overflow-hidden border-4 border-gray-50 shadow-lg group relative">
+                        {/* The real stored logo. Initials when there is none —
+                            never <img src="">, which makes the browser refetch
+                            the page. */}
+                        {company?.logo?.url ? (
+                          <img src={company.logo.url} alt={`Logo ${company.name}`} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-[#173E7D] text-white flex items-center justify-center font-black text-3xl">
+                            {(companyForm.name || user?.email || '?').trim().charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        {canEditCompany && (
+                          <button
+                            onClick={() => logoInputRef.current?.click()}
+                            disabled={uploadingLogo}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white disabled:opacity-100 disabled:bg-black/60"
+                          >
+                            {uploadingLogo ? (
+                              <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Camera size={24} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.gif,image/*"
+                        className="sr-only"
+                        onChange={handleLogoChange}
+                      />
+
+                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                        {lt('Company logo', "Logo de l'entreprise", 'شعار الشركة')}
+                      </p>
+                      <p className="text-[11px] text-gray-400 font-medium">JPG, PNG, WEBP · 4 Mo max</p>
+                    </div>
+
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
                     <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">{t('company')}</label>
-                    <input type="text" defaultValue="TechDz Solutions" className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`} />
+                    <input
+                      type="text"
+                      value={companyForm.name}
+                      onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+                      disabled={!canEditCompany}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                    />
                   </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">Secteur</label>
-                    <input type="text" defaultValue="Technologie" className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`} />
-                  </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">Site Web</label>
-                    <input type="url" defaultValue="https://techdz.com" className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`} />
-                  </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">Taille</label>
-                    <select className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold ${isRTL ? 'text-right' : ''}`}>
-                      <option>1-10 employés</option>
-                      <option>11-50 employés</option>
-                      <option>51-200 employés</option>
-                      <option>201+ employés</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
 
-              <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">À propos de l'entreprise</label>
-                <textarea rows={4} defaultValue="Leader dans le développement de solutions logicielles innovantes en Algérie..." className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold resize-none ${isRTL ? 'text-right' : ''}`} />
-              </div>
+                      <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">
+                          {lt('Sector', 'Secteur', 'القطاع')}
+                        </label>
+                        {/* A fixed list, so companies stay comparable. This was
+                            a free-text box pre-filled with "Technologie". */}
+                        <select
+                          value={companyForm.industry}
+                          onChange={(e) => setCompanyForm({ ...companyForm, industry: e.target.value })}
+                          disabled={!canEditCompany}
+                          className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                        >
+                          <option value="">{lt('Select a sector', 'Sélectionnez un secteur', 'اختر قطاعًا')}</option>
+                          {COMPANY_SECTORS.map((sector) => (
+                            <option key={sector} value={sector}>{sector}</option>
+                          ))}
+                        </select>
+                      </div>
 
-              <div className="flex justify-end pt-6 border-t border-gray-50">
-                <button 
-                  onClick={handleSaveProfile}
-                  className="bg-[#173E7D] text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-[#1e4fa1] transition-all shadow-lg shadow-blue-900/10"
-                >
-                  Sauvegarder les modifications
-                </button>
-              </div>
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">{lt('Website', 'Site Web', 'الموقع')}</label>
+                    <input
+                      type="url" placeholder="https://exemple.dz"
+                      value={companyForm.website}
+                      onChange={(e) => setCompanyForm({ ...companyForm, website: e.target.value })}
+                      disabled={!canEditCompany}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                    />
+                  </div>
+
+                      <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">
+                          {lt('Size', 'Taille', 'الحجم')}
+                        </label>
+                        <select
+                          value={companyForm.size}
+                          onChange={(e) => setCompanyForm({ ...companyForm, size: e.target.value })}
+                          disabled={!canEditCompany}
+                          className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                        >
+                          <option value="">{lt('Not specified', 'Non précisée', 'غير محدد')}</option>
+                          {COMPANY_SIZES.map((size) => (
+                            <option key={size} value={size}>{size}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">{lt('City', 'Ville', 'المدينة')}</label>
+                    <input
+                      type="text"
+                      value={companyForm.city}
+                      onChange={(e) => setCompanyForm({ ...companyForm, city: e.target.value })}
+                      disabled={!canEditCompany}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                    />
+                  </div>
+                    </div>
+                  </div>
+
+                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                    <label className="text-sm font-black text-[#173E7D] uppercase tracking-widest">
+                      {lt('About the company', "À propos de l'entreprise", 'عن الشركة')}
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={companyForm.description}
+                      onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })}
+                      disabled={!canEditCompany}
+                      placeholder={lt(
+                        'What your company does, and what makes it a good place to work.',
+                        "Ce que fait votre entreprise, et ce qui donne envie d'y travailler.",
+                        'ما تقوم به شركتك وما يجعلها مكانًا جيدًا للعمل.'
+                      )}
+                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-bold resize-none disabled:opacity-60 ${isRTL ? 'text-right' : ''}`}
+                    />
+                  </div>
+
+                  {canEditCompany && (
+                    <div className="flex justify-end pt-6 border-t border-gray-50">
+                      <button
+                        onClick={handleSaveCompany}
+                        disabled={savingCompany}
+                        className="bg-[#173E7D] text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-[#1e4fa1] transition-all shadow-lg shadow-blue-900/10 disabled:opacity-60"
+                      >
+                        {savingCompany
+                          ? lt('Saving…', 'Enregistrement…', 'جارٍ الحفظ…')
+                          : lt('Save changes', 'Sauvegarder les modifications', 'حفظ التعديلات')}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           );
+        }
+
         case 'settings':
           return (
             <div className="space-y-8 pb-12">

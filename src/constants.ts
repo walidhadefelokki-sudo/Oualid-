@@ -37,3 +37,53 @@ export const JOB_KEYWORDS = [
   "Plumber",
   "Mechanic"
 ];
+
+/**
+ * Industry sectors offered on the company profile.
+ *
+ * A fixed list rather than free text so companies are comparable and can be
+ * filtered later — the field was previously an open input pre-filled with
+ * "Technologie", which every company inherited.
+ */
+export const COMPANY_SECTORS = [
+  "Agriculture & Agroalimentaire",
+  "Architecture & Urbanisme",
+  "Artisanat",
+  "Assurance",
+  "Automobile",
+  "Banque & Finance",
+  "BTP & Construction",
+  "Commerce & Distribution",
+  "Conseil & Audit",
+  "Éducation & Formation",
+  "Énergie & Mines",
+  "Environnement",
+  "Hôtellerie & Restauration",
+  "Immobilier",
+  "Import / Export",
+  "Industrie & Manufacture",
+  "Informatique & Technologie",
+  "Juridique",
+  "Logistique & Transport",
+  "Marketing & Communication",
+  "Médias & Culture",
+  "ONG & Associations",
+  "Pharmaceutique",
+  "Santé & Médical",
+  "Secteur public",
+  "Sécurité",
+  "Services aux entreprises",
+  "Télécommunications",
+  "Textile & Habillement",
+  "Tourisme & Loisirs",
+  "Autre",
+] as const;
+
+/** Company headcount bands, stored as the label shown. */
+export const COMPANY_SIZES = [
+  "1-10 employés",
+  "11-50 employés",
+  "51-200 employés",
+  "201-500 employés",
+  "501+ employés",
+] as const;

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact } from "lucide-react";
+import CrmTab from "./CrmTab";
 import adminService, {
   AdminStats,
   Company,
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "preselection";
+type Tab = "overview" | "plans" | "crm" | "preselection";
 
 interface AdminDashboardProps {
   onGoHome: () => void;
@@ -29,6 +30,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         <nav className="flex flex-col gap-1">
           <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => setTab("overview")} />
           <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => setTab("plans")} />
+          <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => setTab("crm")} />
           <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => setTab("preselection")} />
         </nav>
 
@@ -42,6 +44,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
       <main className="flex-1 p-8 overflow-y-auto">
         {tab === "overview" && <OverviewTab />}
         {tab === "plans" && <PlansTab />}
+        {tab === "crm" && <CrmTab />}
         {tab === "preselection" && <PreselectionTab />}
       </main>
     </div>

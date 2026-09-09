@@ -14,6 +14,10 @@ type Candidate = {
   id?: string | number;
   candidateId?: string;
   name: string;
+  // Supplied by the dashboard’s mapping but never declared here, so any use
+  // of them failed to typecheck.
+  email?: string;
+  phone?: string;
   role?: string;
   avatar?: string;
   status?: string;
@@ -363,10 +367,19 @@ function CandidateCard({
               Corporate requis
             </button>
           )}
+        {/* The candidate's real number. This was hardcoded to
+            +213 555 555 555, so every WhatsApp button opened a chat with the
+            same non-existent contact. Disabled when we have no number rather
+            than opening a broken wa.me link. */}
         <button
-          onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
-          title="WhatsApp"
-          className="w-12 h-12 rounded-xl bg-[#25D366] text-white flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all shadow-lg shadow-green-500/10"
+          onClick={() => candidate.phone && handleWhatsAppContact(candidate.phone, candidate.name)}
+          disabled={!candidate.phone}
+          title={candidate.phone ? 'WhatsApp' : 'Numéro non renseigné'}
+          className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+            candidate.phone
+              ? 'bg-[#25D366] text-white hover:scale-[1.05] active:scale-95 shadow-lg shadow-green-500/10'
+              : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+          }`}
         >
           <MessageCircle size={18} />
         </button>

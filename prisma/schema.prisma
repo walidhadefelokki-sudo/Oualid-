@@ -800,6 +800,10 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   supportTickets SupportTicket[]
+  ownedLeads     Lead[]         @relation("LeadOwner")
+  convertedFrom  Lead[]         @relation("LeadConverted")
+  crmNotesWritten CrmNote[]     @relation("CrmNoteAuthor")
+  crmNotesAbout   CrmNote[]     @relation("CrmNoteSubject")
   deviceTokens   DeviceToken[]
 
   @@index([email])
@@ -1012,4 +1016,93 @@ model Account {
   /// the database-level guarantee behind duplicate-account prevention.
   @@unique([provider, providerAccountId])
   @@index([userId])
+}
+
+// ============================================================
+// CRM
+// ============================================================
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum LeadSource {
+  INBOUND
+  OUTBOUND
+  REFERRAL
+  EVENT
+  SOCIAL
+  OTHER
+}
+
+/// A prospective client — usually a company that has not signed up yet.
+///
+/// Deliberately not a User: a lead is someone the team is talking to, who may
+/// never create an account. Once they do, `convertedUserId` links the two so
+/// the history of the conversation survives the conversion.
+model Lead {
+  id String @id @default(uuid())
+
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+
+  status LeadStatus @default(NEW)
+  source LeadSource @default(INBOUND)
+
+  /// Free-text summary. Dated interactions belong in CrmNote.
+  notes String?
+
+  /// Admin responsible for the relationship.
+  ownerId String?
+  owner   User?   @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  /// Set when the lead signs up, so their pre-signup history is not orphaned.
+  convertedUserId String?
+  convertedUser   User?   @relation("LeadConverted", fields: [convertedUserId], references: [id], onDelete: SetNull)
+  convertedAt     DateTime?
+
+  /// When someone should follow up.
+  nextActionAt DateTime?
+
+  crmNotes CrmNote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// One dated interaction: a call, an email, a meeting, a note.
+///
+/// Attaches to a Lead or to an existing User (a recruiter or a candidate), so
+/// the same relationship history works before and after someone signs up.
+/// Exactly one of the two is set.
+model CrmNote {
+  id String @id @default(uuid())
+
+  body String
+
+  /// Who wrote it. Kept even if they leave, hence SetNull rather than Cascade.
+  authorId String?
+  author   User?   @relation("CrmNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// The recruiter or candidate this note is about.
+  subjectId String?
+  subject   User?   @relation("CrmNoteSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([subjectId])
 }

@@ -2907,6 +2907,76 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
     }
   };
 
+  const [downloadingCandidateCv, setDownloadingCandidateCv] = useState(false);
+
+  /**
+   * Downloads the file the candidate actually uploaded.
+   *
+   * Not the rendered CV-Maker document: a recruiter asking for "the CV" wants
+   * the PDF the candidate sent, with its original filename. The link comes from
+   * /candidates/:id/cv-file, which checks that this recruiter is entitled to
+   * read it before signing anything.
+   *
+   * Fetched as a blob rather than pointed at with <a download>: the file lives
+   * on Supabase, and the download attribute is ignored cross-origin — the
+   * browser would open the PDF in a tab instead of saving it.
+   */
+  const handleDownloadCandidateCv = async () => {
+    const candidateId =
+      selectedCandidateCV?.candidateId ??
+      selectedCandidateCV?.candidateProfileId ??
+      selectedCandidateCV?.id;
+
+    if (!candidateId) return;
+
+    setDownloadingCandidateCv(true);
+    try {
+      const resume = await candidateProfileService.getCandidateCvFile(candidateId);
+
+      const response = await fetch(resume.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download =
+        resume.fileName ||
+        `CV_${(selectedCandidateCV?.name || 'candidat').replace(/\s+/g, '_')}.${resume.extension || 'pdf'}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error: any) {
+      // 404 means this candidate never uploaded a file. The on-screen document
+      // is built from their CV Maker record, so offer that instead of failing.
+      if (error?.response?.status === 404) {
+        showToast(
+          lt(
+            'This candidate has not uploaded a CV. Generating the on-screen version instead.',
+            "Ce candidat n'a pas téléversé de CV. Génération de la version affichée à la place.",
+            'لم يرفع هذا المترشح سيرة ذاتية. سيتم إنشاء النسخة المعروضة بدلاً من ذلك.'
+          )
+        );
+        await handleDownloadEmployerPDF();
+        return;
+      }
+
+      console.error('CV download failed:', error);
+      showToast(
+        lt(
+          'Could not download the CV.',
+          'Impossible de télécharger le CV.',
+          'تعذر تنزيل السيرة الذاتية.'
+        ),
+        'error'
+      );
+    } finally {
+      setDownloadingCandidateCv(false);
+    }
+  };
+
   const handleDownloadEmployerPDF = async () => {
     setIsGeneratingEmployerPDF(true);
     try {
@@ -3447,7 +3517,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         //                         <ChevronRight size={14} className={`group-hover/btn:translate-x-1 transition-transform ${isRTL ? 'rotate-180' : ''}`} />
         //                       </button>
         //                       <button 
-        //                         onClick={() => handleWhatsAppContact('+213555555555', candidate.name)}
+        //                         onClick={() => handleWhatsAppContact(candidate.phone ?? '', candidate.name)}
         //                         className="col-span-1 bg-[#25D366] text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-green-500/10 flex items-center justify-center"
         //                         title="Contact WhatsApp"
         //                       >
@@ -7225,11 +7295,28 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               {/* CV Footer / Actions */}
               <div className="p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <div className="flex gap-4">
-                  <button className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3">
-                    <FileText size={20} /> Télécharger PDF
+                  {/* Both of these had no onClick at all. */}
+                  <button
+                    onClick={handleDownloadCandidateCv}
+                    disabled={downloadingCandidateCv || isGeneratingEmployerPDF}
+                    className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {downloadingCandidateCv ? (
+                      <>
+                        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        {lt('Downloading…', 'Téléchargement…', 'جارٍ التنزيل…')}
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={20} /> {lt('Download CV', 'Télécharger le CV', 'تنزيل السيرة')}
+                      </>
+                    )}
                   </button>
-                  <button className="px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
-                    Imprimer
+                  <button
+                    onClick={() => window.print()}
+                    className="px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  >
+                    {lt('Print', 'Imprimer', 'طباعة')}
                   </button>
                 </div>
                 <div className="relative">

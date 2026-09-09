@@ -205,9 +205,24 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
   try {
     if (!req.user) return next(new AppError("User not found", 404));
 
+    // Selected explicitly. `include` returns every User column, and this
+    // response is spread straight into the JSON body — so /auth/me was handing
+    // each user their own bcrypt hash on every page load. A password hash has
+    // no reason to leave the server: it is exactly what an attacker needs for
+    // an offline cracking attempt if a token or the page is ever compromised.
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        emailVerified: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        preferredLanguage: true,
+        createdAt: true,
         candidateProfile: true,
         recruiterProfile: true,
         avatar: true,

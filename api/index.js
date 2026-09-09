@@ -1015,7 +1015,17 @@ var getMe = async (req, res, next) => {
     if (!req.user) return next(new AppError("User not found", 404));
     const user = await prisma_default.user.findUnique({
       where: { id: req.user.id },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        emailVerified: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        preferredLanguage: true,
+        createdAt: true,
         candidateProfile: true,
         recruiterProfile: true,
         avatar: true

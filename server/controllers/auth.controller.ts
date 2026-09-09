@@ -130,6 +130,14 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     const token = signToken(user.id, user.role);
 
+    // Included so the session a new recruiter starts with matches what login
+    // and /auth/me return. Without it the frontend saw an undefined tier until
+    // the next page load, and had to guess.
+    const recruiterTier =
+      user.role === "RECRUITER"
+        ? mapPlanToTier(await getRecruiterPlan(user.id))
+        : undefined;
+
     res.status(201).json({
       status: "success",
       token,
@@ -140,6 +148,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          recruiterTier,
         },
       },
     });

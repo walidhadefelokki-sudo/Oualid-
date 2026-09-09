@@ -144,12 +144,33 @@ type RecruiterTier =
 
 // TODO: verify this matches the real shape used elsewhere in the app.
 // Not present in the original snippet provided — added as a placeholder
-// so `TIER_ACCESS[recruiterTier]` below doesn't throw a "not defined" error.
-// Replace with your actual tier-access config/import if it lives elsewhere.
-const TIER_ACCESS: Record<RecruiterTier, any> = {
-  free: {},
-  paid: {},
-  corporate: {},
+/**
+ * What each recruiter tier may open.
+ *
+ * This was a placeholder — `{ free: {}, paid: {}, corporate: {} }` — so every
+ * lookup returned undefined and the oral presentation, quiz results and AI
+ * sourcing were locked for everyone, Corporate accounts included. Upgrading a
+ * company changed nothing on screen, because there was nothing to change.
+ *
+ * The three flags mirror the server, which is the real authority:
+ * oralPresentation and preselection are gated by requireRecruiterTier
+ * ("CORPORATE") in oralPresentation.routes.ts, so a Premium account unlocking
+ * them here would only reach a 403. Keeping the two in step is what makes the
+ * padlock honest rather than decorative.
+ */
+interface TierAccess {
+  /** Watch a candidate's recorded presentation. Corporate only. */
+  oralPresentation: boolean;
+  /** Quiz results and shortlisting tools. Corporate only. */
+  preselection: boolean;
+  /** Search candidates who have not applied. Corporate only. */
+  sourcingIA: boolean;
+}
+
+const TIER_ACCESS: Record<RecruiterTier, TierAccess> = {
+  free: { oralPresentation: false, preselection: false, sourcingIA: false },
+  paid: { oralPresentation: false, preselection: false, sourcingIA: false },
+  corporate: { oralPresentation: true, preselection: true, sourcingIA: true },
 };
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) => (
@@ -325,7 +346,9 @@ export default function Dashboard({
     }
   }, [user?.recruiterTier]);
 
-  const access = TIER_ACCESS[recruiterTier];
+  // Falls back to the most restrictive tier rather than crashing if an
+  // unrecognised value ever arrives from the API.
+  const access = TIER_ACCESS[recruiterTier] ?? TIER_ACCESS.free;
 
   const handleWhatsAppContact = (phoneNumber: string, candidateName: string) => {
     const message = encodeURIComponent(`Bonjour ${candidateName}, nous avons bien reçu votre candidature sur Algeria Jobs. Souhaitez-vous fixer un entretien ?`);

@@ -955,6 +955,7 @@ var register = async (req, res, next) => {
       (err) => console.error("Welcome email failed:", err)
     );
     const token = signToken(user.id, user.role);
+    const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
     res.status(201).json({
       status: "success",
       token,
@@ -964,7 +965,8 @@ var register = async (req, res, next) => {
           email: user.email,
           role: user.role,
           firstName: user.firstName,
-          lastName: user.lastName
+          lastName: user.lastName,
+          recruiterTier
         }
       }
     });

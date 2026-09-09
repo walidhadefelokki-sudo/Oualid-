@@ -208,6 +208,22 @@ const button = (href: string, label: string) => `
   </tr>
 </table>`;
 
+
+/**
+ * Escapes text before it goes into an email body.
+ *
+ * These messages come from public forms, so anything interpolated raw would
+ * let a sender put working links or spoofed markup into a message that arrives
+ * under Dar L'Emploi branding.
+ */
+const escapeForEmail = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const paragraph = (text: string) =>
   `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 
@@ -612,6 +628,127 @@ export const sendJobMatchEmail = async (
     email,
     `Nouvelle offre : ${jobTitle} chez ${company}`,
     layout('Une offre pour vous', body),
+    { from: FROM_INFO, text }
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*                            Corporate enquiries                             */
+/* -------------------------------------------------------------------------- */
+
+export interface CorporateEnquiry {
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone?: string | null;
+  teamSize?: string | null;
+  message?: string | null;
+}
+
+/**
+ * Where Corporate plan enquiries land.
+ *
+ * Overridable per environment, but defaults to the real address rather than a
+ * developer's mailbox — an unset variable should not quietly swallow sales
+ * enquiries.
+ */
+const CORPORATE_INBOX =
+  process.env.CORPORATE_CONTACT_EMAIL?.trim() || 'walidelhadefelokki@darlemploi.dz';
+
+/**
+ * Notifies the sales contact that a company wants the Corporate plan.
+ *
+ * Sent from the platform's own verified address so it passes SPF/DKIM, with
+ * replyTo set to the enquirer — hitting Reply reaches the company directly.
+ */
+export const sendCorporateEnquiryEmail = async (enquiry: CorporateEnquiry) => {
+  const body = `
+    ${paragraph(
+      `Une entreprise souhaite &ecirc;tre contact&eacute;e au sujet du plan <strong>Corporate</strong>.`
+    )}
+
+    ${detailBlock(
+      detailRow('&#127970;', 'Entreprise', escapeForEmail(enquiry.companyName)) +
+        detailRow('&#128100;', 'Contact', escapeForEmail(enquiry.contactName)) +
+        detailRow('&#9993;', 'Email', escapeForEmail(enquiry.email)) +
+        (enquiry.phone ? detailRow('&#128222;', 'T&eacute;l&eacute;phone', escapeForEmail(enquiry.phone)) : '') +
+        (enquiry.teamSize ? detailRow('&#128101;', 'Taille', escapeForEmail(enquiry.teamSize)) : '') +
+        detailRow('&#128197;', 'Re&ccedil;u le', formatDate())
+    )}
+
+    ${
+      enquiry.message
+        ? `<p style="margin:0 0 10px;color:${BRAND.navy};font-size:15px;font-weight:700;">Message</p>
+           <div style="background:#F5F7FA;padding:16px;border-radius:8px;white-space:pre-wrap;color:${BRAND.ink};font-size:15px;line-height:1.6;">${escapeForEmail(
+             enquiry.message
+           )}</div>`
+        : ''
+    }
+
+    ${paragraph(
+      `<span style="color:${BRAND.muted};font-size:13px;">R&eacute;pondez directement &agrave; cet email pour joindre l'entreprise.</span>`
+    )}`;
+
+  const text = [
+    'Nouvelle demande Corporate',
+    '',
+    `Entreprise : ${enquiry.companyName}`,
+    `Contact    : ${enquiry.contactName}`,
+    `Email      : ${enquiry.email}`,
+    enquiry.phone ? `Téléphone  : ${enquiry.phone}` : '',
+    enquiry.teamSize ? `Taille     : ${enquiry.teamSize}` : '',
+    `Reçu le    : ${formatDate()}`,
+    '',
+    enquiry.message ? `Message :\n${enquiry.message}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return sendEmail(
+    CORPORATE_INBOX,
+    `Demande Corporate — ${enquiry.companyName}`,
+    layout('Nouvelle demande Corporate', body),
+    { from: FROM_INFO, replyTo: enquiry.email, text }
+  );
+};
+
+/** Acknowledges the enquiry to the company that sent it. */
+export const sendCorporateEnquiryAck = async (enquiry: CorporateEnquiry) => {
+  const body = `
+    ${paragraph(`Bonjour <strong>${escapeForEmail(enquiry.contactName)}</strong>,`)}
+    ${paragraph(
+      `Merci pour votre int&eacute;r&ecirc;t pour le plan <strong>Corporate</strong> de Dar L'Emploi. Nous avons bien re&ccedil;u votre demande pour <strong>${escapeForEmail(
+        enquiry.companyName
+      )}</strong>.`
+    )}
+    ${paragraph(
+      `Notre &eacute;quipe vous recontactera tr&egrave;s prochainement pour construire une offre adapt&eacute;e &agrave; vos besoins de recrutement.`
+    )}
+
+    ${iconList([
+      ['&#128640;', 'Publication illimit&eacute;e'],
+      ['&#129302;', 'Filtrage par IA Gemini'],
+      ['&#128218;', 'R&eacute;pertoire CV complet & support d&eacute;di&eacute;'],
+    ])}
+
+    ${paragraph(`&Agrave; tr&egrave;s bient&ocirc;t,<br>L'&eacute;quipe Dar L'Emploi`)}`;
+
+  const text = [
+    `Bonjour ${enquiry.contactName},`,
+    '',
+    "Merci pour votre intérêt pour le plan Corporate de Dar L'Emploi.",
+    `Nous avons bien reçu votre demande pour ${enquiry.companyName}.`,
+    '',
+    'Notre équipe vous recontactera très prochainement.',
+    '',
+    "À très bientôt,",
+    "L'équipe Dar L'Emploi",
+  ].join('\n');
+
+  return sendEmail(
+    enquiry.email,
+    "Votre demande Corporate — Dar L'Emploi",
+    layout('Demande bien re&ccedil;ue', body),
     { from: FROM_INFO, text }
   );
 };

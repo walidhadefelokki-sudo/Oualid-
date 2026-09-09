@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { sendEmail } from '../utils/email';
+import {
+  sendEmail,
+  sendCorporateEnquiryEmail,
+  sendCorporateEnquiryAck,
+} from '../utils/email';
 
 /**
  * Where contact-form submissions are delivered. Overridable per environment,
@@ -98,5 +102,64 @@ export const sendContactMessage = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error in sendContactMessage:', error);
     res.status(500).json({ message: 'Failed to send message' });
+  }
+};
+
+/**
+ * A company asking to be contacted about the Corporate plan.
+ *
+ * Public: a prospective client is by definition not signed in yet.
+ */
+export const sendCorporateEnquiry = async (req: Request, res: Response) => {
+  try {
+    const { companyName, contactName, email, phone, teamSize, message } = req.body as Record<
+      string,
+      string | undefined
+    >;
+
+    if (!companyName?.trim() || !contactName?.trim() || !email?.trim()) {
+      return res
+        .status(400)
+        .json({ message: "L'entreprise, le contact et l'email sont requis." });
+    }
+
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      return res.status(400).json({ message: 'Veuillez fournir une adresse email valide.' });
+    }
+
+    if ((message ?? '').length > 5000 || companyName.length > 200 || contactName.length > 200) {
+      return res.status(400).json({ message: 'Votre message est trop long.' });
+    }
+
+    const enquiry = {
+      companyName: companyName.trim(),
+      contactName: contactName.trim(),
+      email: email.trim(),
+      phone: phone?.trim() || null,
+      teamSize: teamSize?.trim() || null,
+      message: message?.trim() || null,
+    };
+
+    const delivered = await sendCorporateEnquiryEmail(enquiry);
+
+    if (!delivered) {
+      // Reported honestly rather than pretending: a sales enquiry silently
+      // vanishing is worse than asking the company to try again.
+      return res.status(502).json({
+        message:
+          "Votre demande n'a pas pu être envoyée. Réessayez plus tard ou écrivez-nous directement à contact@darlemploi.dz.",
+      });
+    }
+
+    // The acknowledgement is a courtesy: its failure must not make a delivered
+    // enquiry look like a failure to the company that sent it.
+    sendCorporateEnquiryAck(enquiry).catch((err) =>
+      console.error('Corporate acknowledgement failed:', err)
+    );
+
+    res.status(200).json({ message: 'Demande envoyée avec succès' });
+  } catch (error) {
+    console.error('Error in sendCorporateEnquiry:', error);
+    res.status(500).json({ message: 'Failed to send enquiry' });
   }
 };

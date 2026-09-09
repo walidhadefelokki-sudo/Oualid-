@@ -51,3 +51,22 @@ export const companyService = {
 };
 
 export default companyService;
+
+export interface CorporateEnquiryInput {
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone?: string;
+  teamSize?: string;
+  message?: string;
+}
+
+/**
+ * Asks to be contacted about the Corporate plan.
+ *
+ * Public: a prospective client is not signed in yet, so this deliberately
+ * does not go through the authenticated company service above.
+ */
+export async function sendCorporateEnquiry(input: CorporateEnquiryInput): Promise<void> {
+  await api.post("/contact/corporate", input);
+}

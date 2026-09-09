@@ -234,6 +234,7 @@ var button = (href, label) => `
     </td>
   </tr>
 </table>`;
+var escapeForEmail = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html, options = {}) => {
   const from = `"${FROM_NAME}" <${options.from ?? FROM_ADDRESS}>`;
@@ -501,6 +502,82 @@ var sendJobMatchEmail = async (email, jobTitle, company, jobId) => {
     email,
     `Nouvelle offre : ${jobTitle} chez ${company}`,
     layout("Une offre pour vous", body),
+    { from: FROM_INFO, text }
+  );
+};
+var CORPORATE_INBOX = process.env.CORPORATE_CONTACT_EMAIL?.trim() || "walidelhadefelokki@darlemploi.dz";
+var sendCorporateEnquiryEmail = async (enquiry) => {
+  const body = `
+    ${paragraph(
+    `Une entreprise souhaite &ecirc;tre contact&eacute;e au sujet du plan <strong>Corporate</strong>.`
+  )}
+
+    ${detailBlock(
+    detailRow("&#127970;", "Entreprise", escapeForEmail(enquiry.companyName)) + detailRow("&#128100;", "Contact", escapeForEmail(enquiry.contactName)) + detailRow("&#9993;", "Email", escapeForEmail(enquiry.email)) + (enquiry.phone ? detailRow("&#128222;", "T&eacute;l&eacute;phone", escapeForEmail(enquiry.phone)) : "") + (enquiry.teamSize ? detailRow("&#128101;", "Taille", escapeForEmail(enquiry.teamSize)) : "") + detailRow("&#128197;", "Re&ccedil;u le", formatDate())
+  )}
+
+    ${enquiry.message ? `<p style="margin:0 0 10px;color:${BRAND.navy};font-size:15px;font-weight:700;">Message</p>
+           <div style="background:#F5F7FA;padding:16px;border-radius:8px;white-space:pre-wrap;color:${BRAND.ink};font-size:15px;line-height:1.6;">${escapeForEmail(
+    enquiry.message
+  )}</div>` : ""}
+
+    ${paragraph(
+    `<span style="color:${BRAND.muted};font-size:13px;">R&eacute;pondez directement &agrave; cet email pour joindre l'entreprise.</span>`
+  )}`;
+  const text = [
+    "Nouvelle demande Corporate",
+    "",
+    `Entreprise : ${enquiry.companyName}`,
+    `Contact    : ${enquiry.contactName}`,
+    `Email      : ${enquiry.email}`,
+    enquiry.phone ? `T\xE9l\xE9phone  : ${enquiry.phone}` : "",
+    enquiry.teamSize ? `Taille     : ${enquiry.teamSize}` : "",
+    `Re\xE7u le    : ${formatDate()}`,
+    "",
+    enquiry.message ? `Message :
+${enquiry.message}` : ""
+  ].filter(Boolean).join("\n");
+  return sendEmail(
+    CORPORATE_INBOX,
+    `Demande Corporate \u2014 ${enquiry.companyName}`,
+    layout("Nouvelle demande Corporate", body),
+    { from: FROM_INFO, replyTo: enquiry.email, text }
+  );
+};
+var sendCorporateEnquiryAck = async (enquiry) => {
+  const body = `
+    ${paragraph(`Bonjour <strong>${escapeForEmail(enquiry.contactName)}</strong>,`)}
+    ${paragraph(
+    `Merci pour votre int&eacute;r&ecirc;t pour le plan <strong>Corporate</strong> de Dar L'Emploi. Nous avons bien re&ccedil;u votre demande pour <strong>${escapeForEmail(
+      enquiry.companyName
+    )}</strong>.`
+  )}
+    ${paragraph(
+    `Notre &eacute;quipe vous recontactera tr&egrave;s prochainement pour construire une offre adapt&eacute;e &agrave; vos besoins de recrutement.`
+  )}
+
+    ${iconList([
+    ["&#128640;", "Publication illimit&eacute;e"],
+    ["&#129302;", "Filtrage par IA Gemini"],
+    ["&#128218;", "R&eacute;pertoire CV complet & support d&eacute;di&eacute;"]
+  ])}
+
+    ${paragraph(`&Agrave; tr&egrave;s bient&ocirc;t,<br>L'&eacute;quipe Dar L'Emploi`)}`;
+  const text = [
+    `Bonjour ${enquiry.contactName},`,
+    "",
+    "Merci pour votre int\xE9r\xEAt pour le plan Corporate de Dar L'Emploi.",
+    `Nous avons bien re\xE7u votre demande pour ${enquiry.companyName}.`,
+    "",
+    "Notre \xE9quipe vous recontactera tr\xE8s prochainement.",
+    "",
+    "\xC0 tr\xE8s bient\xF4t,",
+    "L'\xE9quipe Dar L'Emploi"
+  ].join("\n");
+  return sendEmail(
+    enquiry.email,
+    "Votre demande Corporate \u2014 Dar L'Emploi",
+    layout("Demande bien re&ccedil;ue", body),
     { from: FROM_INFO, text }
   );
 };
@@ -3965,10 +4042,46 @@ var sendContactMessage = async (req, res) => {
     res.status(500).json({ message: "Failed to send message" });
   }
 };
+var sendCorporateEnquiry = async (req, res) => {
+  try {
+    const { companyName, contactName, email, phone, teamSize, message } = req.body;
+    if (!companyName?.trim() || !contactName?.trim() || !email?.trim()) {
+      return res.status(400).json({ message: "L'entreprise, le contact et l'email sont requis." });
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      return res.status(400).json({ message: "Veuillez fournir une adresse email valide." });
+    }
+    if ((message ?? "").length > 5e3 || companyName.length > 200 || contactName.length > 200) {
+      return res.status(400).json({ message: "Votre message est trop long." });
+    }
+    const enquiry = {
+      companyName: companyName.trim(),
+      contactName: contactName.trim(),
+      email: email.trim(),
+      phone: phone?.trim() || null,
+      teamSize: teamSize?.trim() || null,
+      message: message?.trim() || null
+    };
+    const delivered = await sendCorporateEnquiryEmail(enquiry);
+    if (!delivered) {
+      return res.status(502).json({
+        message: "Votre demande n'a pas pu \xEAtre envoy\xE9e. R\xE9essayez plus tard ou \xE9crivez-nous directement \xE0 contact@darlemploi.dz."
+      });
+    }
+    sendCorporateEnquiryAck(enquiry).catch(
+      (err) => console.error("Corporate acknowledgement failed:", err)
+    );
+    res.status(200).json({ message: "Demande envoy\xE9e avec succ\xE8s" });
+  } catch (error) {
+    console.error("Error in sendCorporateEnquiry:", error);
+    res.status(500).json({ message: "Failed to send enquiry" });
+  }
+};
 
 // server/routes/contact.routes.ts
 var router5 = Router5();
 router5.post("/", sendContactMessage);
+router5.post("/corporate", sendCorporateEnquiry);
 var contact_routes_default = router5;
 
 // server/routes/admin.routes.ts

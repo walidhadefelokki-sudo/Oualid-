@@ -87,3 +87,34 @@ export const COMPANY_SIZES = [
   "201-500 employés",
   "501+ employés",
 ] as const;
+
+/**
+ * Pay-per-posting packs, an alternative to a subscription.
+ *
+ * The unit price falls as the pack grows, which is the point of buying one —
+ * the saving is shown so the recruiter can see it rather than work it out.
+ */
+export interface AnnoncePack {
+  id: string;
+  jobs: number;
+  price: number;
+  /** Shown as the headline figure; the raw number is used for the total. */
+  label: string;
+}
+
+export const ANNONCE_PACKS: AnnoncePack[] = [
+  { id: 'pack-1', jobs: 1, price: 5900, label: '5 900' },
+  { id: 'pack-2', jobs: 2, price: 11000, label: '11 000' },
+  { id: 'pack-5', jobs: 5, price: 25000, label: '25 000' },
+  { id: 'pack-10', jobs: 10, price: 45000, label: '45 000' },
+];
+
+/** Price of one posting inside a pack, for the "saving" badge. */
+export const packUnitPrice = (pack: AnnoncePack) => Math.round(pack.price / pack.jobs);
+
+/** How much cheaper per posting than buying singles, as a percentage. */
+export const packSavingPercent = (pack: AnnoncePack) => {
+  const single = ANNONCE_PACKS[0].price;
+  if (pack.jobs === 1) return 0;
+  return Math.round((1 - packUnitPrice(pack) / single) * 100);
+};

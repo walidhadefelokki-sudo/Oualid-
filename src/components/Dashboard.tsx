@@ -96,8 +96,11 @@ import { jsPDF } from "jspdf";
 import { useRef } from "react";
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/notifications';
 import candidateProfileService from '../services/candidateProfile.service';
-import { WILAYAS, COMPANY_SECTORS, COMPANY_SIZES } from '../constants';
-import companyService, { Company } from '../services/company.service';
+import {
+  WILAYAS, COMPANY_SECTORS, COMPANY_SIZES,
+  ANNONCE_PACKS, packUnitPrice, packSavingPercent, type AnnoncePack,
+} from '../constants';
+import companyService, { Company, sendCorporateEnquiry } from '../services/company.service';
 import { translations, Language } from '../translations';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
@@ -1539,6 +1542,59 @@ export default function Dashboard({
   }, [user?.uid, isDemo]);
 
   const [candidatesByJob, setCandidatesByJob] = useState<any[]>([]);
+
+  /* ------------------------------ annonce packs --------------------------- */
+
+  // Defaults to the single posting, which is the plan the cards advertise.
+  const [selectedPack, setSelectedPack] = useState<AnnoncePack>(ANNONCE_PACKS[0]);
+
+  /* --------------------------- corporate enquiry -------------------------- */
+
+  const [corporateOpen, setCorporateOpen] = useState(false);
+  const [corporateSending, setCorporateSending] = useState(false);
+  const [corporateSent, setCorporateSent] = useState(false);
+  const [corporateForm, setCorporateForm] = useState({
+    companyName: '', contactName: '', email: '', phone: '', teamSize: '', message: '',
+  });
+
+  const submitCorporateEnquiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!corporateForm.companyName.trim() || !corporateForm.contactName.trim() || !corporateForm.email.trim()) {
+      showToast(
+        lt('Company, contact and email are required.', "L'entreprise, le contact et l'email sont requis.", 'الشركة وجهة الاتصال والبريد مطلوبة.'),
+        'error'
+      );
+      return;
+    }
+
+    try {
+      setCorporateSending(true);
+      await sendCorporateEnquiry(corporateForm);
+      setCorporateSent(true);
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message ||
+          lt('Could not send your request.', "Impossible d'envoyer votre demande.", 'تعذر إرسال طلبك.'),
+        'error'
+      );
+    } finally {
+      setCorporateSending(false);
+    }
+  };
+
+  /** Opens the enquiry form, pre-filled from the account where possible. */
+  const openCorporateEnquiry = () => {
+    setCorporateSent(false);
+    setCorporateForm((prev) => ({
+      ...prev,
+      companyName: prev.companyName || companyForm.name || '',
+      contactName: prev.contactName || user?.displayName || '',
+      email: prev.email || user?.email || '',
+      teamSize: prev.teamSize || companyForm.size || '',
+    }));
+    setCorporateOpen(true);
+  };
 
   /* ---------------------------- company profile --------------------------- */
 
@@ -3871,7 +3927,19 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           // nothing to buy on the plan already held.
                           if (isCurrent || plan.tier === 'free') return;
 
-                          setSelectedPlan({ name: plan.name, price: pricing.price, tier: plan.tier });
+                          // Corporate is priced per client, so it opens a
+                          // conversation rather than a card form.
+                          if (plan.tier === 'corporate') {
+                            openCorporateEnquiry();
+                            return;
+                          }
+
+                          setSelectedPlan({
+                            name: `${plan.name} — ${selectedPack.jobs} annonce(s)`,
+                            price: selectedPack.label,
+                            tier: plan.tier,
+                            jobs: selectedPack.jobs,
+                          });
                           setSettingsTab('billing');
                           setBillingView('payment');
                           setActiveTab('settings');
@@ -3880,6 +3948,100 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Pay-per-posting. Sits under the plans because it is an
+                  alternative to a subscription, not a fourth plan. */}
+              <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8 md:p-10">
+                <div className={`flex flex-wrap items-end justify-between gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={isRTL ? 'text-right' : ''}>
+                    <h3 className="text-2xl font-display font-black text-[#173E7D] tracking-tight">
+                      {lt('Buy job postings', "Acheter des annonces", 'شراء إعلانات')}
+                    </h3>
+                    <p className="text-gray-500 font-medium mt-1 max-w-lg">
+                      {lt(
+                        'Pay per posting instead of subscribing. The more you buy, the less each one costs.',
+                        "Payez à l'annonce plutôt que de vous abonner. Plus le pack est grand, moins l'annonce coûte cher.",
+                        'ادفع لكل إعلان بدل الاشتراك. كلما زاد العدد انخفض السعر.'
+                      )}
+                    </p>
+                  </div>
+
+                  <div className={isRTL ? 'text-right' : 'text-right'}>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+                      {lt('Total', 'Total', 'المجموع')}
+                    </p>
+                    {/* Updates the moment a pack is chosen. */}
+                    <p className="text-4xl md:text-5xl font-display font-black text-[#173E7D] tracking-tighter leading-none mt-1">
+                      {selectedPack.label}
+                      <span className="text-lg font-bold text-gray-400 ml-2">DA</span>
+                    </p>
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1.5">
+                      {lt(
+                        `${packUnitPrice(selectedPack).toLocaleString('fr-FR')} DA per posting`,
+                        `${packUnitPrice(selectedPack).toLocaleString('fr-FR')} DA l'annonce`,
+                        `${packUnitPrice(selectedPack).toLocaleString('fr-FR')} دج للإعلان`
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                  {ANNONCE_PACKS.map((pack) => {
+                    const active = selectedPack.id === pack.id;
+                    const saving = packSavingPercent(pack);
+
+                    return (
+                      <button
+                        key={pack.id}
+                        onClick={() => setSelectedPack(pack)}
+                        aria-pressed={active}
+                        className={`relative text-left p-6 rounded-[1.75rem] border-2 transition-all ${
+                          active
+                            ? 'border-[#F68D58] bg-[#FFF6F1] shadow-lg shadow-orange-500/10'
+                            : 'border-gray-100 hover:border-gray-200 bg-white'
+                        }`}
+                      >
+                        {saving > 0 && (
+                          <span className="absolute -top-3 right-4 px-3 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest shadow">
+                            -{saving}%
+                          </span>
+                        )}
+
+                        <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${active ? 'text-[#F68D58]' : 'text-gray-400'}`}>
+                          {lt(`Pack ${pack.jobs}`, `Pack ${pack.jobs}`, `باقة ${pack.jobs}`)}
+                        </p>
+                        <p className="text-2xl font-display font-black text-[#173E7D] tracking-tight mt-2">
+                          {pack.jobs} {lt(pack.jobs > 1 ? 'postings' : 'posting', pack.jobs > 1 ? 'annonces' : 'annonce', 'إعلان')}
+                        </p>
+                        <p className="text-sm font-bold text-gray-500 mt-1">
+                          {pack.label} DA
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setSelectedPlan({
+                      name: `${selectedPack.jobs} annonce(s)`,
+                      price: selectedPack.label,
+                      tier: 'paid',
+                      jobs: selectedPack.jobs,
+                    });
+                    setSettingsTab('billing');
+                    setBillingView('payment');
+                    setActiveTab('settings');
+                  }}
+                  className="w-full mt-8 py-5 rounded-[1.5rem] bg-[#F68D58] text-white font-black text-[12px] uppercase tracking-[0.2em] hover:bg-[#173E7D] transition-all shadow-lg shadow-orange-500/20"
+                >
+                  {lt(
+                    `Pay ${selectedPack.label} DA`,
+                    `Payer ${selectedPack.label} DA`,
+                    `ادفع ${selectedPack.label} دج`
+                  )}
+                </button>
               </div>
             </div>
           );
@@ -7500,6 +7662,153 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       </main>
       {/* Candidate CV Modal */}
       <AnimatePresence>
+        {/* Corporate is priced per client, so the plan card opens a
+            conversation rather than a card form. */}
+        <AnimatePresence>
+          {corporateOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCorporateOpen(false)}
+              className="fixed inset-0 z-[120] bg-[#0A1118]/60 backdrop-blur-sm flex items-start md:items-center justify-center p-4 md:p-8 overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                onClick={(e) => e.stopPropagation()}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                className="bg-white w-full max-w-2xl my-auto rounded-[2.5rem] shadow-2xl overflow-hidden"
+              >
+                <div className="bg-gradient-to-br from-[#0B1E3D] to-[#173E7D] px-8 md:px-12 py-10 text-white relative">
+                  <button
+                    onClick={() => setCorporateOpen(false)}
+                    aria-label={lt('Close', 'Fermer', 'إغلاق')}
+                    className={`absolute top-6 w-11 h-11 rounded-2xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center ${isRTL ? 'left-6' : 'right-6'}`}
+                  >
+                    <X size={20} />
+                  </button>
+
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#D4AF37]">
+                    {lt('Corporate', 'Corporate', 'كوربوريت')}
+                  </p>
+                  <h2 className="text-3xl md:text-4xl font-display font-black tracking-tight mt-2">
+                    {lt('Talk to our team', 'Parlons de vos besoins', 'لنتحدث عن احتياجاتك')}
+                  </h2>
+                  <p className="text-blue-100/80 mt-3 max-w-lg font-medium leading-relaxed">
+                    {lt(
+                      'Corporate is priced around your hiring volume. Tell us what you need and we will come back with an offer.',
+                      "Le plan Corporate est construit autour de votre volume de recrutement. Dites-nous ce qu'il vous faut et nous revenons vers vous avec une offre.",
+                      'يُبنى عرض كوربوريت حسب حجم توظيفك. أخبرنا باحتياجك وسنعود إليك بعرض.'
+                    )}
+                  </p>
+                </div>
+
+                {corporateSent ? (
+                  <div className="p-10 md:p-14 text-center">
+                    <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <CheckCircle2 size={30} />
+                    </div>
+                    <h3 className="text-2xl font-display font-black text-[#173E7D] mt-6">
+                      {lt('Request sent', 'Demande envoyée', 'تم إرسال الطلب')}
+                    </h3>
+                    <p className="text-gray-500 font-medium mt-3 max-w-md mx-auto">
+                      {lt(
+                        'Our team will contact you shortly. A confirmation is on its way to your inbox.',
+                        "Notre équipe vous recontactera très prochainement. Une confirmation vient de vous être envoyée.",
+                        'سيتصل بك فريقنا قريبًا. تم إرسال تأكيد إلى بريدك.'
+                      )}
+                    </p>
+                    <button
+                      onClick={() => setCorporateOpen(false)}
+                      className="mt-8 px-10 py-4 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
+                    >
+                      {lt('Close', 'Fermer', 'إغلاق')}
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={submitCorporateEnquiry} className="p-8 md:p-12 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {([
+                        ['companyName', lt('Company *', 'Entreprise *', 'الشركة *'), 'text'],
+                        ['contactName', lt('Contact *', 'Contact *', 'جهة الاتصال *'), 'text'],
+                        ['email', lt('Email *', 'Email *', 'البريد *'), 'email'],
+                        ['phone', lt('Phone', 'Téléphone', 'الهاتف'), 'tel'],
+                      ] as const).map(([key, label, type]) => (
+                        <div key={key} className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                          <label className="text-[11px] font-black text-[#173E7D] uppercase tracking-widest">{label}</label>
+                          <input
+                            type={type}
+                            value={(corporateForm as any)[key]}
+                            onChange={(e) => setCorporateForm({ ...corporateForm, [key]: e.target.value })}
+                            className={`w-full px-5 py-3.5 rounded-2xl border border-gray-100 bg-gray-50/50 outline-none focus:border-[#173E7D] transition-all font-bold text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                          />
+                        </div>
+                      ))}
+
+                      <div className={`space-y-2 md:col-span-2 ${isRTL ? 'text-right' : ''}`}>
+                        <label className="text-[11px] font-black text-[#173E7D] uppercase tracking-widest">
+                          {lt('Team size', "Taille de l'entreprise", 'حجم الشركة')}
+                        </label>
+                        <select
+                          value={corporateForm.teamSize}
+                          onChange={(e) => setCorporateForm({ ...corporateForm, teamSize: e.target.value })}
+                          className={`w-full px-5 py-3.5 rounded-2xl border border-gray-100 bg-gray-50/50 outline-none focus:border-[#173E7D] transition-all font-bold text-gray-700 ${isRTL ? 'text-right' : ''}`}
+                        >
+                          <option value="">{lt('Not specified', 'Non précisée', 'غير محدد')}</option>
+                          {COMPANY_SIZES.map((size) => (
+                            <option key={size} value={size}>{size}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                      <label className="text-[11px] font-black text-[#173E7D] uppercase tracking-widest">
+                        {lt('Your needs', 'Vos besoins', 'احتياجاتك')}
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={corporateForm.message}
+                        onChange={(e) => setCorporateForm({ ...corporateForm, message: e.target.value })}
+                        placeholder={lt(
+                          'How many roles are you hiring for, and in which fields?',
+                          'Combien de postes recrutez-vous, et dans quels domaines ?',
+                          'كم منصبًا توظف، وفي أي مجالات؟'
+                        )}
+                        className={`w-full px-5 py-3.5 rounded-2xl border border-gray-100 bg-gray-50/50 outline-none focus:border-[#173E7D] transition-all font-bold text-gray-700 resize-none ${isRTL ? 'text-right' : ''}`}
+                      />
+                    </div>
+
+                    <div className={`flex gap-3 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        type="submit"
+                        disabled={corporateSending}
+                        className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] font-black text-[12px] uppercase tracking-[0.2em] hover:brightness-105 transition-all shadow-lg disabled:opacity-60"
+                      >
+                        {corporateSending
+                          ? lt('Sending…', 'Envoi…', 'جارٍ الإرسال…')
+                          : lt('Send my request', 'Envoyer ma demande', 'إرسال طلبي')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCorporateOpen(false)}
+                        className="px-8 py-4 rounded-2xl border border-gray-200 text-gray-500 font-black text-[12px] uppercase tracking-widest hover:bg-gray-50 transition-all"
+                      >
+                        {lt('Cancel', 'Annuler', 'إلغاء')}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {selectedCandidateCV && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div 

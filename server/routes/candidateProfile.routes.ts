@@ -7,12 +7,14 @@ import {
   saveMyCvBuilder,
   getCandidateCvDocument,
   getCandidateCvFile,
+  listCandidateDirectory,
   createCvUploadUrl,
   confirmCvUpload,
 } from "../controllers/candidateProfile.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 import { handleCvUpload } from "../middleware/cvUpload.middleware";
+import { requireRecruiterTier } from "../middleware/tier.middleware";
 
 const router = express.Router();
 
@@ -21,6 +23,15 @@ router.use(protect);
 // Recruiter-facing, so it must be declared before the CANDIDATE-only guard
 // below. Ownership (the candidate applied to this recruiter's job) is checked
 // inside the controller, not here, because it needs a database lookup.
+// Corporate: browse every candidate who has uploaded a CV. Declared before
+// the ":candidateId" routes so "directory" is not swallowed as an id.
+router.get(
+  "/directory",
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  listCandidateDirectory
+);
+
 router.get(
   "/:candidateId/cv-document",
   restrictTo("RECRUITER", "ADMIN"),

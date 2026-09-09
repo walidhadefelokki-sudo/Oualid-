@@ -6485,6 +6485,7 @@ var assertCanViewCandidate = async (req, candidateProfileId) => {
   if (!recruiter) {
     throw new AppError("Recruiter profile not found.", 403);
   }
+  if (await getRecruiterPlan(req.user.id) === "CORPORATE") return;
   const hasApplied = await prisma_default.application.findFirst({
     where: { candidateId: candidateProfileId, job: { recruiterId: recruiter.id } },
     select: { id: true }
@@ -6760,10 +6761,95 @@ var confirmCvUpload = async (req, res, next) => {
     next(err);
   }
 };
+var listCandidateDirectory = async (req, res, next) => {
+  try {
+    const { search, wilaya, minExperience, page, limit } = req.query;
+    const take = Math.min(Number(limit) || 24, 60);
+    const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
+    const where = { resumeId: { not: null } };
+    if (wilaya?.trim()) {
+      where.OR = [
+        { wilaya: { contains: wilaya.trim(), mode: "insensitive" } },
+        { city: { contains: wilaya.trim(), mode: "insensitive" } }
+      ];
+    }
+    const years = Number(minExperience);
+    if (Number.isFinite(years) && years > 0) {
+      where.yearsExperience = { gte: years };
+    }
+    if (search?.trim()) {
+      const term = search.trim();
+      where.AND = [
+        {
+          OR: [
+            { currentJobTitle: { contains: term, mode: "insensitive" } },
+            { headline: { contains: term, mode: "insensitive" } },
+            { bio: { contains: term, mode: "insensitive" } },
+            { skills: { hasSome: term.split(/[\s,]+/).filter(Boolean) } },
+            { user: { firstName: { contains: term, mode: "insensitive" } } },
+            { user: { lastName: { contains: term, mode: "insensitive" } } },
+            { user: { email: { contains: term, mode: "insensitive" } } }
+          ]
+        }
+      ];
+    }
+    const [candidates, total] = await Promise.all([
+      prisma_default.candidateProfile.findMany({
+        where,
+        // Selected explicitly: a directory has no business carrying password
+        // hashes to the browser.
+        select: {
+          id: true,
+          currentJobTitle: true,
+          headline: true,
+          city: true,
+          wilaya: true,
+          yearsExperience: true,
+          skills: true,
+          availableImmediately: true,
+          updatedAt: true,
+          resume: { select: { id: true, fileName: true, extension: true, createdAt: true } },
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              avatar: { select: { url: true } }
+            }
+          }
+        },
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take
+      }),
+      prisma_default.candidateProfile.count({ where })
+    ]);
+    res.status(200).json({
+      status: "success",
+      data: {
+        candidates: candidates.map((c) => ({
+          ...c,
+          user: { ...c.user, avatarUrl: c.user.avatar?.url ?? null }
+        })),
+        pagination: { total, page: Math.max(Number(page) || 1, 1), limit: take, pages: Math.ceil(total / take) }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/candidateProfile.routes.ts
 var router13 = express3.Router();
 router13.use(protect);
+router13.get(
+  "/directory",
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  listCandidateDirectory
+);
 router13.get(
   "/:candidateId/cv-document",
   restrictTo("RECRUITER", "ADMIN"),

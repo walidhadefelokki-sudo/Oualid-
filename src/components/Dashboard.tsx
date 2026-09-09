@@ -3,6 +3,7 @@ import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
 import SubscriptionBanner from "./recruiter/SubscriptionBanner";
+import CandidateDirectory from "./recruiter/CandidateDirectory";
 import RecruiterPlanCard, {
   RECRUITER_PLANS,
   HOME_PLAN_PRICING,
@@ -563,6 +564,38 @@ export default function Dashboard({
     }
   };
 
+  /**
+   * Downloads any candidate's CV by id, for the Corporate directory.
+   *
+   * Same blob approach as the CV modal: the file lives on Supabase, and the
+   * download attribute is ignored cross-origin, so an anchor would open the
+   * PDF in a tab instead of saving it.
+   */
+  const downloadCvById = async (candidateId: string, displayName: string) => {
+    try {
+      const resume = await candidateProfileService.getCandidateCvFile(candidateId);
+      const response = await fetch(resume.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download =
+        resume.fileName ||
+        `CV_${displayName.replace(/\s+/g, '_')}.${resume.extension || 'pdf'}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message ||
+          lt('Could not download the CV.', 'Impossible de télécharger le CV.', 'تعذر تنزيل السيرة الذاتية.'),
+        'error'
+      );
+    }
+  };
+
   /** Candidate: open own CV. Refetched so the signed link is current. */
   const handleOpenMyCV = () => openSignedCv(() => candidateProfileService.getMyCV());
 
@@ -1097,6 +1130,17 @@ export default function Dashboard({
                 label="Préselection"
                 active={activeTab === 'preselected'}
                 onClick={() => setActiveTab('preselected')}
+              />
+
+              {/* The full CV directory. Distinct from "Répertoire CV" above,
+                  which only lists people who applied to this recruiter's own
+                  offers — this one covers the whole platform. The page existed
+                  but had no way in. */}
+              <SidebarItem
+                icon={BookOpen}
+                label="Base de CV"
+                active={activeTab === 'sourcing-ia'}
+                onClick={() => setActiveTab('sourcing-ia')}
               />
 
               <SidebarItem
@@ -3704,12 +3748,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         //     </>
         //   );
         case 'sourcing-ia': {
-          // NEW: Corporate-only tab
+          // Corporate-only, and the server enforces the same rule on
+          // /candidates/directory — unlocking it here alone would only reach
+          // a 403.
           if (!access.sourcingIA) {
             return (
               <TierLockedScreen
-                title="Répertoire CV & Sourcing IA"
-                description="Accédez à une base de talents qualifiés qui n'ont pas encore postulé, classés par pertinence pour vos offres. Réservé au plan Corporate."
+                title="Base de CV"
+                description="Recherchez tous les candidats de la plateforme ayant téléversé un CV, y compris ceux qui n'ont pas postulé à vos offres. Réservé au plan Corporate."
                 requiredTier="Corporate"
                 icon={UsersIcon}
                 onUpgrade={() => setActiveTab('subscription')}
@@ -3718,47 +3764,25 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           }
 
           return (
-            <div className="space-y-10">
-              <div className={isRTL ? 'text-right' : ''}>
-                <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
-                    {lt('Strategic AI Sourcing', 'Sourcing IA Stratégique', 'التوظيف الذكي')}
-                  </h2>
-                  <PremiumBadge />
-                </div>
-                <p className="text-gray-500 font-medium max-w-2xl">
-                  {lt(
-                    'Surface qualified candidates who have not applied to your offers yet.',
-                    "Identifiez des profils qualifiés qui n'ont pas encore postulé à vos offres.",
-                    'اكتشف ملفات مؤهلة لم تترشح بعد لعروضك.'
-                  )}
-                </p>
-              </div>
-
-              <div className="bg-white rounded-[3rem] border border-dashed border-gray-200 py-20 px-8 text-center">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-50 text-purple-400 flex items-center justify-center">
-                  <Cpu size={30} />
-                </div>
-                <h3 className="text-xl font-black text-[#173E7D] mt-6">
-                  {lt('Not available yet', 'Bientôt disponible', 'قريبًا')}
-                </h3>
-                <p className="text-gray-400 font-medium mt-3 max-w-md mx-auto">
-                  {lt(
-                    'This feature is being built. In the meantime, the CV Directory lists every candidate who has applied to your offers.',
-                    "Cette fonctionnalité est en cours de développement. En attendant, le Répertoire CV regroupe tous les candidats ayant postulé à vos offres.",
-                    'هذه الميزة قيد التطوير. في الأثناء، يعرض دليل السير الذاتية كل من ترشح لعروضك.'
-                  )}
-                </p>
-                <button
-                  onClick={() => setActiveTab('repertoire-cv')}
-                  className="mt-8 px-8 py-3.5 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
-                >
-                  {lt('Open CV Directory', 'Ouvrir le Répertoire CV', 'فتح دليل السير')}
-                </button>
-              </div>
-            </div>
+            <CandidateDirectory
+              isRTL={isRTL}
+              lt={lt}
+              onOpenCv={(candidateId) =>
+                openSignedCv(() => candidateProfileService.getCandidateCvFile(candidateId))
+              }
+              onDownloadCv={(candidate) =>
+                downloadCvById(
+                  candidate.id,
+                  [candidate.user.firstName, candidate.user.lastName]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim() || candidate.user.email
+                )
+              }
+            />
           );
         }
+
         case 'analytics-wilaya':
           return (
             <div className="space-y-10">

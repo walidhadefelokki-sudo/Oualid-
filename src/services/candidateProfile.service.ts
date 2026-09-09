@@ -16,6 +16,34 @@ export interface CVFileAsset {
   uploadedAt?: string;
 }
 
+export interface DirectoryCandidate {
+  id: string;
+  currentJobTitle?: string | null;
+  headline?: string | null;
+  city?: string | null;
+  wilaya?: string | null;
+  yearsExperience?: number | null;
+  skills: string[];
+  availableImmediately: boolean;
+  updatedAt: string;
+  resume?: { id: string; fileName?: string | null; extension?: string | null; createdAt: string } | null;
+  user: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+    phone?: string | null;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface DirectoryPagination {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface CandidateProfileUpdate {
   firstName?: string;
   lastName?: string;
@@ -132,6 +160,23 @@ class CandidateProfileService {
   async getMyCV(): Promise<CVFileAsset | null> {
     const response = await api.get("/candidates/me/cv");
     return response.data.data.resume;
+  }
+
+  /**
+   * Corporate: browse and search every candidate who has uploaded a CV.
+   *
+   * The tier is enforced server-side; a non-Corporate caller gets a 403
+   * rather than an empty list, so the UI can say why.
+   */
+  async getCandidateDirectory(params: {
+    search?: string;
+    wilaya?: string;
+    minExperience?: number;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{ candidates: DirectoryCandidate[]; pagination: DirectoryPagination }> {
+    const response = await api.get("/candidates/directory", { params });
+    return response.data.data;
   }
 
   /**

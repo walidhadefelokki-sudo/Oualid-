@@ -155,7 +155,7 @@ export default function SubscriptionBanner({
             }`}
           >
             <div className={isRTL ? 'text-right' : 'lg:text-right'}>
-              <p className={`text-2xl sm:text-3xl md:text-4xl font-display font-black leading-none whitespace-nowrap ${titleColor}`}>
+              <p dir="ltr" className={`text-2xl sm:text-3xl md:text-4xl font-display font-black leading-none whitespace-nowrap ${titleColor}`}>
                 {content.price}
                 {content.priceSuffix && (
                   <span className={`text-base font-bold ${bodyColor} ml-1.5`}>

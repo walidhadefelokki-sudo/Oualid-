@@ -507,7 +507,7 @@ function HistoryRow({
           {statusLabel(term.status)}
         </span>
       </td>
-      <td className={`py-3 font-bold ${isRTL ? 'text-left' : 'text-right'}`}>
+      <td dir="ltr" className={`py-3 font-bold ${isRTL ? 'text-left' : 'text-right'}`}>
         {paid.length > 0
           ? `${total.toLocaleString('fr-FR')} ${paid[0].currency}`
           : noPayment}

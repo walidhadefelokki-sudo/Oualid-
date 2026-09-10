@@ -217,7 +217,7 @@ export default function RecruiterPlanCard({
       </p>
 
       {price && (
-        <div className="mt-6 flex items-baseline gap-2">
+        <div dir="ltr" className="mt-6 flex items-baseline gap-2">
           <span className={`font-display font-black tracking-tighter ${textPrimary} ${isLarge ? 'text-3xl sm:text-4xl lg:text-5xl' : 'text-2xl sm:text-3xl'}`}>
             {price}
           </span>

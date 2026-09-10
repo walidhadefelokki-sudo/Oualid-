@@ -1066,7 +1066,7 @@ export default function Dashboard({
           {/* PRINCIPAL */}
           {/* ====================== */}
 
-          <SectionLabel>Principal</SectionLabel>
+          <SectionLabel>{lt("Main", "Principal", "الرئيسية")}</SectionLabel>
 
           <SidebarItem
             icon={LayoutDashboard}
@@ -1178,7 +1178,7 @@ export default function Dashboard({
           {/* COMPTE */}
           {/* ====================== */}
 
-          <SectionLabel>Compte</SectionLabel>
+          <SectionLabel>{lt("Account", "Compte", "الحساب")}</SectionLabel>
 
           <SidebarItem
             icon={Gem}
@@ -3392,8 +3392,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <div className="lg:col-span-2 bg-white rounded-[3rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm">
                   <div className="flex justify-between items-center mb-10">
                     <div>
-                      <h3 className="text-2xl font-black text-[#173E7D] tracking-tight">Dernières candidatures</h3>
-                      <p className="text-gray-400 text-sm font-medium mt-1">Gérez vos nouveaux talents en un coup d'œil.</p>
+                      <h3 className="text-2xl font-black text-[#173E7D] tracking-tight">{lt("Latest applications", "Dernières candidatures", "أحدث الترشيحات")}</h3>
+                      <p className="text-gray-400 text-sm font-medium mt-1">{lt("Your new talent at a glance.", "Gérez vos nouveaux talents en un coup d'œil.", "مواهبك الجديدة في لمحة.")}</p>
                     </div>
                     <button className="text-sm font-black text-[#F68D58] hover:underline uppercase tracking-widest">
                       Voir tout
@@ -3470,7 +3470,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <div className="space-y-8">
                   <div className="bg-[#173E7D] rounded-[3rem] p-6 sm:p-8 lg:p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
-                    <h3 className="text-xl font-black mb-8 relative z-10">Offres actives</h3>
+                    <h3 className="text-xl font-black mb-8 relative z-10">{lt("Active offers", "Offres actives", "العروض النشطة")}</h3>
                     <div className="space-y-6 relative z-10">
                       {activeJobSummaries.length === 0 ? (
                         <p className="text-blue-100/70 text-sm font-medium">
@@ -3568,7 +3568,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <div className={isRTL ? 'text-right' : ''}>
                   <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">{t('manageJobs')}</h2>
-                  <p className="text-gray-500 mt-1 font-medium">Suivez et gérez vos annonces de recrutement.</p>
+                  <p className="text-gray-500 mt-1 font-medium">{lt("Track and manage your job ads.", "Suivez et gérez vos annonces de recrutement.", "تابع وأدر إعلانات التوظيف الخاصة بك.")}</p>
                 </div>
                 <button 
                   onClick={() => setActiveTab('post-job')}
@@ -4037,11 +4037,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       {lt('Total', 'Total', 'المجموع')}
                     </p>
                     {/* Updates the moment a pack is chosen. */}
-                    <p className="text-4xl md:text-5xl font-display font-black text-[#173E7D] tracking-tighter leading-none mt-1">
+                    <p dir="ltr" className="text-4xl md:text-5xl font-display font-black text-[#173E7D] tracking-tighter leading-none mt-1">
                       {selectedPack.label}
                       <span className="text-lg font-bold text-gray-400 ml-2">DA</span>
                     </p>
-                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1.5">
+                    <p dir="ltr" className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1.5">
                       {lt(
                         `${packUnitPrice(selectedPack).toLocaleString('fr-FR')} DA per posting`,
                         `${packUnitPrice(selectedPack).toLocaleString('fr-FR')} DA l'annonce`,
@@ -4079,7 +4079,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <p className="text-2xl font-display font-black text-[#173E7D] tracking-tight mt-2">
                           {pack.jobs} {lt(pack.jobs > 1 ? 'postings' : 'posting', pack.jobs > 1 ? 'annonces' : 'annonce', 'إعلان')}
                         </p>
-                        <p className="text-sm font-bold text-gray-500 mt-1">
+                        <p dir="ltr" className="text-sm font-bold text-gray-500 mt-1">
                           {pack.label} DA
                         </p>
                       </button>
@@ -4120,7 +4120,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
                 <div className={isRTL ? 'text-right' : ''}>
                   <h2 className="text-3xl font-display font-bold text-[#173E7D]">{t('postJob')}</h2>
-                  <p className="text-gray-500 mt-1">Remplissez les détails pour attirer les meilleurs candidats</p>
+                  <p className="text-gray-500 mt-1">{lt("Fill in the details to attract the best candidates", "Remplissez les détails pour attirer les meilleurs candidats", "املأ التفاصيل لجذب أفضل المترشحين")}</p>
                 </div>
               </div>
 
@@ -4185,16 +4185,16 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       onChange={(e) => setNewJobData({...newJobData, sector: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      <option>Technologie</option>
-                      <option>Santé</option>
-                      <option>Finance</option>
-                      <option>Éducation</option>
-                      <option>Construction</option>
-                      <option>Commerce</option>
+                      <option value="Technologie">{lt("Technology", "Technologie", "التكنولوجيا")}</option>
+                      <option value="Santé">{lt("Health", "Santé", "الصحة")}</option>
+                      <option value="Finance">{lt("Finance", "Finance", "المالية")}</option>
+                      <option value="Éducation">{lt("Education", "Éducation", "التعليم")}</option>
+                      <option value="Construction">{lt("Construction", "Construction", "البناء")}</option>
+                      <option value="Commerce">{lt("Trade", "Commerce", "التجارة")}</option>
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">Wilaya *</label>
+                    <label className="text-sm font-bold text-gray-900">{lt("Wilaya *", "Wilaya *", "الولاية *")}</label>
                     <select 
                       value={newJobData.wilaya}
                       onChange={(e) => setNewJobData({...newJobData, wilaya: e.target.value})}
@@ -4215,31 +4215,31 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       onChange={(e) => setNewJobData({...newJobData, type: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      <option>Temps plein</option>
-                      <option>Temps partiel</option>
-                      <option>Freelance</option>
-                      <option>Stage</option>
-                      <option>CDI</option>
-                      <option>CDD</option>
+                      <option value="Temps plein">{lt("Full time", "Temps plein", "دوام كامل")}</option>
+                      <option value="Temps partiel">{lt("Part time", "Temps partiel", "دوام جزئي")}</option>
+                      <option value="Freelance">{lt("Freelance", "Freelance", "عمل حر")}</option>
+                      <option value="Stage">{lt("Internship", "Stage", "تربص")}</option>
+                      <option value="CDI">{lt("Permanent (CDI)", "CDI", "عقد دائم")}</option>
+                      <option value="CDD">{lt("Fixed term (CDD)", "CDD", "عقد محدد المدة")}</option>
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">Niveau d'expérience *</label>
+                    <label className="text-sm font-bold text-gray-900">{lt("Experience level *", "Niveau d'expérience *", "مستوى الخبرة *")}</label>
                     <select 
                       value={newJobData.experience}
                       onChange={(e) => setNewJobData({...newJobData, experience: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      <option>Débutant (0-2 ans)</option>
-                      <option>Confirmé (3-5 ans)</option>
-                      <option>Senior (5-10 ans)</option>
-                      <option>Expert (10+ ans)</option>
+                      <option value="Débutant (0-2 ans)">{lt("Junior (0-2 yrs)", "Débutant (0-2 ans)", "مبتدئ (0-2 سنوات)")}</option>
+                      <option value="Confirmé (3-5 ans)">{lt("Mid-level (3-5 yrs)", "Confirmé (3-5 ans)", "متمرس (3-5 سنوات)")}</option>
+                      <option value="Senior (5-10 ans)">{lt("Senior (5-10 yrs)", "Senior (5-10 ans)", "خبير (5-10 سنوات)")}</option>
+                      <option value="Expert (10+ ans)">{lt("Expert (10+ yrs)", "Expert (10+ ans)", "خبير أول (أكثر من 10 سنوات)")}</option>
                     </select>
                   </div>
                 </div>
 
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                  <label className="text-sm font-bold text-gray-900">Description du poste *</label>
+                  <label className="text-sm font-bold text-gray-900">{lt("Job description *", "Description du poste *", "وصف المنصب *")}</label>
                   <textarea 
                     rows={6} 
                     required
@@ -4251,7 +4251,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
 
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                  <label className="text-sm font-bold text-gray-900">Exigences (une par ligne)</label>
+                  <label className="text-sm font-bold text-gray-900">{lt("Requirements (one per line)", "Exigences (une par ligne)", "المتطلبات (واحد في كل سطر)")}</label>
                   <textarea 
                     rows={4} 
                     placeholder="Maîtrise de React.js&#10;3+ ans d'expérience&#10;Français courant" 
@@ -4262,7 +4262,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
 
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                  <label className="text-sm font-bold text-gray-900">Avantages (une par ligne)</label>
+                  <label className="text-sm font-bold text-gray-900">{lt("Benefits (one per line)", "Avantages (une par ligne)", "المزايا (واحدة في كل سطر)")}</label>
                   <textarea 
                     rows={4} 
                     placeholder="Assurance maladie&#10;Transport assuré&#10;Prime de performance" 
@@ -4273,7 +4273,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
 
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                  <label className="text-sm font-bold text-gray-900">Date limite de candidature</label>
+                  <label className="text-sm font-bold text-gray-900">{lt("Application deadline", "Date limite de candidature", "آخر أجل للترشح")}</label>
                   <input 
                     type="date" 
                     value={newJobData.deadline}
@@ -4755,17 +4755,17 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.helpCenter')}</h3>
                           </div>
                           <article className={`prose prose-blue max-w-none ${isRTL ? 'text-right' : ''}`}>
-                            <h4 className="text-2xl font-bold text-[#173E7D]">Comment utiliser la plateforme Dar L'emploi</h4>
+                            <h4 className="text-2xl font-bold text-[#173E7D]">{lt("How to use the Dar L'emploi platform", "Comment utiliser la plateforme Dar L'emploi", "كيفية استخدام منصة دار التشغيل")}</h4>
                             <div className="mt-6 space-y-6 text-gray-600">
                               <p>
                                 Bienvenue sur Dar L'emploi, la plateforme leader pour le recrutement en Algérie. 
                                 Voici un guide rapide pour commencer :
                               </p>
                               <ul className="space-y-4 list-disc list-inside">
-                                <li><strong>Publiez vos offres :</strong> Utilisez notre éditeur intuitif pour créer des offres d'emploi attrayantes.</li>
-                                <li><strong>Gérez les candidatures :</strong> Suivez l'état de chaque candidat en temps réel dans votre tableau de bord.</li>
-                                <li><strong>Utilisez l'IA :</strong> Notre algorithme de filtrage intelligent vous aide à identifier les meilleurs profils en quelques secondes.</li>
-                                <li><strong>Collaborez en équipe :</strong> Invitez vos collègues et gérez les accès pour un processus de recrutement fluide.</li>
+                                <li><strong>{lt("Post your offers:", "Publiez vos offres :", "انشر عروضك:")}</strong> Utilisez notre éditeur intuitif pour créer des offres d'emploi attrayantes.</li>
+                                <li><strong>{lt("Manage applications:", "Gérez les candidatures :", "أدر الترشيحات:")}</strong> Suivez l'état de chaque candidat en temps réel dans votre tableau de bord.</li>
+                                <li><strong>{lt("Use the AI:", "Utilisez l'IA :", "استخدم الذكاء الاصطناعي:")}</strong> Notre algorithme de filtrage intelligent vous aide à identifier les meilleurs profils en quelques secondes.</li>
+                                <li><strong>{lt("Work as a team:", "Collaborez en équipe :", "اعمل ضمن فريق:")}</strong> Invitez vos collègues et gérez les accès pour un processus de recrutement fluide.</li>
                               </ul>
                             </div>
                           </article>
@@ -4786,7 +4786,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
-                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Adresse Email</label>
+                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">{lt("Email address", "Adresse Email", "البريد الإلكتروني")}</label>
                                 <input 
                                   type="email" 
                                   value={contactEmail}
@@ -4796,7 +4796,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 />
                               </div>
                               <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
-                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Sujet</label>
+                                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">{lt("Subject", "Sujet", "الموضوع")}</label>
                                 <input 
                                   type="text" 
                                   value={contactSubject}
@@ -4811,7 +4811,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             </button>
 
                             <div className={`p-8 bg-blue-50 rounded-[2rem] text-[#173E7D] font-bold text-center ${isRTL ? 'text-right' : ''}`}>
-                              <p className="text-2xl">Contactez nous sur le : <span className="text-[#F68D58]">+213 542 98 23 46</span></p>
+                              <p className="text-2xl">{lt("Call us on:", "Contactez nous sur le :", "اتصل بنا على:")} <span dir="ltr" className="text-[#F68D58]">+213 542 98 23 46</span></p>
                             </div>
                           </div>
                         </div>
@@ -4934,7 +4934,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                                 <div className="relative z-10 mb-6">
                                   <h4 className="text-2xl font-black text-[#173E7D] mb-1 tracking-tight">{plan.name}</h4>
-                                  <div className="flex items-baseline gap-1">
+                                  <div dir="ltr" className="flex items-baseline gap-1">
                                     <span className={plan.price === 'Sur mesure' ? "text-2xl font-black text-[#173E7D] tracking-tighter uppercase" : "text-4xl font-black text-[#173E7D] tracking-tighter"}>{plan.price}</span>
                                     {plan.price !== 'Sur mesure' && <span className="text-gray-400 font-bold text-sm uppercase tracking-widest">DA</span>}
                                   </div>
@@ -4993,7 +4993,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             </div>
                             <div className="text-right">
                               <div className="text-xs text-gray-400 uppercase font-black tracking-widest">{lt('Total to pay', 'Total à payer', 'إجمالي الدفع')}</div>
-                              <div className="text-3xl font-black text-[#F68D58]">{selectedPlan?.price} DA</div>
+                              <div dir="ltr" className="text-3xl font-black text-[#F68D58]">{selectedPlan?.price} DA</div>
                             </div>
                           </div>
 
@@ -5025,7 +5025,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 ))}
                               </div>
                               <div className="flex items-center justify-center gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Propulsé par</span>
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Powered by", "Propulsé par", "مدعوم بواسطة")}</span>
                                 <span className="font-black text-[#173E7D] italic">Chargily Pay</span>
                               </div>
                             </div>
@@ -5210,11 +5210,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 <Shield size={20} />
                               </div>
                               <div className={isRTL ? 'text-right' : 'text-left'}>
-                                <div className="font-bold text-[#173E7D]">Email de récupération</div>
+                                <div className="font-bold text-[#173E7D]">{lt("Recovery email", "Email de récupération", "بريد الاسترداد")}</div>
                                 <div className="text-xs text-gray-400">walid***@gmail.com</div>
                               </div>
                             </div>
-                            <button className="text-sm font-bold text-[#173E7D] hover:underline">Modifier</button>
+                            <button className="text-sm font-bold text-[#173E7D] hover:underline">{lt("Edit", "Modifier", "تعديل")}</button>
                           </div>
                         </div>
                       </div>
@@ -5232,7 +5232,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                       <div className="space-y-8">
                         <div className="space-y-4">
-                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Canaux de réception</h4>
+                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{lt("Delivery channels", "Canaux de réception", "قنوات الاستقبال")}</h4>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {[
                               { label: "Email", icon: Mail, active: true },
@@ -5247,7 +5247,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         </div>
 
                         <div className="space-y-6">
-                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Types d'alertes</h4>
+                          <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{lt("Alert types", "Types d'alertes", "أنواع التنبيهات")}</h4>
                           {[
                             { label: "Nouvelles candidatures", desc: "Recevoir une alerte dès qu'un candidat postule", active: true }
                           ].map((pref, idx) => (
@@ -5278,8 +5278,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <div className="space-y-6">
                         <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <div className="font-bold text-[#173E7D]">Visibilité de l'entreprise</div>
-                            <div className="text-xs text-gray-400">Permettre aux candidats de voir votre profil entreprise</div>
+                            <div className="font-bold text-[#173E7D]">{lt("Company visibility", "Visibilité de l'entreprise", "ظهور الشركة")}</div>
+                            <div className="text-xs text-gray-400">{lt("Let candidates see your company profile", "Permettre aux candidats de voir votre profil entreprise", "السماح للمترشحين برؤية ملف شركتك")}</div>
                           </div>
                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
                             <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
@@ -5288,8 +5288,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                         <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <div className="font-bold text-[#173E7D]">Partage de données anonymes</div>
-                            <div className="text-xs text-gray-400">Aidez-nous à améliorer nos services avec des stats anonymes</div>
+                            <div className="font-bold text-[#173E7D]">{lt("Anonymous data sharing", "Partage de données anonymes", "مشاركة بيانات مجهولة")}</div>
+                            <div className="text-xs text-gray-400">{lt("Help us improve our services with anonymous statistics", "Aidez-nous à améliorer nos services avec des stats anonymes", "ساعدنا على تحسين خدماتنا بإحصائيات مجهولة")}</div>
                           </div>
                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
                             <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
@@ -5305,7 +5305,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <div className="w-12 h-12 bg-gray-50 text-gray-500 rounded-2xl flex items-center justify-center">
                           <History size={24} />
                         </div>
-                        <h3 className="text-xl font-bold text-[#173E7D]">Historique d'activité</h3>
+                        <h3 className="text-xl font-bold text-[#173E7D]">{lt("Activity history", "Historique d'activité", "سجل النشاط")}</h3>
                       </div>
                       
                       <div className="space-y-4">
@@ -5367,8 +5367,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <div className="space-y-6">
                         <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <div className="font-bold text-[#173E7D]">Visibilité de l'entreprise</div>
-                            <div className="text-xs text-gray-400">Permettre aux candidats de voir votre profil entreprise</div>
+                            <div className="font-bold text-[#173E7D]">{lt("Company visibility", "Visibilité de l'entreprise", "ظهور الشركة")}</div>
+                            <div className="text-xs text-gray-400">{lt("Let candidates see your company profile", "Permettre aux candidats de voir votre profil entreprise", "السماح للمترشحين برؤية ملف شركتك")}</div>
                           </div>
                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
                             <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
@@ -5377,8 +5377,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                         <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <div className="font-bold text-[#173E7D]">Partage de données analytiques</div>
-                            <div className="text-xs text-gray-400">Aidez-nous à améliorer Dar L'emploi avec des données anonymes</div>
+                            <div className="font-bold text-[#173E7D]">{lt("Analytics sharing", "Partage de données analytiques", "مشاركة بيانات التحليلات")}</div>
+                            <div className="text-xs text-gray-400">{lt("Help us improve Dar L'emploi with anonymous data", "Aidez-nous à améliorer Dar L'emploi avec des données anonymes", "ساعدنا على تحسين دار التشغيل ببيانات مجهولة")}</div>
                           </div>
                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
                             <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />
@@ -5420,7 +5420,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
           );
         default:
-          return <div className="p-6 sm:p-8 lg:p-12 text-center text-gray-400">Page non trouvée</div>;
+          return <div className="p-6 sm:p-8 lg:p-12 text-center text-gray-400">{lt("Page not found", "Page non trouvée", "الصفحة غير موجودة")}</div>;
       }
     }
 
@@ -5803,7 +5803,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 />
               </div>
               <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                <label className="text-sm font-bold text-gray-900">Email</label>
+                <label className="text-sm font-bold text-gray-900">{lt("Email", "Email", "البريد الإلكتروني")}</label>
                 <input 
                   type="email" 
                   value={profileData.email}
@@ -5821,7 +5821,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 />
               </div>
               <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                <label className="text-sm font-bold text-gray-900">Wilaya</label>
+                <label className="text-sm font-bold text-gray-900">{lt("Wilaya", "Wilaya", "الولاية")}</label>
                 <select 
                   value={profileData.wilaya}
                   onChange={(e) => setProfileData({...profileData, wilaya: e.target.value})}
@@ -5949,7 +5949,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div>
                     <h3 className="text-3xl font-display font-black text-[#173E7D] tracking-tight">{t('cvEditor')}</h3>
-                    <p className="text-gray-500 mt-1 font-medium">Remplissez vos informations pour générer votre CV professionnel.</p>
+                    <p className="text-gray-500 mt-1 font-medium">{lt("Fill in your details to generate your professional CV.", "Remplissez vos informations pour générer votre CV professionnel.", "املأ معلوماتك لإنشاء سيرتك الذاتية المهنية.")}</p>
                   </div>
                   {/* <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     {['moderne', 'classique', 'creatif'].map((m) => (
@@ -6007,7 +6007,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             />
                           </div>
                           <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">Email</label>
+                            <label className="text-xs font-black text-[#173E7D] uppercase tracking-[0.2em]">{lt("Email", "Email", "البريد الإلكتروني")}</label>
                             <input type="email" value={cvData.email} onChange={(e) => setCvData({...cvData, email: e.target.value})} className={`w-full px-8 py-5 rounded-3xl border-2 border-[#173E7D] outline-none focus:ring-4 focus:ring-blue-100 transition-all bg-white text-lg font-bold ${isRTL ? 'text-right' : ''}`} />
                           </div>
                           <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
@@ -6096,7 +6096,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Poste</label>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Job title", "Poste", "المنصب")}</label>
                                   <input 
                                     placeholder={t('rolePlaceholder')} 
                                     value={exp.role} 
@@ -6110,7 +6110,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 </div>
                               </div>
                               <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Période</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Period", "Période", "الفترة")}</label>
                                 <input 
                                   placeholder={t('period')} 
                                   value={exp.period} 
@@ -6123,7 +6123,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 />
                               </div>
                               <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Missions</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Responsibilities", "Missions", "المهام")}</label>
                                 <textarea 
                                   placeholder={language === 'ar' ? 'المهمات والمسؤوليات' : 'Missions et responsabilités'} 
                                   value={exp.missions}
@@ -6137,7 +6137,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 />
                               </div>
                               <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Description", "Description", "الوصف")}</label>
                                 <textarea 
                                   placeholder={t('descriptionPlaceholder')} 
                                   value={exp.desc}
@@ -6180,7 +6180,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                               </button>
                               <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                                 <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">École / Université</label>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("School / University", "École / Université", "المدرسة / الجامعة")}</label>
                                   <input 
                                     placeholder={language === 'ar' ? 'المدرسة / الجامعة' : 'École / Université'} 
                                     value={edu.school} 
@@ -6193,7 +6193,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Diplôme</label>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Degree", "Diplôme", "الشهادة")}</label>
                                   <input 
                                     placeholder={language === 'ar' ? 'الدبلوم' : 'Diplôme'} 
                                     value={edu.degree} 
@@ -6206,7 +6206,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Année</label>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Year", "Année", "السنة")}</label>
                                   <input 
                                     placeholder={language === 'ar' ? 'السنة' : 'Année'} 
                                     value={edu.year} 
@@ -6294,7 +6294,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           {cvData.languages.map((lang, i) => (
                             <div key={i} className={`flex flex-col md:flex-row items-center gap-6 bg-gray-50/50 p-6 rounded-[2rem] border border-gray-200/50 relative group ${isRTL ? 'flex-row-reverse' : ''}`}>
                               <div className="flex-1 w-full space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Langue</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Language", "Langue", "اللغة")}</label>
                                 <input 
                                   value={lang.name} 
                                   onChange={(e) => {
@@ -6306,7 +6306,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 />
                               </div>
                               <div className="w-full md:w-64 space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Niveau</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{lt("Level", "Niveau", "المستوى")}</label>
                                 <select 
                                   value={lang.level} 
                                   onChange={(e) => {
@@ -6368,7 +6368,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <h3 className="text-3xl font-display font-black text-[#173E7D] tracking-tight">
                     {language === 'ar' ? 'المعاينة النهائية' : 'Aperçu final'}
                   </h3>
-                  <p className="text-gray-500 mt-1 font-medium">Voici à quoi ressemblera votre CV pour les recruteurs.</p>
+                  <p className="text-gray-500 mt-1 font-medium">{lt("This is how recruiters will see your CV.", "Voici à quoi ressemblera votre CV pour les recruteurs.", "هكذا سيرى الموظِّفون سيرتك الذاتية.")}</p>
                 </div>
                 <div className={`flex flex-wrap items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {isLoadingCV && (
@@ -6520,7 +6520,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           <div className="space-y-8 pb-12">
             <div className={isRTL ? 'text-right' : ''}>
               <h2 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">{t('settings')}</h2>
-              <p className="text-gray-500 mt-2">Gérez vos préférences de recherche et la visibilité de votre profil.</p>
+              <p className="text-gray-500 mt-2">{lt("Manage your search preferences and profile visibility.", "Gérez vos préférences de recherche et la visibilité de votre profil.", "أدر تفضيلات البحث وظهور ملفك.")}</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -6625,7 +6625,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             onChange={(e) => setSalaryRange(parseInt(e.target.value))}
                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#F68D58]"
                           />
-                          <div className={`flex justify-between text-xs font-bold text-gray-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div dir="ltr" className="flex justify-between text-xs font-bold text-gray-400">
                             <span>30,000 DA</span>
                             <span className="text-[#F68D58]">{salaryRange.toLocaleString()} DA</span>
                             <span>300,000 DA</span>
@@ -6995,11 +6995,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 <Shield size={20} />
                               </div>
                               <div className={isRTL ? 'text-right' : 'text-left'}>
-                                <div className="font-bold text-[#173E7D]">Email de récupération</div>
+                                <div className="font-bold text-[#173E7D]">{lt("Recovery email", "Email de récupération", "بريد الاسترداد")}</div>
                                 <div className="text-xs text-gray-400">walid***@gmail.com</div>
                               </div>
                             </div>
-                            <button className="text-sm font-bold text-[#173E7D] hover:underline">Modifier</button>
+                            <button className="text-sm font-bold text-[#173E7D] hover:underline">{lt("Edit", "Modifier", "تعديل")}</button>
                           </div>
                         </div>
                       </div>
@@ -7017,7 +7017,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                     <div className="space-y-8">
                       <div className="space-y-4">
-                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Canaux de réception</h4>
+                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{lt("Delivery channels", "Canaux de réception", "قنوات الاستقبال")}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {[
                             { id: 'email', label: "Email", icon: Mail },
@@ -7040,7 +7040,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       </div>
 
                       <div className="space-y-6">
-                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>Types d'alertes</h4>
+                        <h4 className={`text-xs font-black text-gray-400 uppercase tracking-widest ${isRTL ? 'text-right' : ''}`}>{lt("Alert types", "Types d'alertes", "أنواع التنبيهات")}</h4>
                         {[
                           { id: 'jobAlerts', label: "Alertes emploi", desc: "Nouveaux postes correspondant à votre profil" },
                           { id: 'applications', label: "Mises à jour de candidature", desc: "Changements de statut de vos candidatures" },
@@ -7080,7 +7080,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className={isRTL ? 'text-right' : ''}>
                           <div className="font-bold text-[#173E7D]">{t('settings_new.profileVisibility')}</div>
-                          <div className="text-xs text-gray-400">Permettre aux recruteurs de trouver votre profil</div>
+                          <div className="text-xs text-gray-400">{lt("Let recruiters find your profile", "Permettre aux recruteurs de trouver votre profil", "السماح للموظِّفين بالعثور على ملفك")}</div>
                         </div>
                         <div 
                           onClick={() => setProfileVisible(!profileVisible)}
@@ -7092,8 +7092,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                       <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className={isRTL ? 'text-right' : ''}>
-                          <div className="font-bold text-[#173E7D]">Masquer mon profil actuel</div>
-                          <div className="text-xs text-gray-400">Votre entreprise actuelle ne pourra pas voir votre profil</div>
+                          <div className="font-bold text-[#173E7D]">{lt("Hide me from my current employer", "Masquer mon profil actuel", "إخفاء ملفي عن صاحب العمل الحالي")}</div>
+                          <div className="text-xs text-gray-400">{lt("Your current company will not be able to see your profile", "Votre entreprise actuelle ne pourra pas voir votre profil", "لن تتمكن شركتك الحالية من رؤية ملفك")}</div>
                         </div>
                         <div 
                           onClick={() => setHideCurrentEmployer(!hideCurrentEmployer)}
@@ -7241,7 +7241,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                      <label className="text-sm font-bold text-gray-900">Wilaya *</label>
+                      <label className="text-sm font-bold text-gray-900">{lt("Wilaya *", "Wilaya *", "الولاية *")}</label>
                       <select
                         value={editJobData.wilaya}
                         onChange={(e) => setEditJobData({ ...editJobData, wilaya: e.target.value })}
@@ -7257,25 +7257,25 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         onChange={(e) => setEditJobData({ ...editJobData, type: e.target.value })}
                         className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                       >
-                        <option>Temps plein</option>
-                        <option>Temps partiel</option>
-                        <option>Freelance</option>
-                        <option>Stage</option>
-                        <option>CDI</option>
-                        <option>CDD</option>
+                        <option value="Temps plein">{lt("Full time", "Temps plein", "دوام كامل")}</option>
+                        <option value="Temps partiel">{lt("Part time", "Temps partiel", "دوام جزئي")}</option>
+                        <option value="Freelance">{lt("Freelance", "Freelance", "عمل حر")}</option>
+                        <option value="Stage">{lt("Internship", "Stage", "تربص")}</option>
+                        <option value="CDI">{lt("Permanent (CDI)", "CDI", "عقد دائم")}</option>
+                        <option value="CDD">{lt("Fixed term (CDD)", "CDD", "عقد محدد المدة")}</option>
                       </select>
                     </div>
                     <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                      <label className="text-sm font-bold text-gray-900">Niveau d'expérience *</label>
+                      <label className="text-sm font-bold text-gray-900">{lt("Experience level *", "Niveau d'expérience *", "مستوى الخبرة *")}</label>
                       <select
                         value={editJobData.experience}
                         onChange={(e) => setEditJobData({ ...editJobData, experience: e.target.value })}
                         className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                       >
-                        <option>Débutant (0-2 ans)</option>
-                        <option>Confirmé (3-5 ans)</option>
-                        <option>Senior (5-10 ans)</option>
-                        <option>Expert (10+ ans)</option>
+                        <option value="Débutant (0-2 ans)">{lt("Junior (0-2 yrs)", "Débutant (0-2 ans)", "مبتدئ (0-2 سنوات)")}</option>
+                        <option value="Confirmé (3-5 ans)">{lt("Mid-level (3-5 yrs)", "Confirmé (3-5 ans)", "متمرس (3-5 سنوات)")}</option>
+                        <option value="Senior (5-10 ans)">{lt("Senior (5-10 yrs)", "Senior (5-10 ans)", "خبير (5-10 سنوات)")}</option>
+                        <option value="Expert (10+ ans)">{lt("Expert (10+ yrs)", "Expert (10+ ans)", "خبير أول (أكثر من 10 سنوات)")}</option>
                       </select>
                     </div>
                     <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
@@ -7356,11 +7356,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       <AnimatePresence>
         {isSidebarOpen && (
           <motion.aside 
-            initial={{ x: -260 }}
+            initial={{ x: isRTL ? 260 : -260 }}
             animate={{ x: 0 }}
-            exit={{ x: -260 }}
+            exit={{ x: isRTL ? 260 : -260 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-y-0 left-0 w-[260px] bg-[#DEE6E2] border-r border-gray-200 z-50 flex flex-col lg:hidden shadow-2xl"
+            className={`fixed inset-y-0 w-[260px] max-w-[85vw] bg-[#DEE6E2] border-gray-200 z-50 flex flex-col lg:hidden shadow-2xl ${
+              isRTL ? 'right-0 border-l' : 'left-0 border-r'
+            }`}
           >
             <div className="p-8 flex items-center justify-between">
               <Logo size="md" onClick={onGoHome} />
@@ -7887,7 +7889,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 {candidateCvLoading ? (
                   <div className="py-24 flex flex-col items-center gap-4 text-gray-400">
                     <div className="w-10 h-10 border-4 border-gray-100 border-t-[#F68D58] rounded-full animate-spin" />
-                    <p className="font-bold text-xs uppercase tracking-widest">Chargement du CV…</p>
+                    <p className="font-bold text-xs uppercase tracking-widest">{lt("Loading CV…", "Chargement du CV…", "جارٍ تحميل السيرة الذاتية…")}</p>
                   </div>
                 ) : candidateCvError ? (
                   <div className="py-24 px-10 text-center">
@@ -8060,7 +8062,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                   <div className="space-y-12">
                     <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Avantages</h4>
+                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">{lt("Benefits", "Avantages", "المزايا")}</h4>
                       <div className="flex flex-wrap gap-2">
                         {selectedJob.benefits.map((ben, i) => (
                           <span key={i} className="px-4 py-2 bg-gray-50 text-[#173E7D] text-xs font-black rounded-xl border border-gray-100">
@@ -8072,7 +8074,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                     <section className="p-8 bg-blue-50 rounded-[2.5rem] border border-blue-100 space-y-6">
                       <div className="space-y-1">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Date de publication</p>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{lt("Published on", "Date de publication", "تاريخ النشر")}</p>
                         <p className="text-sm font-bold text-[#173E7D]">Il y a 2 jours</p>
                       </div>
                     </section>
@@ -8115,7 +8117,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
                     <Mail size={20} />
                   </div>
-                  <span className="font-black uppercase tracking-widest text-sm">Simulation Email</span>
+                  <span className="font-black uppercase tracking-widest text-sm">{lt("Email preview", "Simulation Email", "معاينة البريد")}</span>
                 </div>
                 <h2 className="text-2xl font-bold">Invitation à rejoindre TechDz Solutions</h2>
               </div>
@@ -8133,7 +8135,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                 <div className={`text-gray-600 leading-relaxed ${isRTL ? 'text-right' : ''}`}>
                   Bonjour,<br /><br />
-                  <strong>{showInviteSimulation.inviterName}</strong> vous a invité à rejoindre l'équipe de recrutement sur la plateforme <strong>Dar L'emploi</strong>.<br /><br />
+                  <strong>{showInviteSimulation.inviterName}</strong> {lt("has invited you to join the recruitment team on the platform", "vous a invité à rejoindre l'équipe de recrutement sur la plateforme", "دعاك للانضمام إلى فريق التوظيف على المنصة")} <strong>Dar L'emploi</strong>.<br /><br />
                   En rejoignant l'équipe, vous pourrez collaborer sur les offres d'emploi, gérer les candidatures et utiliser nos outils d'IA.
                 </div>
 

@@ -1186,8 +1186,8 @@ export default function App() {
       <section id="how-it-works" className="py-40 px-6 bg-gray-50/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-24">
-            <span className="text-[#F68D58] font-black text-xs tracking-[0.4em] uppercase mb-6 block">Processus</span>
-            <h2 className="text-6xl font-display font-bold text-[#173E7D] tracking-tighter">Comment ça marche ?</h2>
+            <span className="text-[#F68D58] font-black text-xs tracking-[0.4em] uppercase mb-6 block">{language === 'ar' ? 'الخطوات' : 'Processus'}</span>
+            <h2 className="text-3xl sm:text-5xl lg:text-6xl font-display font-bold text-[#173E7D] tracking-tighter">{language === 'ar' ? 'كيف تعمل المنصة؟' : 'Comment ça marche ?'}</h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">

@@ -706,15 +706,31 @@ export default function App() {
             </p>
 
             {/* Search Bar Integrated in Hero */}
-            <div className={`bg-white/10 backdrop-blur-3xl p-3 rounded-[4rem] shadow-2xl border border-white/20 flex flex-col md:flex-row gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex-[1.5] flex items-center px-6 gap-4 text-white border-b md:border-b-0 md:border-r border-white/10 py-4 ${language === 'ar' ? 'flex-row-reverse border-r-0 border-l' : ''}`}>
-                <Search size={24} className="text-[#F68D58]" />
+            {/*
+              Solid white rather than the translucent glass it was. On the navy
+              hero the old bg-white/10 left the input text sitting on whatever
+              the background image happened to be, and a placeholder at
+              white/40 was close to invisible. A white card gives the fields a
+              surface of their own and lets the text be dark enough to read.
+            */}
+            <div
+              className={`bg-white p-2.5 rounded-[2.5rem] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.35)] ring-1 ring-black/5 flex flex-col md:flex-row gap-2 ${language === 'ar' ? 'md:flex-row-reverse' : ''}`}
+            >
+              <div
+                className={`flex-[1.5] flex items-center px-6 gap-4 rounded-[2rem] transition-colors focus-within:bg-gray-50 border-b md:border-b-0 md:border-r border-gray-100 py-4 ${
+                  language === 'ar' ? 'flex-row-reverse md:border-r-0 md:border-l' : ''
+                }`}
+              >
+                <Search size={22} className="text-[#F68D58] shrink-0" />
                 <div className="w-full relative">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     list="job-keywords"
-                    placeholder={translations[language].search.jobPlaceholder} 
-                    className={`w-full outline-none text-white bg-transparent font-bold text-lg placeholder:text-white/40 ${language === 'ar' ? 'text-right' : ''}`} 
+                    aria-label={translations[language].search.jobPlaceholder}
+                    placeholder={translations[language].search.jobPlaceholder}
+                    className={`w-full outline-none bg-transparent text-[#173E7D] font-bold text-lg placeholder:text-gray-400 placeholder:font-medium ${
+                      language === 'ar' ? 'text-right' : ''
+                    }`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -725,28 +741,41 @@ export default function App() {
                   </datalist>
                 </div>
               </div>
-              <div className={`flex-1 flex items-center px-6 gap-4 text-white py-4 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <MapPin size={24} className="text-[#F68D58]" />
-                <select 
-                  className={`w-full outline-none text-white bg-transparent font-bold text-lg appearance-none cursor-pointer ${language === 'ar' ? 'text-right' : ''}`}
+
+              <div
+                className={`flex-1 flex items-center px-6 gap-4 rounded-[2rem] transition-colors focus-within:bg-gray-50 py-4 ${
+                  language === 'ar' ? 'flex-row-reverse' : ''
+                }`}
+              >
+                <MapPin size={22} className="text-[#F68D58] shrink-0" />
+                <select
+                  aria-label={translations[language].search.locationPlaceholder}
+                  className={`w-full outline-none bg-transparent font-bold text-lg appearance-none cursor-pointer ${
+                    searchLocation ? 'text-[#173E7D]' : 'text-gray-400 font-medium'
+                  } ${language === 'ar' ? 'text-right' : ''}`}
                   value={searchLocation}
                   onChange={(e) => setSearchLocation(e.target.value)}
                 >
-                  <option value="" className="bg-[#173E7D] text-white/40">{translations[language].search.locationPlaceholder}</option>
+                  {/* The option colours followed the old dark bar; on white
+                      they have to be the other way round. */}
+                  <option value="" className="text-gray-400">
+                    {translations[language].search.locationPlaceholder}
+                  </option>
                   {WILAYAS.map((wilaya) => (
-                    <option key={wilaya} value={wilaya} className="bg-[#173E7D] text-white">
+                    <option key={wilaya} value={wilaya} className="text-[#173E7D]">
                       {wilaya}
                     </option>
                   ))}
                 </select>
               </div>
-              <button 
+
+              <button
                 onClick={handleSearch}
                 disabled={isSearching}
-                className="bg-[#F68D58] text-white px-10 py-5 rounded-[3rem] font-black hover:bg-white hover:text-[#173E7D] transition-all duration-500 flex items-center justify-center gap-3 shadow-2xl text-lg disabled:opacity-70"
+                className="bg-[#F68D58] text-white px-10 py-5 rounded-[2rem] font-black hover:bg-[#173E7D] transition-all duration-300 flex items-center justify-center gap-3 shadow-lg shadow-orange-500/25 text-lg disabled:opacity-70 shrink-0"
               >
                 {isSearching ? (
-                  <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="w-6 h-6 border-[3px] border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
                   <>
                     {translations[language].search.button}
@@ -755,6 +784,7 @@ export default function App() {
                 )}
               </button>
             </div>
+
           </motion.div>
 
           {/* Right Cards */}
@@ -1314,7 +1344,6 @@ export default function App() {
                   <p className="text-[10px] font-black text-blue-200/60 uppercase tracking-[0.25em] mb-2">
                     {language === 'fr' ? 'Rémunération' : 'الأجر'}
                   </p>
-                  <p className="text-3xl font-black tracking-tight mb-10">{displaySpotlightJob.salary}</p>
 
                   <button
                     onClick={(e) => {

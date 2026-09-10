@@ -1212,22 +1212,22 @@ export default function Dashboard({
             {/* Initials when there is no photo, rather than a stock portrait
                 of a stranger — and no <img src=""> either, which makes the
                 browser refetch the whole page. */}
-            {displayPhotoURL ? (
+            {displayIdentityPhoto ? (
               <img
-                src={displayPhotoURL}
-                alt={user.displayName ?? ''}
+                src={displayIdentityPhoto}
+                alt=""
                 className="w-10 h-10 rounded-xl object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
               <div className="w-10 h-10 rounded-xl bg-[#173E7D] text-white flex items-center justify-center font-black text-sm shrink-0">
-                {(user.displayName || user.email || '?').trim().charAt(0).toUpperCase()}
+                {(displayIdentityName || '?').trim().charAt(0).toUpperCase()}
               </div>
             )}
 
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-[#173E7D] truncate">
-                {user.displayName}
+                {displayIdentityName}
               </p>
 
               <p className="text-[10px] text-gray-400 truncate">
@@ -1622,6 +1622,26 @@ export default function Dashboard({
   });
   const [companyRole, setCompanyRole] = useState<string>('');
   const [postingQuota, setPostingQuota] = useState<PostingQuota | null>(null);
+
+  /**
+   * How a recruiter is shown across the dashboard.
+   *
+   * A recruiter is their company, not their login. The header, the welcome
+   * line and the sidebar all read user.displayName and user.photoURL, which
+   * for a recruiter is the signup email and a personal avatar — so a company
+   * could set its name and upload its logo, have both saved correctly, and
+   * still see "makerslabel01@gmail.com" everywhere. Falls back to the account
+   * only while the company has not loaded or has no name yet.
+   */
+  const isRecruiterAccount = user?.role === 'employer';
+
+  const displayIdentityName = isRecruiterAccount
+    ? company?.name || companyForm.name || user?.displayName || user?.email || ''
+    : user?.displayName || user?.email || '';
+
+  const displayIdentityPhoto = isRecruiterAccount
+    ? company?.logo?.url || displayPhotoURL || null
+    : displayPhotoURL || null;
   const [loadingCompany, setLoadingCompany] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -2031,8 +2051,6 @@ export default function Dashboard({
     wilaya: 'Alger',
     type: 'CDI',
     experience: 'Confirmé (3-5 ans)',
-    salaryMin: '',
-    salaryMax: '',
     status: 'PUBLISHED',
   });
 
@@ -2047,8 +2065,6 @@ export default function Dashboard({
         wilaya: job.wilaya || job.location || 'Alger',
         type: JOB_TYPE_LABEL[job.type] || 'CDI',
         experience: EXPERIENCE_LABEL[job.experienceLevel || ''] || 'Confirmé (3-5 ans)',
-        salaryMin: job.salaryMin != null ? String(job.salaryMin) : '',
-        salaryMax: job.salaryMax != null ? String(job.salaryMax) : '',
         status: job.status || 'PUBLISHED',
       });
     } catch (error: any) {
@@ -2087,8 +2103,6 @@ export default function Dashboard({
         wilaya: editJobData.wilaya,
         type: (JOB_TYPE_MAP[editJobData.type] || 'FULL_TIME') as any,
         experienceLevel: (EXPERIENCE_MAP[editJobData.experience] || 'MID') as any,
-        salaryMin: editJobData.salaryMin ? Number(editJobData.salaryMin) : undefined,
-        salaryMax: editJobData.salaryMax ? Number(editJobData.salaryMax) : undefined,
         status: editJobData.status,
       });
       await loadPostedJobs();
@@ -2111,8 +2125,6 @@ export default function Dashboard({
     wilaya: 'Alger',
     type: 'CDI',
     experience: 'Confirmé (3-5 ans)',
-    salaryMin: '',
-    salaryMax: '',
     description: '',
     requirements: '',
     benefits: '',
@@ -2149,8 +2161,6 @@ export default function Dashboard({
         wilaya: newJobData.wilaya,
         type: (JOB_TYPE_MAP[newJobData.type] || 'FULL_TIME') as any,
         experienceLevel: (EXPERIENCE_MAP[newJobData.experience] || 'MID') as any,
-        salaryMin: newJobData.salaryMin ? Number(newJobData.salaryMin) : undefined,
-        salaryMax: newJobData.salaryMax ? Number(newJobData.salaryMax) : undefined,
       });
 
       await loadPostedJobs();
@@ -2159,8 +2169,6 @@ export default function Dashboard({
         title: '',
         sector: 'Technologie',
         type: 'CDI',
-        salaryMin: '',
-        salaryMax: '',
         description: '',
         requirements: '',
         benefits: '',
@@ -2204,7 +2212,6 @@ export default function Dashboard({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWilaya, setSelectedWilaya] = useState('');
   const [selectedType, setSelectedType] = useState('');
-  const [selectedSalary, setSelectedSalary] = useState('');
   const [selectedSector, setSelectedSector] = useState('');
 
   // NOTE: there is no backend endpoint for saved jobs yet (the SavedJob
@@ -3317,7 +3324,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-6 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
                 <div className={isRTL ? 'text-right' : ''}>
                   <h1 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
-                    {language === 'ar' ? 'مرحباً بك،' : 'Bienvenue,'} {user?.displayName?.split(' ')[0]} !
+                    {language === 'ar' ? 'مرحباً بك،' : 'Bienvenue,'} {displayIdentityName} !
                   </h1>
                   <p className="text-gray-500 mt-2 text-lg font-medium">
                     {language === 'ar' ? 'إليك ما يحدث في حملات التوظيف الخاصة بك اليوم.' : 'Voici ce qui se passe dans vos campagnes de recrutement aujourd\'hui.'}
@@ -3330,10 +3337,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   >
                     <PlusCircle size={20} />
                     {t('postJob')}
-                  </button>
-                  <button className="bg-white text-[#173E7D] border border-gray-100 px-6 py-4 rounded-2xl font-bold hover:bg-gray-50 transition-all shadow-sm flex items-center gap-2">
-                    <FileText size={20} />
-                    {language === 'ar' ? 'تقارير' : 'Rapports'}
                   </button>
                 </div>
               </div>
@@ -4204,26 +4207,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <option>Senior (5-10 ans)</option>
                       <option>Expert (10+ ans)</option>
                     </select>
-                  </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">Salaire minimum (DZD/mois)</label>
-                    <input 
-                      type="number" 
-                      placeholder="ex: 80000" 
-                      value={newJobData.salaryMin}
-                      onChange={(e) => setNewJobData({...newJobData, salaryMin: e.target.value})}
-                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
-                    />
-                  </div>
-                  <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                    <label className="text-sm font-bold text-gray-900">Salaire maximum (DZD/mois)</label>
-                    <input 
-                      type="number" 
-                      placeholder="ex: 150000" 
-                      value={newJobData.salaryMax}
-                      onChange={(e) => setNewJobData({...newJobData, salaryMax: e.target.value})}
-                      className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`} 
-                    />
                   </div>
                 </div>
 
@@ -5480,13 +5463,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           const matchesType = !selectedType || job.type === selectedType;
           const matchesSector = !selectedSector || job.sector === selectedSector;
           
-          let matchesSalary = true;
-          if (selectedSalary) {
-            const min = parseInt(selectedSalary);
-            matchesSalary = job.salaryMin >= min;
-          }
-
-          return matchesSearch && matchesWilaya && matchesType && matchesSector && matchesSalary;
+          return matchesSearch && matchesWilaya && matchesType && matchesSector;
         });
 
         const JOB_TYPES = language === 'ar' 
@@ -5513,13 +5490,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             'Éducation / Formation',
             'Vente / Commerce'
           ];
-        const SALARY_RANGES = [
-          { label: t('allSalaries'), value: '' },
-          { label: '> 50k DZD', value: '50000' },
-          { label: '> 100k DZD', value: '100000' },
-          { label: '> 150k DZD', value: '150000' },
-          { label: '> 200k DZD', value: '200000' },
-        ];
 
         return (
           <div className="space-y-8">
@@ -5589,23 +5559,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
 
-              {/* Salary Filter */}
-              <select 
-                className={`px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm font-bold text-gray-600 outline-none focus:border-[#F68D58] transition-all cursor-pointer ${isRTL ? 'text-right' : ''}`}
-                value={selectedSalary}
-                onChange={(e) => setSelectedSalary(e.target.value)}
-              >
-                {SALARY_RANGES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-
               {/* Clear Filters */}
-              {(searchQuery || selectedWilaya || selectedType || selectedSalary || selectedSector) && (
+              {(searchQuery || selectedWilaya || selectedType || selectedSector) && (
                 <button 
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedWilaya('');
                     setSelectedType('');
-                    setSelectedSalary('');
                     setSelectedSector('');
                   }}
                   className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50 rounded-xl transition-all ${isRTL ? 'flex-row-reverse' : ''}`}
@@ -5642,7 +5602,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       setSearchQuery('');
                       setSelectedWilaya('');
                       setSelectedType('');
-                      setSelectedSalary('');
                       setSelectedSector('');
                     }}
                     className="px-8 py-3 bg-[#173E7D] text-white rounded-full font-bold hover:bg-[#0A1118] transition-all"
@@ -7302,26 +7261,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <option value="CLOSED">{lt('Closed', 'Fermée', 'مغلقة')}</option>
                       </select>
                     </div>
-                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                      <label className="text-sm font-bold text-gray-900">{lt('Min salary (DZD)', 'Salaire min (DZD)', 'الحد الأدنى للراتب')}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editJobData.salaryMin}
-                        onChange={(e) => setEditJobData({ ...editJobData, salaryMin: e.target.value })}
-                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
-                      />
-                    </div>
-                    <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
-                      <label className="text-sm font-bold text-gray-900">{lt('Max salary (DZD)', 'Salaire max (DZD)', 'الحد الأقصى للراتب')}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editJobData.salaryMax}
-                        onChange={(e) => setEditJobData({ ...editJobData, salaryMax: e.target.value })}
-                        className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
-                      />
-                    </div>
                   </div>
 
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
@@ -7688,7 +7627,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             <div className="h-8 w-px bg-gray-100" />
             <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <div className={`hidden sm:block ${isRTL ? 'text-left' : 'text-right'}`}>
-                <div className="text-sm font-bold text-[#173E7D] leading-none">{user?.displayName}</div>
+                <div className="text-sm font-bold text-[#173E7D] leading-none">{displayIdentityName}</div>
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
                   {user?.role === 'employer' 
                     ? (language === 'ar' ? 'صاحب عمل' : 'Employeur')
@@ -7696,11 +7635,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
               </div>
               <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-gray-100">
-                {displayPhotoURL ? (
-                  <img src={displayPhotoURL} alt="Profile" className="w-full h-full object-cover" />
+                {displayIdentityPhoto ? (
+                  <img src={displayIdentityPhoto} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full bg-[#173E7D] text-white flex items-center justify-center font-black">
-                    {(user?.displayName || user?.email || '?').trim().charAt(0).toUpperCase()}
+                    {(displayIdentityName || '?').trim().charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
@@ -8104,10 +8043,6 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     </section>
 
                     <section className="p-8 bg-blue-50 rounded-[2.5rem] border border-blue-100 space-y-6">
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Salaire Proposé</p>
-                        <p className="text-2xl font-black text-[#173E7D]">{selectedJob.salary}</p>
-                      </div>
                       <div className="space-y-1">
                         <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Date de publication</p>
                         <p className="text-sm font-bold text-[#173E7D]">Il y a 2 jours</p>

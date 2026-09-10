@@ -165,9 +165,9 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       const message = err?.response?.data?.message;
       if (err?.response?.status === 429 || message?.toLowerCase().includes('rate limit')) {
         const rateLimitMsg = {
-          en: "Rate limit exceeded. Please try again in 1 hour.",
-          fr: "Limite de tentatives atteinte. Réessayez dans 1 heure.",
-          ar: "تم تجاوز حد المحاولات. يرجى المحاولة بعد ساعة."
+          en: "Too many attempts. Please try again in about 15 minutes.",
+          fr: "Trop de tentatives. Réessayez dans une quinzaine de minutes.",
+          ar: "محاولات كثيرة جداً. يرجى المحاولة بعد حوالي 15 دقيقة."
         }[language];
         setError(rateLimitMsg);
       } else {
@@ -181,7 +181,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
+        <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-4 md:p-6 overflow-y-auto overscroll-contain">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -190,29 +190,44 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
             className="absolute inset-0 bg-black/60 backdrop-blur-md"
           />
           
+          {/* max-h plus an inner scroller, because the phone-height case was
+              broken: the panel is ~640px tall and the overlay is fixed, so on
+              any screen shorter than that the submit button sat off-screen with
+              nothing to scroll — you could fill the whole form and never reach
+              "S'inscrire". dvh rather than vh so the collapsing URL bar on iOS
+              does not hide the bottom of it. */}
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col md:flex-row"
+            className="bg-white w-full max-w-2xl my-auto rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col md:flex-row max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]"
           >
+            {/* Sits above the form column, which now scrolls underneath it, so
+                it carries its own background rather than reading as part of
+                whichever field happens to be behind it. */}
             <button 
               onClick={onClose}
-              className="absolute top-6 right-6 z-20 text-gray-400 hover:text-gray-600 transition-all hover:rotate-90 duration-500"
+              aria-label={language === 'ar' ? 'إغلاق' : 'Fermer'}
+              className="absolute top-5 right-5 z-30 p-1.5 rounded-full bg-white/90 backdrop-blur-sm shadow-sm text-gray-400 hover:text-gray-600 transition-all hover:rotate-90 duration-500"
             >
               <X size={24} />
             </button>
 
-            <div className="absolute top-6 left-8 z-20">
-              <Logo size="sm" onClick={onClose} />
-            </div>
+            {/* Picker step only. In the form step this sat directly on top
+                of the "Retour" button, and it calls onClose — so aiming for
+                Back on a phone threw away everything already typed. */}
+            {step === 'selection' && (
+              <div className="absolute top-6 left-8 z-20">
+                <Logo size="sm" onClick={onClose} />
+              </div>
+            )}
 
             {step === 'selection' ? (
-              <div className={`flex flex-col md:flex-row w-full h-[400px] ${isRTL ? 'md:flex-row-reverse' : ''}`}>
+              <div className={`flex flex-col md:flex-row w-full md:h-[400px] ${isRTL ? 'md:flex-row-reverse' : ''}`}>
                 {/* Employer Side */}
                 <div 
                   onClick={() => { setRole('employer'); setStep('form'); }}
-                  className="flex-1 relative group cursor-pointer overflow-hidden border-b md:border-b-0 md:border-r border-white/10"
+                  className="flex-1 relative group cursor-pointer overflow-hidden border-b md:border-b-0 md:border-r border-white/10 min-h-[220px]"
                 >
                   <img 
                     src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=800" 
@@ -221,7 +236,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-[#173E7D]/80 group-hover:bg-[#173E7D]/70 transition-colors duration-500" />
-                  <div className="relative z-10 h-full p-10 flex flex-col items-center justify-center text-center">
+                  <div className="relative z-10 h-full py-8 px-6 md:p-10 flex flex-col items-center justify-center text-center">
                     <div className="w-14 h-14 bg-white/10 backdrop-blur-xl text-white rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform border border-white/20">
                       <Building2 size={28} strokeWidth={1.5} />
                     </div>
@@ -236,7 +251,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                 {/* Candidate Side */}
                 <div 
                   onClick={() => { setRole('user'); setStep('form'); }}
-                  className="flex-1 relative group cursor-pointer overflow-hidden"
+                  className="flex-1 relative group cursor-pointer overflow-hidden min-h-[220px]"
                 >
                   <img 
                     src="https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=800" 
@@ -245,7 +260,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-[#173E7D]/80 group-hover:bg-[#173E7D]/70 transition-colors duration-500" />
-                  <div className="relative z-10 h-full p-10 flex flex-col items-center justify-center text-center">
+                  <div className="relative z-10 h-full py-8 px-6 md:p-10 flex flex-col items-center justify-center text-center">
                     <div className="w-14 h-14 bg-white/10 backdrop-blur-xl text-white rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform border border-white/20">
                       <User size={28} strokeWidth={1.5} />
                     </div>
@@ -258,9 +273,9 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                 </div>
               </div>
             ) : (
-              <div className="w-full flex flex-col md:flex-row">
+              <div className="w-full flex flex-col md:flex-row min-h-0">
                 {/* Form Side */}
-                <div className="flex-1 p-6 md:p-8">
+                <div className="flex-1 min-h-0 p-6 md:p-8 overflow-y-auto">
                   <button 
                     onClick={() => setStep('selection')}
                     className={`flex items-center gap-2 text-gray-400 hover:text-[#173E7D] font-bold mb-6 transition-all ${isRTL ? 'flex-row-reverse' : ''}`}
@@ -296,9 +311,11 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                         <input 
                           type="text"
                           required
+                          autoComplete={role === 'user' ? 'name' : 'organization'}
+                          autoCapitalize="words"
                           value={role === 'user' ? formData.name : formData.companyName}
                           onChange={(e) => setFormData({ ...formData, [role === 'user' ? 'name' : 'companyName']: e.target.value })}
-                          className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-sm ${isRTL ? 'text-right' : ''}`}
+                          className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-base md:text-sm ${isRTL ? 'text-right' : ''}`}
                           placeholder={role === 'user' ? "Ahmed Benali" : "TechDz Solutions"}
                         />
                       </div>
@@ -315,9 +332,14 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                         <input 
                           type="email"
                           required
+                          autoComplete="email"
+                          inputMode="email"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           value={formData.email}
                           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                          className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-sm ${isRTL ? 'text-right' : ''}`}
+                          className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-base md:text-sm ${isRTL ? 'text-right' : ''}`}
                           placeholder="votre@email.com"
                         />
                       </div>
@@ -335,9 +357,13 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                           <input 
                             type={showPassword ? "text" : "password"}
                             required
+                            autoComplete="new-password"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
                             value={formData.password}
                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                            className={`w-full ${isRTL ? 'pr-12 pl-10' : 'pl-12 pr-10'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-sm ${isRTL ? 'text-right' : ''}`}
+                            className={`w-full ${isRTL ? 'pr-12 pl-10' : 'pl-12 pr-10'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-base md:text-sm ${isRTL ? 'text-right' : ''}`}
                           />
                           <button 
                             type="button"
@@ -360,9 +386,13 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
                           <input 
                             type={showPassword ? "text" : "password"}
                             required
+                            autoComplete="new-password"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
                             value={formData.confirmPassword}
                             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                            className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-sm ${isRTL ? 'text-right' : ''}`}
+                            className={`w-full ${isRTL ? 'pr-12 pl-5' : 'pl-12 pr-5'} py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#173E7D] focus:bg-white transition-all font-medium text-base md:text-sm ${isRTL ? 'text-right' : ''}`}
                           />
                         </div>
                       </div>

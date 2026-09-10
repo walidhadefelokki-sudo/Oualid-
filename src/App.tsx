@@ -638,23 +638,63 @@ export default function App() {
             initial={{ opacity: 0, x: '100%' }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '100%' }}
-            className="fixed inset-0 bg-[#DEE6E2] z-[60] flex flex-col items-center justify-center gap-8 text-3xl font-display font-bold text-[#173E7D]"
+            // The account actions below make this column tall enough to
+            // overflow a short phone. Centring straight on a scroll container
+            // puts the overflow above the scrollable area, where it cannot be
+            // reached — so the scroller is here and the centring is on the
+            // min-h-full child inside it.
+            className="fixed inset-0 bg-[#DEE6E2] z-[60] overflow-y-auto overscroll-contain text-3xl font-display font-bold text-[#173E7D]"
           >
-            <button onClick={() => setIsMenuOpen(false)} className="absolute top-8 right-8 text-[#173E7D]">
+            <button
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed top-8 right-8 z-10 text-[#173E7D]"
+              aria-label={language === 'ar' ? 'إغلاق القائمة' : 'Fermer le menu'}
+            >
               <X size={40} />
             </button>
+
+            <div className="min-h-full flex flex-col items-center justify-center gap-7 px-6 py-24">
             <button onClick={() => { scrollToSection('features'); setIsMenuOpen(false); }}>{translations[language].nav.features}</button>
             <button onClick={() => { scrollToSection('sectors'); setIsMenuOpen(false); }}>{translations[language].nav.sectors}</button>
             <button onClick={() => { scrollToSection('how-it-works'); setIsMenuOpen(false); }}>{translations[language].nav.howItWorks}</button>
             <button onClick={() => { scrollToSection('about-us'); setIsMenuOpen(false); }}>{translations[language].nav.aboutUs}</button>
             <button onClick={() => { scrollToSection('pricing'); setIsMenuOpen(false); }}>{translations[language].nav.pricing}</button>
+            {/* The account actions the desktop header has always had. The
+                mobile menu offered only "Se connecter", so on a phone there
+                was no way in to signing up at all, and no way back to the
+                dashboard once signed in. */}
             {user ? (
-              <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} className="px-12 py-4 rounded-full bg-red-500 text-white shadow-xl flex items-center gap-3">
-                <LogOut size={24} /> {translations[language].logout}
-              </button>
+              <>
+                <button
+                  onClick={() => { setIsMenuOpen(false); setView('dashboard'); }}
+                  className="px-12 py-4 rounded-full bg-[#173E7D] text-white shadow-xl flex items-center gap-3 text-2xl"
+                >
+                  <LayoutDashboard size={24} /> {translations[language].nav.dashboard}
+                </button>
+                <button
+                  onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                  className="px-12 py-4 rounded-full bg-red-500 text-white shadow-xl flex items-center gap-3 text-2xl"
+                >
+                  <LogOut size={24} /> {translations[language].logout}
+                </button>
+              </>
             ) : (
-              <button onClick={() => { setIsMenuOpen(false); setIsLoginOpen(true); }} className="px-12 py-4 rounded-full bg-[#173E7D] text-white shadow-xl">{translations[language].nav.login}</button>
+              <>
+                <button
+                  onClick={() => { setIsMenuOpen(false); setIsAuthModalOpen(true); }}
+                  className="px-12 py-4 rounded-full bg-[#0A1118] text-white shadow-xl text-2xl"
+                >
+                  {translations[language].nav.signup}
+                </button>
+                <button
+                  onClick={() => { setIsMenuOpen(false); setIsLoginOpen(true); }}
+                  className="px-12 py-4 rounded-full bg-white text-[#173E7D] border border-[#173E7D]/15 shadow-lg text-2xl"
+                >
+                  {translations[language].nav.login}
+                </button>
+              </>
             )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

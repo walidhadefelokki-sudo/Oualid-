@@ -282,9 +282,23 @@ export const getMySubscription = async (req: Request, res: Response, next: NextF
         sub.status === "ACTIVE" && sub.endsAt.getTime() < now ? "EXPIRED" : sub.status,
     }));
 
+    /* How this plan is actually limited, so the panel stops presenting all
+     * three the same way:
+     *   free       one offer, no expiry
+     *   offers     a balance of annonces, spent not timed — no expiry either
+     *   annual     a yearly term that runs out
+     * Only "annual" has a term to show or count down. Older FREE and PREMIUM
+     * rows exist from when every plan change wrote one; they stay in the
+     * history, but they are not treated as a term that is running. */
+    const limitModel =
+      company.plan === "CORPORATE" ? "annual" : company.plan === "PREMIUM" ? "offers" : "free";
+
     const current =
-      withEffectiveStatus.find((sub) => sub.status === "ACTIVE" && sub.plan === company.plan) ??
-      null;
+      limitModel === "annual"
+        ? (withEffectiveStatus.find(
+            (sub) => sub.status === "ACTIVE" && sub.plan === company.plan
+          ) ?? null)
+        : null;
 
     const daysRemaining = current
       ? Math.max(0, Math.ceil((current.endsAt.getTime() - now) / 86_400_000))
@@ -294,6 +308,7 @@ export const getMySubscription = async (req: Request, res: Response, next: NextF
       status: "success",
       data: {
         plan: company.plan,
+        limitModel,
         verified: company.verified,
         memberSince: company.createdAt,
         quota,

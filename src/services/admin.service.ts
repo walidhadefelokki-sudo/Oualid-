@@ -6,6 +6,8 @@ export interface Company {
   slug: string;
   plan: "FREE" | "PREMIUM" | "CORPORATE";
   verified: boolean;
+  /** Paid annonces still in hand. Only spent on PREMIUM. */
+  postingCredits: number;
   createdAt: string;
   members: {
     id: string;
@@ -60,6 +62,18 @@ export const adminService = {
   ) => {
     const { data } = await api.patch(`/admin/companies/${id}/plan`, { plan, durationDays });
     return data.data;
+  },
+
+  /**
+   * Sets a company's annonce balance outright.
+   *
+   * "credits" rather than "postings": the latter adds to the balance, which is
+   * what a purchase does. An administrator fixing a number is stating what it
+   * should be.
+   */
+  setCompanyPostings: async (id: string, credits: number) => {
+    const { data } = await api.patch(`/admin/companies/${id}/postings`, { credits });
+    return data.data.company as { id: string; postingCredits: number };
   },
 
   getUsers: async (params?: { role?: string; status?: string }) => {

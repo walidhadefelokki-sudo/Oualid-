@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { grantPostings } from "../services/postingQuota.service";
+import { grantPostings, setPostings } from "../services/postingQuota.service";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 
@@ -71,24 +71,38 @@ export const updateCompanyPlan = async (req: Request, res: Response, next: NextF
     const company = await prisma.company.findUnique({ where: { id } });
     if (!company) return next(new AppError("Company not found", 404));
 
+    /* Only CORPORATE is a subscription in the sense of a term that runs and
+     * then lapses, and it is sold by the year. FREE is a single offer with no
+     * expiry, and PREMIUM is a balance of annonces that is spent rather than
+     * timed — writing a 30-day Subscription row for either invented an expiry
+     * that nothing enforces and that the recruiter's own panel then counted
+     * down. Those two change the plan and nothing else; the audit log below
+     * still records that it happened. */
+    const isTermed = plan === "CORPORATE";
     const startsAt = new Date();
-    const endsAt = new Date(startsAt.getTime() + (durationDays || 30) * 24 * 60 * 60 * 1000);
+    const endsAt = new Date(
+      startsAt.getTime() + (durationDays || 365) * 24 * 60 * 60 * 1000
+    );
 
     const [updatedCompany, subscription] = await prisma.$transaction([
       prisma.company.update({
         where: { id },
         data: { plan },
       }),
-      prisma.subscription.create({
-        data: {
-          companyId: id,
-          plan,
-          status: "ACTIVE",
-          startsAt,
-          endsAt,
-          autoRenew: false,
-        },
-      }),
+      ...(isTermed
+        ? [
+            prisma.subscription.create({
+              data: {
+                companyId: id,
+                plan,
+                status: "ACTIVE",
+                startsAt,
+                endsAt,
+                autoRenew: false,
+              },
+            }),
+          ]
+        : []),
     ]);
 
     // audit trail
@@ -307,17 +321,27 @@ export const getStats = async (req: Request, res: Response, next: NextFunction) 
 export const grantCompanyPostings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { postings } = req.body as { postings?: number };
+    // "postings" adds to the balance (a purchase); "credits" sets it outright
+    // (an administrator correcting it). Exactly one of the two.
+    const { postings, credits } = req.body as { postings?: number; credits?: number };
+
+    if (postings == null && credits == null) {
+      return next(new AppError("Provide either postings (to add) or credits (to set).", 400));
+    }
+    if (postings != null && credits != null) {
+      return next(new AppError("Provide postings or credits, not both.", 400));
+    }
 
     const company = await prisma.company.findUnique({ where: { id } });
     if (!company) return next(new AppError("Company not found", 404));
 
-    const updated = await grantPostings(id, Number(postings));
+    const updated =
+      credits != null ? await setPostings(id, Number(credits)) : await grantPostings(id, Number(postings));
 
     await prisma.auditLog.create({
       data: {
         userId: req.user?.id,
-        action: "GRANT_COMPANY_POSTINGS",
+        action: credits != null ? "SET_COMPANY_POSTINGS" : "GRANT_COMPANY_POSTINGS",
         entity: "Company",
         entityId: id,
         ip: req.ip,

@@ -26,8 +26,24 @@ interface Props {
 
 const PLAN_LABEL: Record<string, { fr: string; ar: string }> = {
   FREE: { fr: 'Gratuit', ar: 'مجاني' },
-  PREMIUM: { fr: 'Premium — à l’annonce', ar: 'بريميوم — بالإعلان' },
+  PREMIUM: { fr: 'Annonces', ar: 'إعلانات' },
   CORPORATE: { fr: 'Corporate', ar: 'كوربوريت' },
+};
+
+/** One line saying how the plan is limited, shown under its name. */
+const LIMIT_NOTE: Record<string, { fr: string; ar: string }> = {
+  free: {
+    fr: "Une seule offre, sans date d'expiration.",
+    ar: 'عرض واحد فقط، دون تاريخ انتهاء.',
+  },
+  offers: {
+    fr: "Limité au nombre d'annonces achetées, pas dans le temps — vos annonces n'expirent pas.",
+    ar: 'محدود بعدد الإعلانات المشتراة وليس بالوقت — إعلاناتك لا تنتهي صلاحيتها.',
+  },
+  annual: {
+    fr: 'Abonnement annuel, publication illimitée pendant toute la durée.',
+    ar: 'اشتراك سنوي، نشر غير محدود طوال المدة.',
+  },
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -118,7 +134,9 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
     );
   }
 
-  const { plan, quota, current, daysRemaining, history, usage, memberSince, verified } = data;
+  const { plan, limitModel, quota, current, daysRemaining, history, usage, memberSince, verified } =
+    data;
+  const isTermed = limitModel === 'annual';
   const planName = PLAN_LABEL[plan]?.[isRTL ? 'ar' : 'fr'] ?? plan;
   const isCorporate = plan === 'CORPORATE';
 
@@ -205,6 +223,12 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
               >
                 {t('Compte créé le', 'أُنشئ الحساب في')} {fmtDate(memberSince)}
               </p>
+
+              {isTermed && (
+                <p className="mt-1 text-sm font-bold text-[#D4AF37]">
+                  {t('Abonnement annuel', 'اشتراك سنوي')}
+                </p>
+              )}
             </div>
 
             {/* Days left, or an honest note that there is no term to count. */}
@@ -218,13 +242,18 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
                   isCorporate ? 'text-white/50' : 'text-gray-400'
                 }`}
               >
-                {t('Échéance', 'الاستحقاق')}
+                {isTermed ? t('Échéance', 'الاستحقاق') : t('Annonces restantes', 'الإعلانات المتبقية')}
               </p>
-              {current && daysRemaining !== null ? (
+
+              {/* A yearly plan counts down days; a pack plan counts annonces.
+                  Showing "days remaining" on a plan that does not expire was
+                  the whole problem. */}
+              {isTermed && current && daysRemaining !== null ? (
                 <>
                   <p
+                    dir="ltr"
                     className={`text-3xl font-black mt-1 ${
-                      daysRemaining <= 7
+                      daysRemaining <= 30
                         ? 'text-red-500'
                         : isCorporate
                           ? 'text-white'
@@ -241,7 +270,7 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
                     {t('jours restants', 'يوماً متبقياً')}
                   </p>
                 </>
-              ) : (
+              ) : isTermed ? (
                 <p
                   className={`text-sm font-bold mt-2 leading-snug ${
                     isCorporate ? 'text-white/70' : 'text-gray-500'
@@ -249,12 +278,26 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
                 >
                   {t('Aucune échéance enregistrée', 'لا يوجد تاريخ استحقاق مسجل')}
                 </p>
+              ) : (
+                <>
+                  <p
+                    dir="ltr"
+                    className={`text-3xl font-black mt-1 ${
+                      quota.remaining === 0 ? 'text-red-500' : 'text-[#173E7D]'
+                    }`}
+                  >
+                    {quota.remaining === null ? '∞' : quota.remaining}
+                  </p>
+                  <p className="text-xs font-bold text-gray-500">
+                    {t('sans expiration', 'دون انتهاء صلاحية')}
+                  </p>
+                </>
               )}
             </div>
           </div>
 
-          {/* The recorded term, when there is one. */}
-          {current ? (
+          {/* The recorded term, but only for the one plan that has one. */}
+          {isTermed && current ? (
             <div className="mt-8">
               <div
                 className={`flex flex-wrap items-center justify-between gap-3 text-xs font-bold ${
@@ -297,21 +340,51 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
               </p>
             </div>
           ) : (
-            <p
-              className={`mt-6 text-sm font-medium leading-relaxed ${
-                isCorporate ? 'text-white/60' : 'text-gray-500'
-              } ${isRTL ? 'text-right' : ''}`}
-            >
-              {plan === 'FREE'
-                ? t(
-                    "Le plan Gratuit n'a pas de durée : il vous donne une seule offre, sans échéance.",
-                    'الباقة المجانية بلا مدة: تمنحك عرضاً واحداً فقط، دون تاريخ انتهاء.'
-                  )
-                : t(
+            <div className={`mt-6 ${isRTL ? 'text-right' : ''}`}>
+              {/* A pack plan has a balance to show instead of a term. */}
+              {limitModel === 'offers' && quota.remaining !== null && (
+                <>
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-gray-500 ${
+                      isRTL ? 'flex-row-reverse' : ''
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText size={14} />
+                      {t('Annonces publiées', 'الإعلانات المنشورة')} : {quota.used}
+                    </span>
+                    <span>
+                      {t('Restantes', 'المتبقية')} : {quota.remaining}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 h-2 rounded-full overflow-hidden bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#173E7D] to-[#F68D58]"
+                      style={{
+                        width: `${
+                          quota.used + quota.remaining > 0
+                            ? Math.min(100, (quota.used / (quota.used + quota.remaining)) * 100)
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              <p
+                className={`text-sm font-medium leading-relaxed mt-4 ${
+                  isCorporate ? 'text-white/60' : 'text-gray-500'
+                }`}
+              >
+                {LIMIT_NOTE[limitModel]?.[isRTL ? 'ar' : 'fr'] ??
+                  t(
                     "Aucune période d'abonnement n'est enregistrée pour ce compte.",
                     'لا توجد فترة اشتراك مسجلة لهذا الحساب.'
                   )}
-            </p>
+              </p>
+            </div>
           )}
         </div>
       </div>

@@ -61,8 +61,18 @@ export interface SubscriptionRecord {
   payments: SubscriptionPayment[];
 }
 
+/**
+ * How a plan is limited, which is not the same for all three.
+ *   free    a single offer, no expiry
+ *   offers  a balance of annonces, spent rather than timed — no expiry
+ *   annual  a yearly term that runs out
+ * Only "annual" has a term to show or count down.
+ */
+export type PlanLimitModel = "free" | "offers" | "annual";
+
 export interface SubscriptionOverview {
   plan: "FREE" | "PREMIUM" | "CORPORATE";
+  limitModel: PlanLimitModel;
   verified: boolean;
   /** When the company was created — the honest "member since". */
   memberSince: string;

@@ -149,3 +149,24 @@ export const grantPostings = async (companyId: string, amount: number) => {
     select: { id: true, name: true, plan: true, postingCredits: true },
   });
 };
+
+/**
+ * Sets a company's paid postings to an exact number.
+ *
+ * Distinct from grantPostings, which adds. An administrator correcting a
+ * balance is saying what it should be, not what to add to it — and with only
+ * an "add" they would have to work out the delta themselves, which is how a
+ * balance ends up wrong in the opposite direction. 0 is allowed here (it is a
+ * legitimate balance) where grantPostings rejects it as a no-op purchase.
+ */
+export const setPostings = async (companyId: string, credits: number) => {
+  if (!Number.isInteger(credits) || credits < 0 || credits > 1000) {
+    throw new AppError("The number of postings must be a whole number between 0 and 1000.", 400);
+  }
+
+  return prisma.company.update({
+    where: { id: companyId },
+    data: { postingCredits: credits },
+    select: { id: true, name: true, plan: true, postingCredits: true },
+  });
+};

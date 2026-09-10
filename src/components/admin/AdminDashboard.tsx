@@ -141,6 +141,29 @@ const PlansTab: React.FC = () => {
 
   useEffect(load, []);
 
+  /**
+   * Sets a company's annonce balance.
+   *
+   * Sends the number the administrator typed, not a delta: the endpoint's
+   * "credits" field replaces the balance. Typing what it should be is the
+   * whole point — working out "it says 3, they bought 5, so add 2" by hand is
+   * how a balance ends up wrong the other way.
+   */
+  const handlePostingsChange = async (companyId: string, credits: number) => {
+    setSavingId(companyId);
+    try {
+      const updated = await adminService.setCompanyPostings(companyId, credits);
+      setCompanies((prev) =>
+        prev.map((c) => (c.id === companyId ? { ...c, postingCredits: updated.postingCredits } : c))
+      );
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Échec de la mise à jour des annonces");
+      load(); // put the input back to what the server actually holds
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const handlePlanChange = async (companyId: string, plan: "FREE" | "PREMIUM" | "CORPORATE") => {
     setSavingId(companyId);
     try {
@@ -170,8 +193,9 @@ const PlansTab: React.FC = () => {
               <tr>
                 <th className="px-4 py-3">Entreprise</th>
                 <th className="px-4 py-3">Recruteurs</th>
-                <th className="px-4 py-3">Offres</th>
+                <th className="px-4 py-3">Offres publiées</th>
                 <th className="px-4 py-3">Plan actuel</th>
+                <th className="px-4 py-3">Annonces restantes</th>
                 <th className="px-4 py-3">Changer de plan</th>
               </tr>
             </thead>
@@ -183,6 +207,13 @@ const PlansTab: React.FC = () => {
                   <td className="px-4 py-3">{c.jobs.length}</td>
                   <td className="px-4 py-3">
                     <PlanBadge plan={c.plan} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <PostingsEditor
+                      company={c}
+                      disabled={savingId === c.id}
+                      onSave={(credits) => handlePostingsChange(c.id, credits)}
+                    />
                   </td>
                   <td className="px-4 py-3">
                     <select
@@ -203,6 +234,64 @@ const PlansTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * The annonce balance for one company.
+ *
+ * Only the Annonces plan spends this balance — FREE is capped at a single
+ * offer whatever the number says, and CORPORATE publishes without limit — so
+ * on those two the field is shown but labelled as not in use, rather than
+ * hidden. An administrator moving a company onto Annonces needs to see the
+ * balance they are about to hand over.
+ */
+const PostingsEditor: React.FC<{
+  company: Company;
+  disabled: boolean;
+  onSave: (credits: number) => void;
+}> = ({ company, disabled, onSave }) => {
+  const [value, setValue] = useState(String(company.postingCredits ?? 0));
+
+  // Follow the server when the row reloads, but not while it is being edited.
+  useEffect(() => {
+    setValue(String(company.postingCredits ?? 0));
+  }, [company.postingCredits]);
+
+  const parsed = Number(value);
+  const valid = Number.isInteger(parsed) && parsed >= 0 && parsed <= 1000;
+  const dirty = parsed !== (company.postingCredits ?? 0);
+  const spends = company.plan === "PREMIUM";
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={0}
+        max={1000}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && valid && dirty) onSave(parsed);
+        }}
+        className={`w-20 border rounded-lg px-2 py-1.5 text-sm disabled:opacity-50 ${
+          valid ? "border-primary/20" : "border-red-400"
+        }`}
+      />
+      <button
+        onClick={() => onSave(parsed)}
+        disabled={disabled || !valid || !dirty}
+        className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-40"
+      >
+        {disabled ? "…" : "OK"}
+      </button>
+      {!spends && (
+        <span className="text-[11px] text-primary/40 whitespace-nowrap">
+          {company.plan === "CORPORATE" ? "illimité" : "non utilisé"}
+        </span>
       )}
     </div>
   );

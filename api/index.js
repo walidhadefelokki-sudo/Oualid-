@@ -1597,6 +1597,16 @@ var grantPostings = async (companyId, amount) => {
     select: { id: true, name: true, plan: true, postingCredits: true }
   });
 };
+var setPostings = async (companyId, credits) => {
+  if (!Number.isInteger(credits) || credits < 0 || credits > 1e3) {
+    throw new AppError("The number of postings must be a whole number between 0 and 1000.", 400);
+  }
+  return prisma_default.company.update({
+    where: { id: companyId },
+    data: { postingCredits: credits },
+    select: { id: true, name: true, plan: true, postingCredits: true }
+  });
+};
 
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
@@ -4219,23 +4229,28 @@ var updateCompanyPlan = async (req, res, next) => {
     }
     const company = await prisma_default.company.findUnique({ where: { id } });
     if (!company) return next(new AppError("Company not found", 404));
+    const isTermed = plan === "CORPORATE";
     const startsAt = /* @__PURE__ */ new Date();
-    const endsAt = new Date(startsAt.getTime() + (durationDays || 30) * 24 * 60 * 60 * 1e3);
+    const endsAt = new Date(
+      startsAt.getTime() + (durationDays || 365) * 24 * 60 * 60 * 1e3
+    );
     const [updatedCompany, subscription] = await prisma_default.$transaction([
       prisma_default.company.update({
         where: { id },
         data: { plan }
       }),
-      prisma_default.subscription.create({
-        data: {
-          companyId: id,
-          plan,
-          status: "ACTIVE",
-          startsAt,
-          endsAt,
-          autoRenew: false
-        }
-      })
+      ...isTermed ? [
+        prisma_default.subscription.create({
+          data: {
+            companyId: id,
+            plan,
+            status: "ACTIVE",
+            startsAt,
+            endsAt,
+            autoRenew: false
+          }
+        })
+      ] : []
     ]);
     await prisma_default.auditLog.create({
       data: {
@@ -4406,14 +4421,20 @@ var getStats = async (req, res, next) => {
 var grantCompanyPostings = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { postings } = req.body;
+    const { postings, credits } = req.body;
+    if (postings == null && credits == null) {
+      return next(new AppError("Provide either postings (to add) or credits (to set).", 400));
+    }
+    if (postings != null && credits != null) {
+      return next(new AppError("Provide postings or credits, not both.", 400));
+    }
     const company = await prisma_default.company.findUnique({ where: { id } });
     if (!company) return next(new AppError("Company not found", 404));
-    const updated = await grantPostings(id, Number(postings));
+    const updated = credits != null ? await setPostings(id, Number(credits)) : await grantPostings(id, Number(postings));
     await prisma_default.auditLog.create({
       data: {
         userId: req.user?.id,
-        action: "GRANT_COMPANY_POSTINGS",
+        action: credits != null ? "SET_COMPANY_POSTINGS" : "GRANT_COMPANY_POSTINGS",
         entity: "Company",
         entityId: id,
         ip: req.ip,
@@ -4894,12 +4915,16 @@ var getMySubscription = async (req, res, next) => {
       // CANCELLED stays cancelled; only an ACTIVE row can have quietly lapsed.
       status: sub.status === "ACTIVE" && sub.endsAt.getTime() < now ? "EXPIRED" : sub.status
     }));
-    const current = withEffectiveStatus.find((sub) => sub.status === "ACTIVE" && sub.plan === company.plan) ?? null;
+    const limitModel = company.plan === "CORPORATE" ? "annual" : company.plan === "PREMIUM" ? "offers" : "free";
+    const current = limitModel === "annual" ? withEffectiveStatus.find(
+      (sub) => sub.status === "ACTIVE" && sub.plan === company.plan
+    ) ?? null : null;
     const daysRemaining = current ? Math.max(0, Math.ceil((current.endsAt.getTime() - now) / 864e5)) : null;
     res.status(200).json({
       status: "success",
       data: {
         plan: company.plan,
+        limitModel,
         verified: company.verified,
         memberSince: company.createdAt,
         quota,

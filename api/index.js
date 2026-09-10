@@ -4076,6 +4076,7 @@ var application_routes_default = router4;
 import { Router as Router5 } from "express";
 
 // server/controllers/contact.controller.ts
+init_prisma();
 var DEFAULT_CONTACT_INBOX = "contact@darlemploi.dz";
 var escapeHtml = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 var EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -4163,11 +4164,102 @@ var sendCorporateEnquiry = async (req, res) => {
     res.status(500).json({ message: "Failed to send enquiry" });
   }
 };
+var DEFAULT_SUPPORT_INBOX = "support@darlemploi.dz";
+var sendSupportMessage = async (req, res) => {
+  try {
+    const { email, subject, message } = req.body;
+    if (!email || !subject || !message) {
+      return res.status(400).json({ message: "Tous les champs sont requis." });
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      return res.status(400).json({ message: "Veuillez fournir une adresse email valide." });
+    }
+    if (message.length > 5e3 || subject.length > 200) {
+      return res.status(400).json({ message: "Votre message est trop long." });
+    }
+    const account = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        recruiterProfile: {
+          select: {
+            companies: {
+              take: 1,
+              orderBy: { createdAt: "asc" },
+              select: { company: { select: { name: true, plan: true, postingCredits: true } } }
+            }
+          }
+        }
+      }
+    });
+    const company = account?.recruiterProfile?.companies?.[0]?.company ?? null;
+    const accountRows = [
+      ["Compte", account?.email ?? "\u2014"],
+      ["R\xF4le", account?.role ?? "\u2014"],
+      ["ID", account?.id ?? "\u2014"],
+      ...company ? [
+        ["Entreprise", company.name],
+        ["Plan", company.plan],
+        ["Annonces restantes", String(company.postingCredits)]
+      ] : []
+    ];
+    const supportInbox = process.env.SUPPORT_EMAIL?.trim() || DEFAULT_SUPPORT_INBOX;
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2B3442;">
+        <h2 style="color:#173E7D;">Demande de support</h2>
+        <p><strong>Sujet :</strong> ${escapeHtml(subject)}</p>
+        <div style="background:#F5F7FA; padding:16px; border-radius:8px; margin:20px 0; white-space:pre-wrap;">${escapeHtml(
+      message
+    )}</div>
+        <table style="border-collapse:collapse; font-size:13px; color:#4A5568;">
+          ${accountRows.map(
+      ([k, v]) => `<tr><td style="padding:4px 12px 4px 0; color:#6B7686;">${escapeHtml(
+        k
+      )}</td><td style="padding:4px 0;"><strong>${escapeHtml(v)}</strong></td></tr>`
+    ).join("")}
+          <tr><td style="padding:4px 12px 4px 0; color:#6B7686;">R\xE9pondre \xE0</td><td style="padding:4px 0;"><strong>${escapeHtml(
+      email
+    )}</strong></td></tr>
+        </table>
+        <p style="color:#6B7686; font-size:12px; margin-top:20px;">
+          R\xE9pondez directement \xE0 cet email pour joindre l'exp\xE9diteur.
+        </p>
+      </div>
+    `;
+    const text = [
+      "Demande de support",
+      "",
+      `Sujet : ${subject}`,
+      "",
+      message,
+      "",
+      "---",
+      ...accountRows.map(([k, v]) => `${k} : ${v}`),
+      `R\xE9pondre \xE0 : ${email}`
+    ].join("\n");
+    const sent = await sendEmail(supportInbox, `Support : ${subject}`, html, {
+      replyTo: email.trim(),
+      text
+    });
+    if (!sent) {
+      return res.status(502).json({
+        message: "Votre demande n'a pas pu \xEAtre envoy\xE9e. R\xE9essayez plus tard ou \xE9crivez-nous directement \xE0 " + DEFAULT_SUPPORT_INBOX + "."
+      });
+    }
+    res.status(200).json({ message: "Support request sent" });
+  } catch (error) {
+    console.error("Error in sendSupportMessage:", error);
+    res.status(500).json({ message: "\xC9chec de l'envoi de votre demande." });
+  }
+};
 
 // server/routes/contact.routes.ts
 var router5 = Router5();
 router5.post("/", sendContactMessage);
 router5.post("/corporate", sendCorporateEnquiry);
+router5.post("/support", protect, sendSupportMessage);
 var contact_routes_default = router5;
 
 // server/routes/admin.routes.ts

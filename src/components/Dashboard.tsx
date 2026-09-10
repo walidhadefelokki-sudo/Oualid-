@@ -101,7 +101,12 @@ import {
   WILAYAS, COMPANY_SECTORS, COMPANY_SIZES,
   ANNONCE_PACKS, packUnitPrice, packSavingPercent, type AnnoncePack,
 } from '../constants';
-import companyService, { Company, PostingQuota, sendCorporateEnquiry } from '../services/company.service';
+import companyService, {
+  Company,
+  PostingQuota,
+  sendCorporateEnquiry,
+  sendSupportRequest,
+} from '../services/company.service';
 import { translations, Language } from '../translations';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
@@ -834,6 +839,61 @@ export default function Dashboard({
   // Lightweight in-app toast, used instead of window.alert() for outcomes the
   // user should see without a blocking popup (e.g. publishing a job offer).
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  /**
+   * Sends a support request to support@darlemploi.dz.
+   *
+   * Reports what actually happened. Both support forms used to claim success
+   * unconditionally — the recruiter one had no handler at all on its button,
+   * and the candidate one popped "Votre message a été envoyé !" and cleared
+   * the fields without anything leaving the browser.
+   */
+  const handleSupportSubmit = async () => {
+    const email = contactEmail.trim();
+    const subject = contactSubject.trim();
+    const message = contactMessage.trim();
+
+    if (!email || !subject || !message) {
+      showToast(
+        lt(
+          'Fill in your email, a subject and your message.',
+          'Renseignez votre email, un sujet et votre message.',
+          'أدخل بريدك الإلكتروني والموضوع ورسالتك.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    setSendingSupport(true);
+    try {
+      await sendSupportRequest({ email, subject, message });
+      showToast(
+        lt(
+          'Your request has been sent. We will reply by email.',
+          'Votre demande a été envoyée. Nous vous répondrons par email.',
+          'تم إرسال طلبك. سنرد عليك عبر البريد الإلكتروني.'
+        )
+      );
+      setContactEmail('');
+      setContactSubject('');
+      setContactMessage('');
+      setHelpAction(null);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(
+        detail ||
+          lt(
+            'Your request could not be sent. Please try again.',
+            "Votre demande n'a pas pu être envoyée. Réessayez.",
+            'تعذر إرسال طلبك. حاول مرة أخرى.'
+          ),
+        'error'
+      );
+    } finally {
+      setSendingSupport(false);
+    }
+  };
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
 
@@ -851,6 +911,8 @@ export default function Dashboard({
   const [helpAction, setHelpAction] = useState<string | null>(null);
   const [contactEmail, setContactEmail] = useState('');
   const [contactSubject, setContactSubject] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [sendingSupport, setSendingSupport] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
   const [hideCurrentEmployer, setHideCurrentEmployer] = useState(false);
@@ -4806,8 +4868,32 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 />
                               </div>
                             </div>
-                            <button className="w-full py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20">
-                              Envoyer le message
+                            <div className={`space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                                {lt('Message', 'Message', 'الرسالة')}
+                              </label>
+                              <textarea
+                                rows={5}
+                                value={contactMessage}
+                                onChange={(e) => setContactMessage(e.target.value)}
+                                maxLength={5000}
+                                placeholder={lt(
+                                  'Describe your problem…',
+                                  'Décrivez votre problème…',
+                                  'صف مشكلتك…'
+                                )}
+                                className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-gray-50/50 text-gray-700 font-medium resize-y ${isRTL ? 'text-right' : ''}`}
+                              />
+                            </div>
+
+                            <button
+                              onClick={handleSupportSubmit}
+                              disabled={sendingSupport}
+                              className="w-full py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {sendingSupport
+                                ? lt('Sending…', 'Envoi…', 'جارٍ الإرسال…')
+                                : lt('Send message', 'Envoyer le message', 'إرسال الرسالة')}
                             </button>
 
                             <div className={`p-8 bg-blue-50 rounded-[2rem] text-[#173E7D] font-bold text-center ${isRTL ? 'text-right' : ''}`}>
@@ -6787,16 +6873,31 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                     placeholder={language === 'ar' ? 'كيف يمكننا مساعدتك؟' : "Comment pouvons-nous vous aider ?"}
                                   />
                                 </div>
-                                <button 
-                                  onClick={() => {
-                                    alert(language === 'ar' ? 'تم إرسال رسالتك!' : 'Votre message a été envoyé !');
-                                    setContactEmail('');
-                                    setContactSubject('');
-                                    setHelpAction(null);
-                                  }}
-                                  className="w-full py-3 bg-[#173E7D] text-white rounded-xl font-bold hover:bg-blue-800 transition-all"
+                                <div className="space-y-2">
+                                  <label className={`block text-sm font-bold text-[#173E7D] ${isRTL ? 'text-right' : ''}`}>
+                                    {lt('Message', 'Message', 'الرسالة')}
+                                  </label>
+                                  <textarea
+                                    rows={5}
+                                    value={contactMessage}
+                                    onChange={(e) => setContactMessage(e.target.value)}
+                                    maxLength={5000}
+                                    placeholder={lt(
+                                      'Describe your problem…',
+                                      'Décrivez votre problème…',
+                                      'صف مشكلتك…'
+                                    )}
+                                    className={`w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#173E7D] outline-none resize-y ${isRTL ? 'text-right' : ''}`}
+                                  />
+                                </div>
+                                <button
+                                  onClick={handleSupportSubmit}
+                                  disabled={sendingSupport}
+                                  className="w-full py-3 bg-[#173E7D] text-white rounded-xl font-bold hover:bg-blue-800 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  {language === 'ar' ? 'إرسال' : 'Envoyer'}
+                                  {sendingSupport
+                                    ? lt('Sending…', 'Envoi…', 'جارٍ الإرسال…')
+                                    : lt('Send', 'Envoyer', 'إرسال')}
                                 </button>
                               </div>
                             </div>

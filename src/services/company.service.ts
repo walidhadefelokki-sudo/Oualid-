@@ -145,3 +145,20 @@ export interface CorporateEnquiryInput {
 export async function sendCorporateEnquiry(input: CorporateEnquiryInput): Promise<void> {
   await api.post("/contact/corporate", input);
 }
+
+export interface SupportRequestInput {
+  email: string;
+  subject: string;
+  message: string;
+}
+
+/**
+ * Asks support for help from inside the dashboard.
+ *
+ * Authenticated, so the request arrives with the account attached. Throws on
+ * failure — the caller must not report success unless this resolves, which is
+ * exactly what both support forms used to do.
+ */
+export async function sendSupportRequest(input: SupportRequestInput): Promise<void> {
+  await api.post("/contact/support", input);
+}

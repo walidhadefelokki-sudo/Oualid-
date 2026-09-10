@@ -646,15 +646,53 @@ export default function App() {
             // min-h-full child inside it.
             className="fixed inset-0 bg-[#DEE6E2] z-[60] overflow-y-auto overscroll-contain text-3xl font-display font-bold text-[#173E7D]"
           >
+            {/* Follows the hamburger, which the nav row moves to the left in
+                Arabic — a close button on the far side from the one that
+                opened it is a reach across the whole screen. */}
             <button
               onClick={() => setIsMenuOpen(false)}
-              className="fixed top-8 right-8 z-10 text-[#173E7D]"
+              className={`fixed top-8 z-10 text-[#173E7D] ${language === 'ar' ? 'left-8' : 'right-8'}`}
               aria-label={language === 'ar' ? 'إغلاق القائمة' : 'Fermer le menu'}
             >
               <X size={40} />
             </button>
 
             <div className="min-h-full flex flex-col items-center justify-center gap-7 px-6 py-24">
+            {/* Deliberately does not close the menu: the labels around it
+                change as you press, which is the confirmation that the switch
+                worked. Closing would hide the only feedback there is. */}
+            <div
+              dir="ltr"
+              role="group"
+              aria-label={language === 'ar' ? 'اللغة' : 'Langue'}
+              className="inline-flex items-center gap-1 p-1 rounded-full bg-white/70 border border-[#173E7D]/10 shadow-sm"
+            >
+              <button
+                type="button"
+                onClick={() => setLanguage('fr')}
+                aria-pressed={language === 'fr'}
+                className={`px-6 py-2 rounded-full text-sm font-black tracking-widest transition-all ${
+                  language === 'fr'
+                    ? 'bg-[#173E7D] text-white shadow-md'
+                    : 'text-[#173E7D]/50'
+                }`}
+              >
+                FR
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('ar')}
+                aria-pressed={language === 'ar'}
+                className={`px-6 py-2 rounded-full text-sm font-black tracking-widest transition-all ${
+                  language === 'ar'
+                    ? 'bg-[#173E7D] text-white shadow-md'
+                    : 'text-[#173E7D]/50'
+                }`}
+              >
+                AR
+              </button>
+            </div>
+
             <button onClick={() => { scrollToSection('features'); setIsMenuOpen(false); }}>{translations[language].nav.features}</button>
             <button onClick={() => { scrollToSection('sectors'); setIsMenuOpen(false); }}>{translations[language].nav.sectors}</button>
             <button onClick={() => { scrollToSection('how-it-works'); setIsMenuOpen(false); }}>{translations[language].nav.howItWorks}</button>

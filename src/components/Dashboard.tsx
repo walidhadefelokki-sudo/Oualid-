@@ -1566,6 +1566,12 @@ export default function Dashboard({
   // Defaults to the single posting, which is the plan the cards advertise.
   const [selectedPack, setSelectedPack] = useState<AnnoncePack>(ANNONCE_PACKS[0]);
 
+  // "Commencer" on the Premium card scrolls here rather than opening checkout:
+  // Premium is priced per pack, so sending someone straight to a card form
+  // charged them for whatever pack happened to be selected — silently the
+  // 1-annonce default — before they had chosen one.
+  const buyPostingsRef = useRef<HTMLDivElement>(null);
+
   /* --------------------------- corporate enquiry -------------------------- */
 
   const [corporateOpen, setCorporateOpen] = useState(false);
@@ -3971,15 +3977,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             return;
                           }
 
-                          setSelectedPlan({
-                            name: `${plan.name} — ${selectedPack.jobs} annonce(s)`,
-                            price: selectedPack.label,
-                            tier: plan.tier,
-                            jobs: selectedPack.jobs,
+                          // Premium is sold as packs, so let them pick one
+                          // first. The pack card carries its own checkout.
+                          buyPostingsRef.current?.scrollIntoView({
+                            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                              ? 'auto'
+                              : 'smooth',
+                            block: 'start',
                           });
-                          setSettingsTab('billing');
-                          setBillingView('payment');
-                          setActiveTab('settings');
                         }}
                       />
                     </div>
@@ -3989,7 +3994,10 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
               {/* Pay-per-posting. Sits under the plans because it is an
                   alternative to a subscription, not a fourth plan. */}
-              <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8 md:p-10">
+              <div
+                ref={buyPostingsRef}
+                className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8 md:p-10 scroll-mt-28"
+              >
                 <div className={`flex flex-wrap items-end justify-between gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className={isRTL ? 'text-right' : ''}>
                     <h3 className="text-2xl font-display font-black text-[#173E7D] tracking-tight">

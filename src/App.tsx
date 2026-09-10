@@ -719,17 +719,57 @@ export default function App() {
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8 }}
-            className="relative z-10 flex-1 text-left"
+            className="relative z-10 flex-1 text-start"
           >
-            {translations[language].hero.badge && (
-              <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-xs font-black uppercase tracking-[0.3em] mb-8 w-fit backdrop-blur-xl border border-white/20">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F68D58] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F68D58]"></span>
-                </span>
-                <span>{translations[language].hero.badge}</span>
+            {/* No flex-row-reverse here: the page root already carries
+                dir="rtl" in Arabic, so a row reverses on its own and forcing
+                it again would put the badge back on the left. */}
+            <div className="flex flex-wrap items-center gap-4 mb-8">
+              {translations[language].hero.badge && (
+                <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-full text-xs font-black uppercase tracking-[0.3em] w-fit backdrop-blur-xl border border-white/20">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F68D58] opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#F68D58]"></span>
+                  </span>
+                  <span>{translations[language].hero.badge}</span>
+                </div>
+              )}
+
+              {/* The only language switch a phone can reach. The one in the
+                  header is inside a hidden md:flex, and the mobile menu never
+                  had one, so on a phone the site was French-only. */}
+              <div
+                dir="ltr"
+                role="group"
+                aria-label={language === 'ar' ? 'اللغة' : 'Langue'}
+                className="inline-flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 w-fit"
+              >
+                <button
+                  type="button"
+                  onClick={() => setLanguage('fr')}
+                  aria-pressed={language === 'fr'}
+                  className={`px-4 py-1.5 rounded-full text-[11px] font-black tracking-widest transition-all ${
+                    language === 'fr'
+                      ? 'bg-white text-[#173E7D] shadow-md'
+                      : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  FR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage('ar')}
+                  aria-pressed={language === 'ar'}
+                  className={`px-4 py-1.5 rounded-full text-[11px] font-black tracking-widest transition-all ${
+                    language === 'ar'
+                      ? 'bg-white text-[#173E7D] shadow-md'
+                      : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  AR
+                </button>
               </div>
-            )}
+            </div>
             
             <h1 className="text-5xl md:text-7xl font-display font-black text-white leading-[1.1] tracking-tighter mb-8 uppercase">
               {language === 'fr' ? (

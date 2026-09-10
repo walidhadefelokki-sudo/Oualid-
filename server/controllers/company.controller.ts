@@ -218,3 +218,102 @@ export const updateMyCompanyLogo = async (req: Request, res: Response, next: Nex
     next(err);
   }
 };
+
+/**
+ * Everything the recruiter's own subscription panel needs, in one call.
+ *
+ * Only reports what is actually recorded. A company that has never had its
+ * plan changed has no Subscription row at all — it is on the default FREE
+ * plan, which has no term and no expiry — so `current` is null there rather
+ * than an invented start date.
+ *
+ * `status` is recomputed from endsAt instead of being read straight off the
+ * row: nothing expires a subscription on a schedule, so a row can still say
+ * ACTIVE weeks after its term ended. Whoever reads this should see the term,
+ * not the stale flag.
+ */
+export const getMySubscription = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const membership = await resolveMembership(req.user!.id);
+    const companyId = membership.companyId;
+
+    const [company, quota, subscriptions, jobsByStatus, applications] = await Promise.all([
+      prisma.company.findUnique({
+        where: { id: companyId },
+        select: { plan: true, postingCredits: true, verified: true, createdAt: true },
+      }),
+      getPostingQuota(companyId),
+      prisma.subscription.findMany({
+        where: { companyId },
+        orderBy: { startsAt: "desc" },
+        include: {
+          payments: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              method: true,
+              status: true,
+              paidAt: true,
+              createdAt: true,
+            },
+          },
+        },
+      }),
+      prisma.job.groupBy({
+        by: ["status"],
+        where: { companyId },
+        _count: { _all: true },
+      }),
+      prisma.application.count({ where: { job: { companyId } } }),
+    ]);
+
+    if (!company) {
+      return next(new AppError("No company is attached to this account.", 404));
+    }
+
+    const now = Date.now();
+
+    const withEffectiveStatus = subscriptions.map((sub) => ({
+      ...sub,
+      // CANCELLED stays cancelled; only an ACTIVE row can have quietly lapsed.
+      status:
+        sub.status === "ACTIVE" && sub.endsAt.getTime() < now ? "EXPIRED" : sub.status,
+    }));
+
+    const current =
+      withEffectiveStatus.find((sub) => sub.status === "ACTIVE" && sub.plan === company.plan) ??
+      null;
+
+    const daysRemaining = current
+      ? Math.max(0, Math.ceil((current.endsAt.getTime() - now) / 86_400_000))
+      : null;
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        plan: company.plan,
+        verified: company.verified,
+        memberSince: company.createdAt,
+        quota,
+        current,
+        daysRemaining,
+        history: withEffectiveStatus,
+        usage: {
+          jobs: jobsByStatus.reduce(
+            (acc, row) => {
+              acc.total += row._count._all;
+              acc.byStatus[row.status] = row._count._all;
+              return acc;
+            },
+            { total: 0, byStatus: {} as Record<string, number> }
+          ),
+          applications,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

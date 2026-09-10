@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getMyCompany,
+  getMySubscription,
   updateMyCompany,
   updateMyCompanyLogo,
 } from "../controllers/company.controller";
@@ -14,6 +15,9 @@ router.use(protect);
 router.use(restrictTo("RECRUITER", "ADMIN"));
 
 router.get("/me", getMyCompany);
+
+// Plan, term, quota and usage for the recruiter's own subscription panel.
+router.get("/me/subscription", getMySubscription);
 router.patch("/me", updateMyCompany);
 
 // handleAvatarUpload buffers the image and rejects the wrong format or an

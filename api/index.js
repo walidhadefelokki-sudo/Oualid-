@@ -4850,12 +4850,86 @@ var updateMyCompanyLogo = async (req, res, next) => {
     next(err);
   }
 };
+var getMySubscription = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership(req.user.id);
+    const companyId = membership.companyId;
+    const [company, quota, subscriptions, jobsByStatus, applications] = await Promise.all([
+      prisma_default.company.findUnique({
+        where: { id: companyId },
+        select: { plan: true, postingCredits: true, verified: true, createdAt: true }
+      }),
+      getPostingQuota(companyId),
+      prisma_default.subscription.findMany({
+        where: { companyId },
+        orderBy: { startsAt: "desc" },
+        include: {
+          payments: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              method: true,
+              status: true,
+              paidAt: true,
+              createdAt: true
+            }
+          }
+        }
+      }),
+      prisma_default.job.groupBy({
+        by: ["status"],
+        where: { companyId },
+        _count: { _all: true }
+      }),
+      prisma_default.application.count({ where: { job: { companyId } } })
+    ]);
+    if (!company) {
+      return next(new AppError("No company is attached to this account.", 404));
+    }
+    const now = Date.now();
+    const withEffectiveStatus = subscriptions.map((sub) => ({
+      ...sub,
+      // CANCELLED stays cancelled; only an ACTIVE row can have quietly lapsed.
+      status: sub.status === "ACTIVE" && sub.endsAt.getTime() < now ? "EXPIRED" : sub.status
+    }));
+    const current = withEffectiveStatus.find((sub) => sub.status === "ACTIVE" && sub.plan === company.plan) ?? null;
+    const daysRemaining = current ? Math.max(0, Math.ceil((current.endsAt.getTime() - now) / 864e5)) : null;
+    res.status(200).json({
+      status: "success",
+      data: {
+        plan: company.plan,
+        verified: company.verified,
+        memberSince: company.createdAt,
+        quota,
+        current,
+        daysRemaining,
+        history: withEffectiveStatus,
+        usage: {
+          jobs: jobsByStatus.reduce(
+            (acc, row) => {
+              acc.total += row._count._all;
+              acc.byStatus[row.status] = row._count._all;
+              return acc;
+            },
+            { total: 0, byStatus: {} }
+          ),
+          applications
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/company.routes.ts
 var router8 = Router8();
 router8.use(protect);
 router8.use(restrictTo("RECRUITER", "ADMIN"));
 router8.get("/me", getMyCompany);
+router8.get("/me/subscription", getMySubscription);
 router8.patch("/me", updateMyCompany);
 router8.patch("/me/logo", handleAvatarUpload, updateMyCompanyLogo);
 var company_routes_default = router8;

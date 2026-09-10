@@ -3,6 +3,7 @@ import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
 import SubscriptionBanner from "./recruiter/SubscriptionBanner";
+import SubscriptionStatus from "./recruiter/SubscriptionStatus";
 import CandidateDirectory from "./recruiter/CandidateDirectory";
 import RecruiterPlanCard, {
   RECRUITER_PLANS,
@@ -3933,6 +3934,22 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
                 </p>
               </div>
+
+              {/* What they already have, before what they could buy. Reads its
+                  own figures from the server rather than from dashboard state,
+                  so the plan, the term and the annonces left are the stored
+                  ones and not a second copy that can drift out of step. */}
+              <SubscriptionStatus
+                language={language === 'ar' ? 'ar' : 'fr'}
+                onBuyPostings={() =>
+                  buyPostingsRef.current?.scrollIntoView({
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                      ? 'auto'
+                      : 'smooth',
+                    block: 'start',
+                  })
+                }
+              />
 
               {/* The same cards as the home page and the login chooser, from
                   the same RECRUITER_PLANS data. This page used to hand-write

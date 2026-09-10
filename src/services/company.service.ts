@@ -36,6 +36,47 @@ export interface PostingQuota {
   reason: string | null;
 }
 
+export type SubscriptionStatus = "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING";
+
+export interface SubscriptionPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string;
+  status: string;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+/** One recorded term. A company on the default FREE plan has none. */
+export interface SubscriptionRecord {
+  id: string;
+  plan: "FREE" | "PREMIUM" | "CORPORATE";
+  /** Recomputed server-side from endsAt, not read off the stored flag. */
+  status: SubscriptionStatus;
+  startsAt: string;
+  endsAt: string;
+  autoRenew: boolean;
+  createdAt: string;
+  payments: SubscriptionPayment[];
+}
+
+export interface SubscriptionOverview {
+  plan: "FREE" | "PREMIUM" | "CORPORATE";
+  verified: boolean;
+  /** When the company was created — the honest "member since". */
+  memberSince: string;
+  quota: PostingQuota;
+  /** null on FREE, which has no term. */
+  current: SubscriptionRecord | null;
+  daysRemaining: number | null;
+  history: SubscriptionRecord[];
+  usage: {
+    jobs: { total: number; byStatus: Record<string, number> };
+    applications: number;
+  };
+}
+
 export type CompanyUpdate = Partial<
   Pick<
     Company,
@@ -47,6 +88,12 @@ export const companyService = {
   /** The caller's own company, plus their role in it. */
   async getMyCompany(): Promise<{ company: Company; memberRole: string; quota: PostingQuota }> {
     const { data } = await api.get("/companies/me");
+    return data.data;
+  },
+
+  /** Plan, term, quota and usage for the subscription panel. */
+  async getMySubscription(): Promise<SubscriptionOverview> {
+    const { data } = await api.get("/companies/me/subscription");
     return data.data;
   },
 

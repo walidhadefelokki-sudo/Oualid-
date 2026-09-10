@@ -222,7 +222,7 @@ export default function RankingStats({
 
           <div className="text-right">
 
-            <h2 className="text-5xl font-black">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black">
 
               {averageAIScore.toFixed(1)}
 

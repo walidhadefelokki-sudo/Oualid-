@@ -798,7 +798,7 @@ export default function CandidateQuiz({
 
             {quizFinished && !loading && (
 
-                <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-10">
+                <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 sm:p-8 lg:p-10">
 
                     {(() => {
 
@@ -887,7 +887,7 @@ export default function CandidateQuiz({
 
                                         <div className="text-center">
 
-                                            <h2 className="text-6xl font-black text-[#173E7D]">
+                                            <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#173E7D]">
 
                                                 {score}
 

@@ -93,7 +93,7 @@ export default function GoogleAuthCallback({
       dir={isRTL ? 'rtl' : 'ltr'}
       className="min-h-screen bg-[#F8FAFB] flex items-center justify-center p-6"
     >
-      <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 p-12 max-w-md w-full text-center">
+      <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 p-6 sm:p-8 lg:p-12 max-w-md w-full text-center">
         {!error ? (
           <>
             <div className="w-14 h-14 mx-auto mb-6 border-4 border-gray-100 border-t-[#F68D58] rounded-full animate-spin" />

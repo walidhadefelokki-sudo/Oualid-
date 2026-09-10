@@ -89,7 +89,7 @@ export default function AIQuiz() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-12 text-center">
+      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 sm:p-8 lg:p-12 text-center">
         <Loader2
           className="animate-spin mx-auto text-[#173E7D]"
           size={48}
@@ -147,7 +147,7 @@ export default function AIQuiz() {
 
     return (
       <div className="max-w-4xl mx-auto space-y-8">
-        <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-10 text-center">
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 sm:p-8 lg:p-10 text-center">
           <div
             className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${
               passed ? "bg-green-100" : "bg-orange-100"

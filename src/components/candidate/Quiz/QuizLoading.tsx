@@ -28,7 +28,7 @@ export default function QuizLoading({
 
       {/* Header */}
 
-      <div className="bg-[#173E7D] text-white p-10 text-center">
+      <div className="bg-[#173E7D] text-white p-6 sm:p-8 lg:p-10 text-center">
 
         <div className="flex justify-center">
 
@@ -59,7 +59,7 @@ export default function QuizLoading({
 
       {/* Body */}
 
-      <div className="p-10">
+      <div className="p-6 sm:p-8 lg:p-10">
 
         {/* Animated Icon */}
 

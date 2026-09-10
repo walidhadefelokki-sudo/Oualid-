@@ -25,7 +25,7 @@ export default function ContactFormDesign() {
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
-          className="bg-white p-12 md:p-16 rounded-[4rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.05)] border border-gray-100"
+          className="bg-white p-6 sm:p-8 lg:p-12 md:p-16 rounded-[4rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.05)] border border-gray-100"
         >
           <div className="space-y-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">

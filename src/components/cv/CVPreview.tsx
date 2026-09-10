@@ -10,7 +10,7 @@ const CVPreview = forwardRef<HTMLDivElement, Props>(
     return (
       <div
         ref={ref}
-        className="bg-white p-10 shadow rounded-xl min-h-[1000px]"
+        className="bg-white p-6 sm:p-8 lg:p-10 shadow rounded-xl min-h-[1000px]"
       >
         <h1 className="text-4xl font-bold">
           {data.fullName}

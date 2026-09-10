@@ -17,7 +17,7 @@ const PreselectionEmpty: React.FC<PreselectionEmptyProps> = ({
   onReset,
 }) => {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 shadow-sm">
+    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 sm:p-8 lg:p-10 shadow-sm">
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100">
           <SearchX className="h-10 w-10 text-slate-400" />

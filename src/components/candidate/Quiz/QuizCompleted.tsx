@@ -45,7 +45,7 @@ export default function QuizCompleted({
 
       {/* Header */}
 
-      <div className="bg-gradient-to-r from-[#173E7D] to-[#2154A6] text-white p-12 text-center">
+      <div className="bg-gradient-to-r from-[#173E7D] to-[#2154A6] text-white p-6 sm:p-8 lg:p-12 text-center">
 
         <div className="flex justify-center">
 
@@ -76,7 +76,7 @@ export default function QuizCompleted({
 
       {/* Summary */}
 
-      <div className="p-10">
+      <div className="p-6 sm:p-8 lg:p-10">
 
         <div className="grid md:grid-cols-3 gap-6">
 

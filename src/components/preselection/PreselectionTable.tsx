@@ -53,7 +53,7 @@ const PreselectionTable: React.FC<
 
     return (
 
-      <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 sm:p-8 lg:p-10 text-center">
 
         <MessageSquare
           className="mx-auto mb-4 h-12 w-12 text-slate-300"

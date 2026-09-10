@@ -48,7 +48,7 @@ export default function QuizEmpty({
 
       {/* Header */}
 
-      <div className="bg-gradient-to-r from-[#173E7D] to-[#2458A8] text-white text-center p-12">
+      <div className="bg-gradient-to-r from-[#173E7D] to-[#2458A8] text-white text-center p-6 sm:p-8 lg:p-12">
 
         <div className="flex justify-center">
 
@@ -79,7 +79,7 @@ export default function QuizEmpty({
 
       {/* Body */}
 
-      <div className="p-10">
+      <div className="p-6 sm:p-8 lg:p-10">
 
         <div className="rounded-2xl bg-blue-50 border border-blue-100 p-8">
 

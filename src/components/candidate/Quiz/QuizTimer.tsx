@@ -112,7 +112,7 @@ export default function QuizTimer({
       <div className="mt-8 text-center">
 
         <h1
-          className={`font-mono text-6xl font-black ${timeColor}`}
+          className={`font-mono text-3xl sm:text-5xl lg:text-6xl font-black ${timeColor}`}
         >
           {formatTime(timeRemaining)}
         </h1>

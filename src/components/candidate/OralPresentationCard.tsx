@@ -263,7 +263,7 @@ export default function OralPresentationCard({ isDemo = false }: { isDemo?: bool
         </>
       ) : (
         <>
-          <div className="rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center">
+          <div className="rounded-2xl border-2 border-dashed border-gray-300 p-6 sm:p-8 lg:p-12 text-center">
 
             <Video
               className="mx-auto mb-4 text-gray-400"

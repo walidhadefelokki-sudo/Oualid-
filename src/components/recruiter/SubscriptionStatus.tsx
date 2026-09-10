@@ -92,7 +92,7 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-10 flex items-center justify-center gap-3 text-gray-400">
+      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6 sm:p-8 lg:p-10 flex items-center justify-center gap-3 text-gray-400">
         <Loader2 size={20} className="animate-spin" />
         <span className="font-bold text-sm">
           {t('Chargement de votre abonnement…', 'جارٍ تحميل اشتراكك…')}

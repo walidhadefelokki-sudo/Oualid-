@@ -465,7 +465,7 @@ export default function CandidatesSection({
             <motion.div key="jobs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-10">
               <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 ${isRTL ? 'text-right' : ''}`}>
                 <div>
-                  <h2 className="text-5xl font-display font-black tracking-tighter" style={{ color: NAVY }}>{t('candidates')}</h2>
+                  <h2 className="text-3xl sm:text-4xl lg:text-5xl font-display font-black tracking-tighter" style={{ color: NAVY }}>{t('candidates')}</h2>
                   <p className="text-gray-500 mt-2 text-lg font-medium">Gérez vos talents par offre d'emploi avec une analyse prédictive par IA.</p>
                 </div>
                 <div className="bg-white px-6 py-3 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">

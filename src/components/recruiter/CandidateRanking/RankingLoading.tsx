@@ -17,7 +17,7 @@ export default function RankingLoading() {
 
       {/* Header Skeleton */}
 
-      <div className="rounded-3xl bg-gradient-to-r from-[#173E7D] to-[#2154A6] p-10 text-white overflow-hidden">
+      <div className="rounded-3xl bg-gradient-to-r from-[#173E7D] to-[#2154A6] p-6 sm:p-8 lg:p-10 text-white overflow-hidden">
 
         <div className="flex flex-col xl:flex-row justify-between gap-10">
 

@@ -50,7 +50,7 @@ export default function QuizResult({
       {/* Header */}
 
       <div
-        className={`p-10 text-center ${
+        className={`p-6 sm:p-8 lg:p-10 text-center ${
           passed ? "bg-green-50" : "bg-red-50"
         }`}
       >
@@ -88,7 +88,7 @@ export default function QuizResult({
 
           <div className="text-center">
 
-            <h2 className="text-6xl font-black text-[#173E7D]">
+            <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#173E7D]">
 
               {score}
 
@@ -253,7 +253,7 @@ export default function QuizResult({
 
       {/* Footer */}
 
-      <div className="flex flex-col md:flex-row justify-center gap-5 p-10">
+      <div className="flex flex-col md:flex-row justify-center gap-5 p-6 sm:p-8 lg:p-10">
 
         {showRetry && onRetry && (
 

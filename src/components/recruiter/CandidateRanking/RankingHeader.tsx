@@ -45,7 +45,7 @@ export default function RankingHeader({
 
       {/* Content */}
 
-      <div className="relative z-10 p-10">
+      <div className="relative z-10 p-6 sm:p-8 lg:p-10">
 
         <div className="flex flex-col xl:flex-row justify-between gap-10 items-start xl:items-center">
 

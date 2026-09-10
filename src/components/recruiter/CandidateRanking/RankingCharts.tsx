@@ -730,7 +730,7 @@ export default function RankingCharts({
 
             </p>
 
-            <h2 className="text-6xl font-black mt-3">
+            <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black mt-3">
 
               {candidates.length === 0
 
@@ -1037,7 +1037,7 @@ export default function RankingCharts({
 
           </div>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
             <div className="text-center">
 

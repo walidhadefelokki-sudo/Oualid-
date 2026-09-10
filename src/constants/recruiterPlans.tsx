@@ -146,7 +146,7 @@ export const HOME_PLAN_PRICING: Record<
   { price: string; suffix?: string; cta: string; ctaAr: string }
 > = {
   free: { price: '0', suffix: 'DA', cta: 'Commencer', ctaAr: 'ابدأ الآن' },
-  paid: { price: '5 900', suffix: 'DA', cta: 'Commencer', ctaAr: 'ابدأ الآن' },
+  paid: { price: '5 900', suffix: 'DA', cta: 'Commencer', ctaAr: 'ابدأ الآن' },
   corporate: { price: 'Sur mesure', cta: 'Contactez-nous', ctaAr: 'اتصل بنا' },
 };
 
@@ -218,7 +218,7 @@ export default function RecruiterPlanCard({
 
       {price && (
         <div className="mt-6 flex items-baseline gap-2">
-          <span className={`font-display font-black tracking-tighter ${textPrimary} ${isLarge ? 'text-5xl' : 'text-3xl'}`}>
+          <span className={`font-display font-black tracking-tighter ${textPrimary} ${isLarge ? 'text-3xl sm:text-4xl lg:text-5xl' : 'text-2xl sm:text-3xl'}`}>
             {price}
           </span>
           {priceSuffix && (

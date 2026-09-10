@@ -103,10 +103,10 @@ export interface AnnoncePack {
 }
 
 export const ANNONCE_PACKS: AnnoncePack[] = [
-  { id: 'pack-1', jobs: 1, price: 5900, label: '5 900' },
-  { id: 'pack-2', jobs: 2, price: 11000, label: '11 000' },
-  { id: 'pack-5', jobs: 5, price: 25000, label: '25 000' },
-  { id: 'pack-10', jobs: 10, price: 45000, label: '45 000' },
+  { id: 'pack-1', jobs: 1, price: 5900, label: '5 900' },
+  { id: 'pack-2', jobs: 2, price: 11000, label: '11 000' },
+  { id: 'pack-5', jobs: 5, price: 25000, label: '25 000' },
+  { id: 'pack-10', jobs: 10, price: 45000, label: '45 000' },
 ];
 
 /** Price of one posting inside a pack, for the "saving" badge. */

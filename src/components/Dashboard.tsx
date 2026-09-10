@@ -1296,7 +1296,7 @@ export default function Dashboard({
       transition={{ duration: 0.5 }}
       whileHover={{ y: -15, scale: 1.02 }}
       onClick={() => setSelectedJob(job)}
-      className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+      className="bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
       {/* Decorative background element */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
@@ -3329,8 +3329,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             <div className="space-y-10">
               {/* Welcome & Quick Actions */}
               <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-6 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
-                <div className={isRTL ? 'text-right' : ''}>
-                  <h1 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
+                <div className={`min-w-0 ${isRTL ? 'text-right' : ''}`}>
+                  {/* break-words because this is often an email address, which
+                      has no spaces to wrap at: at text-4xl one long address was
+                      wider than a phone and dragged the whole page sideways. */}
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black text-[#173E7D] tracking-tight break-words">
                     {language === 'ar' ? 'مرحباً بك،' : 'Bienvenue,'} {displayIdentityName} !
                   </h1>
                   <p className="text-gray-500 mt-2 text-lg font-medium">
@@ -3362,7 +3365,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <motion.div 
                     key={i}
                     whileHover={{ y: -5 }}
-                    className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.06)] transition-all duration-500 group relative overflow-hidden"
+                    className="bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border border-gray-100 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] hover:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.06)] transition-all duration-500 group relative overflow-hidden"
                   >
                     <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-bl-[3rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
                     <div className="relative z-10 flex justify-between items-start mb-8">
@@ -3386,7 +3389,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               {/* Main Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column: Recent Applications */}
-                <div className="lg:col-span-2 bg-white rounded-[3rem] border border-gray-100 p-10 shadow-sm">
+                <div className="lg:col-span-2 bg-white rounded-[3rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm">
                   <div className="flex justify-between items-center mb-10">
                     <div>
                       <h3 className="text-2xl font-black text-[#173E7D] tracking-tight">Dernières candidatures</h3>
@@ -3418,11 +3421,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <div
                           key={candidate.id}
                           onClick={() => setActiveTab('candidates')}
-                          className="flex items-center justify-between group p-4 hover:bg-gray-50 rounded-3xl transition-all cursor-pointer"
+                          className="flex items-center justify-between gap-3 group p-3 sm:p-4 hover:bg-gray-50 rounded-3xl transition-all cursor-pointer"
                         >
-                          <div className="flex items-center gap-6">
+                          <div className="flex items-center gap-3 sm:gap-6 min-w-0 flex-1">
                             <div className="relative">
-                              <div className="w-16 h-16 bg-blue-50 rounded-2xl overflow-hidden border-2 border-white shadow-sm flex items-center justify-center">
+                              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-50 rounded-2xl overflow-hidden border-2 border-white shadow-sm flex items-center justify-center shrink-0">
                                 {/* Only render an img when there is a real URL —
                                     src="" makes the browser refetch the page. */}
                                 {candidate.avatar ? (
@@ -3439,11 +3442,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 </div>
                               )}
                             </div>
-                            <div>
-                              <p className="text-lg font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors">
+                            <div className="min-w-0">
+                              <p className="text-base sm:text-lg font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors truncate">
                                 {candidate.name || candidate.email}
                               </p>
-                              <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">
+                              <p className="text-xs sm:text-sm text-gray-400 font-bold uppercase tracking-wider truncate">
                                 {candidate.role || candidate.jobTitle}
                               </p>
                             </div>
@@ -3454,7 +3457,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                               {timeAgo(candidate.appliedAt)}
                             </p>
                           </div>
-                          <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 group-hover:text-[#F68D58] group-hover:border-[#F68D58] transition-all">
+                          <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-400 group-hover:text-[#F68D58] group-hover:border-[#F68D58] transition-all shrink-0">
                             <ChevronRight size={20} />
                           </button>
                         </div>
@@ -3465,7 +3468,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                 {/* Right Column: Active Jobs & AI Insights */}
                 <div className="space-y-8">
-                  <div className="bg-[#173E7D] rounded-[3rem] p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
+                  <div className="bg-[#173E7D] rounded-[3rem] p-6 sm:p-8 lg:p-10 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
                     <h3 className="text-xl font-black mb-8 relative z-10">Offres actives</h3>
                     <div className="space-y-6 relative z-10">
@@ -3518,7 +3521,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       contacting Ahmed Benali — to every recruiter, whatever
                       they had posted. */}
                   {recruiterStats.aiFiltered > 0 && (
-                    <div className="bg-white rounded-[3rem] border border-gray-100 p-10 shadow-sm">
+                    <div className="bg-white rounded-[3rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm">
                       <div className="flex items-center gap-3 mb-6">
                         <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
                           <Cpu size={20} />
@@ -3580,7 +3583,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <motion.div 
                     key={job.id} 
                     whileHover={{ y: -10, scale: 1.02 }}
-                    className="bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden flex flex-col"
+                    className="bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden flex flex-col"
                   >
                     <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-bl-[3rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
                     
@@ -3730,7 +3733,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         //                 <motion.div 
         //                   key={i} 
         //                   whileHover={{ y: -10, scale: 1.02 }}
-        //                   className={`bg-white p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden ${isRTL ? 'text-right' : ''}`}
+        //                   className={`bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-all duration-500 group relative overflow-hidden ${isRTL ? 'text-right' : ''}`}
         //                 >
         //                   {/* Decorative Background Element */}
         //                   <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-3xl"></div>
@@ -4110,7 +4113,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
         case 'post-job':
           return (
-            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-12 space-y-12">
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-6 sm:p-8 lg:p-12 space-y-12">
               <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
                   <PlusCircle size={32} />
@@ -4299,7 +4302,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           const canEditCompany = companyRole === 'OWNER' || !companyRole;
 
           return (
-            <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 p-12 space-y-12">
+            <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 p-6 sm:p-8 lg:p-12 space-y-12">
               <div className={isRTL ? 'text-right' : ''}>
                 <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">{t('companyProfile')}</h2>
                 <p className="text-gray-500 mt-1 font-medium">
@@ -4528,7 +4531,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 {/* Right Column - Content */}
                 <div className="lg:col-span-2 space-y-8">
                   {settingsTab === 'general' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
                           <Globe size={24} />
@@ -4585,7 +4588,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'team' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
@@ -4708,7 +4711,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'help' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       {!helpAction ? (
                         <>
                           <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -4817,7 +4820,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'billing' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       {showBillingSuccess && (
                         <motion.div 
                           initial={{ opacity: 0, y: -20 }}
@@ -4899,7 +4902,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {[
                               { id: 'Gratuit', name: 'Gratuit', price: '0', features: ["1 offre d'emploi gratuite"], icon: <Zap size={32} /> },
-                              { id: 'Annonces', name: 'Annonces', price: '5 900', features: ["Publication d'offres payantes", 'Multi-comptes (Gestionnaire)'], popular: true, icon: <Briefcase size={32} /> },
+                              { id: 'Annonces', name: 'Annonces', price: '5 900', features: ["Publication d'offres payantes", 'Multi-comptes (Gestionnaire)'], popular: true, icon: <Briefcase size={32} /> },
                               { id: 'Corporate', name: 'Corporate', price: 'Sur mesure', features: ['Publication illimitée', 'Filtrage par IA Gemini', 'Répertoire CV & Support'], icon: <Building2 size={32} /> }
                             ].map((plan, i) => (
                               <motion.div 
@@ -4908,7 +4911,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: i * 0.1 }}
                                 whileHover={{ y: -10 }}
-                                className={`group relative bg-white p-10 rounded-[3.5rem] flex flex-col h-full border transition-all duration-500 overflow-hidden ${
+                                className={`group relative bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] flex flex-col h-full border transition-all duration-500 overflow-hidden ${
                                   plan.popular 
                                     ? 'border-[#F68D58] shadow-[0_30px_60px_-15px_rgba(246,141,88,0.15)] z-10' 
                                     : 'border-gray-100 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.03)] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.06)]'
@@ -5108,7 +5111,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                   {settingsTab === 'security' && (
                     <div className="space-y-8">
-                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                         <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
                             <Lock size={24} />
@@ -5219,7 +5222,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'notifications' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
                           <Bell size={24} />
@@ -5264,7 +5267,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'privacy' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
                           <Shield size={24} />
@@ -5297,7 +5300,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'history' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-gray-50 text-gray-500 rounded-2xl flex items-center justify-center">
                           <History size={24} />
@@ -5325,7 +5328,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
 
                   {settingsTab === 'notifications' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
                           <Bell size={24} />
@@ -5353,7 +5356,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'privacy' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
                           <Shield size={24} />
@@ -5386,7 +5389,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'history' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-gray-50 text-gray-500 rounded-2xl flex items-center justify-center">
                           <History size={24} />
@@ -5417,7 +5420,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
             </div>
           );
         default:
-          return <div className="p-12 text-center text-gray-400">Page non trouvée</div>;
+          return <div className="p-6 sm:p-8 lg:p-12 text-center text-gray-400">Page non trouvée</div>;
       }
     }
 
@@ -5426,8 +5429,8 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         return (
           <div className="space-y-8">
             <div className={`flex flex-col md:flex-row md:items-center justify-between gap-6 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
-              <div className={isRTL ? 'text-right' : ''}>
-                <h1 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">
+              <div className={`min-w-0 ${isRTL ? 'text-right' : ''}`}>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-bold text-[#173E7D] tracking-tight break-words">
                   {t('welcome')}, {user?.displayName?.split(' ')[0] || (language === 'ar' ? 'باحث' : 'Chercheur')} ! 👋
                 </h1>
                 <p className="text-gray-500 mt-2 text-lg">{t('dashboardSubtitle')}</p>
@@ -5752,11 +5755,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       }
       case 'profile':
         return (
-          <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-12 space-y-12">
+          <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-6 sm:p-8 lg:p-12 space-y-12">
             <div className={`flex flex-col md:flex-row justify-between items-start gap-8 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
-              <div className={`space-y-4 ${isRTL ? 'text-right' : ''}`}>
-                <h2 className="text-4xl font-display font-bold text-[#173E7D] tracking-tight">{profileData.name}</h2>
-                <p className="text-gray-400 font-medium">{profileData.email}</p>
+              <div className={`space-y-4 min-w-0 ${isRTL ? 'text-right' : ''}`}>
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-display font-bold text-[#173E7D] tracking-tight break-words">{profileData.name}</h2>
+                <p className="text-gray-400 font-medium break-words">{profileData.email}</p>
                 {/* Rendered only when set — an empty chip is worse than none,
                     and these used to show a job title and city the candidate
                     had never entered. */}
@@ -6441,7 +6444,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 ))}
               </div>
             ) : (
-              <div className="bg-white p-12 rounded-[2rem] border border-gray-100 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="bg-white p-6 sm:p-8 lg:p-12 rounded-[2rem] border border-gray-100 flex flex-col items-center justify-center text-center space-y-4">
                 <div className="w-20 h-20 bg-orange-50 text-[#F68D58] rounded-full flex items-center justify-center">
                   <Bookmark size={40} />
                 </div>
@@ -6505,7 +6508,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </div>
                 ))
               ) : (
-                <div className="p-12 text-center text-gray-400 font-medium">
+                <div className="p-6 sm:p-8 lg:p-12 text-center text-gray-400 font-medium">
                   {language === 'ar' ? 'لا توجد إشعارات حالياً' : 'Aucune notification pour le moment'}
                 </div>
               )}
@@ -6556,7 +6559,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 {/* Right Column - Content */}
                 <div className="lg:col-span-2 space-y-8">
                   {settingsTab === 'preferences' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
                           <Search size={24} />
@@ -6633,7 +6636,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'help' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       {helpAction ? (
                         <div className="space-y-6">
                           <button 
@@ -6835,7 +6838,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'general' && (
-                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                    <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                       <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
                           <Globe size={24} />
@@ -6893,7 +6896,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                   {settingsTab === 'security' && (
                     <div className="space-y-8">
-                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                      <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                         <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className="w-12 h-12 bg-blue-50 text-[#173E7D] rounded-2xl flex items-center justify-center">
                             <Lock size={24} />
@@ -7004,7 +7007,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   )}
 
                   {settingsTab === 'notifications' && (
-                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                     <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                       <div className="w-12 h-12 bg-orange-50 text-[#F68D58] rounded-2xl flex items-center justify-center">
                         <Bell size={24} />
@@ -7065,7 +7068,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 )}
 
                 {settingsTab === 'privacy' && (
-                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-10 shadow-sm space-y-8">
+                  <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
                     <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                       <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
                         <Shield size={24} />
@@ -7628,7 +7631,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-30">
+        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-8 sticky top-0 z-30">
         <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
           <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
             <button 
@@ -7674,7 +7677,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
         </header>
 
         {/* Content Area */}
-        <div className="p-8 max-w-6xl mx-auto w-full">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full overflow-x-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -7749,7 +7752,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
 
                 {corporateSent ? (
-                  <div className="p-10 md:p-14 text-center">
+                  <div className="p-6 sm:p-8 lg:p-10 md:p-14 text-center">
                     <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                       <CheckCircle2 size={30} />
                     </div>
@@ -7914,7 +7917,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* CV Footer / Actions */}
-              <div className="p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+              <div className="p-6 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <div className="flex gap-4">
                   {/* Both of these had no onClick at all. */}
                   <button
@@ -8001,21 +8004,21 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
               {/* Header */}
-              <div className="bg-[#173E7D] p-10 text-white relative">
+              <div className="bg-[#173E7D] p-6 sm:p-8 lg:p-10 text-white relative">
                 <button 
                   onClick={() => setSelectedJob(null)}
                   className="absolute top-8 right-8 text-white/60 hover:text-white transition-colors"
                 >
                   <X size={28} />
                 </button>
-                <div className="flex items-center gap-8">
-                  <div className="w-24 h-24 bg-white/10 rounded-[2rem] flex items-center justify-center border border-white/20 shadow-2xl">
-                    <Building2 size={48} />
+                <div className="flex items-center gap-4 sm:gap-8">
+                  <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-[2rem] flex items-center justify-center border border-white/20 shadow-2xl shrink-0">
+                    <Building2 size={48} className="w-8 h-8 sm:w-12 sm:h-12" />
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-4xl font-display font-black tracking-tight">{selectedJob.title}</h3>
-                    <p className="text-blue-200 text-xl font-medium tracking-wide uppercase">{selectedJob.company}</p>
-                    <div className="flex gap-4 mt-4">
+                  <div className="space-y-2 min-w-0">
+                    <h3 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black tracking-tight break-words">{selectedJob.title}</h3>
+                    <p className="text-blue-200 text-base sm:text-xl font-medium tracking-wide uppercase break-words">{selectedJob.company}</p>
+                    <div className="flex flex-wrap gap-2 sm:gap-4 mt-4">
                       <span className="px-4 py-1.5 bg-white/10 rounded-full text-xs font-bold border border-white/10 flex items-center gap-2">
                         <MapPin size={14} /> {selectedJob.location}
                       </span>
@@ -8028,7 +8031,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto p-12 space-y-12 no-scrollbar">
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-12 space-y-12 no-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
                   <div className="md:col-span-2 space-y-12">
                     <section className="space-y-6">
@@ -8078,7 +8081,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* Footer */}
-              <div className="p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+              <div className="p-6 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <button 
                   onClick={() => setSelectedJob(null)}
                   className="px-8 py-4 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
@@ -8167,7 +8170,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20 p-10 text-center"
+              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20 p-6 sm:p-8 lg:p-10 text-center"
             >
               <div className="w-20 h-20 bg-blue-50 text-[#173E7D] rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
                 <Briefcase size={40} strokeWidth={1.5} />

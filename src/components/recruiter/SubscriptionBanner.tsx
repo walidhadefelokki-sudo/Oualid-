@@ -75,7 +75,7 @@ export default function SubscriptionBanner({
           t('Multi-comptes (Gestionnaire)', 'حسابات متعددة'),
           t('Candidatures illimitées', 'ترشيحات غير محدودة'),
         ],
-        price: '5 900',
+        price: '5 900',
         priceSuffix: 'DA',
         cta: t('Choisir ce plan', 'اختر هذه الباقة'),
       };
@@ -150,12 +150,12 @@ export default function SubscriptionBanner({
           {/* Price and CTA, kept together so the offer and the action read as
               one unit rather than two separate things on the same row. */}
           <div
-            className={`shrink-0 flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-5 ${
+            className={`shrink-0 flex flex-row flex-wrap lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-4 sm:gap-5 ${
               isRTL ? 'flex-row-reverse' : ''
             }`}
           >
             <div className={isRTL ? 'text-right' : 'lg:text-right'}>
-              <p className={`text-3xl md:text-4xl font-display font-black leading-none ${titleColor}`}>
+              <p className={`text-2xl sm:text-3xl md:text-4xl font-display font-black leading-none whitespace-nowrap ${titleColor}`}>
                 {content.price}
                 {content.priceSuffix && (
                   <span className={`text-base font-bold ${bodyColor} ml-1.5`}>

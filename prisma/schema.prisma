@@ -920,6 +920,12 @@ model Company {
   plan     RecruiterPlan @default(FREE)
   verified Boolean       @default(false)
 
+  /// Paid job postings still available, bought as annonce packs.
+  ///
+  /// Only consumed on PREMIUM: FREE is capped at a single offer regardless,
+  /// and CORPORATE publishes without limit, so neither touches this balance.
+  postingCredits Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

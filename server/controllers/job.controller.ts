@@ -4,6 +4,7 @@ import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { sendJobMatchEmail, sendJobPublishedEmail } from "../utils/email";
 import { notifyJobMatch } from "../services/notification.service";
+import { consumePosting } from "../services/postingQuota.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 
 // Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
@@ -178,17 +179,6 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
     }
 
     const plan = await getRecruiterPlan(req.user.id);
-    const existingJobsCount = await prisma.job.count({
-      where: { recruiterId: user.recruiterProfile.id }
-    });
-
-    // Enforce limits
-    if (plan === 'FREE' && existingJobsCount >= 5) {
-      return next(new AppError("Free plan limit reached (5 jobs). Please upgrade.", 403));
-    }
-    if (plan === 'PREMIUM' && existingJobsCount >= 20) {
-      return next(new AppError("Premium plan limit reached (20 jobs). Please upgrade to Corporate.", 403));
-    }
 
     const {
       title,
@@ -211,6 +201,11 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       return next(new AppError("title, description, location, type and experienceLevel are required", 400));
     }
 
+    // Claimed after validation so a malformed request cannot burn a paid
+    // credit: FREE is capped at one offer, PREMIUM spends a bought posting,
+    // CORPORATE is unlimited.
+    const posting = await consumePosting(membership.companyId);
+
     // Featured job limits
     let isFeatured = featured || false;
     if (isFeatured && plan === 'FREE') {
@@ -225,7 +220,9 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       }
     }
 
-    const job = await prisma.job.create({
+    let job;
+    try {
+      job = await prisma.job.create({
       data: {
         title,
         slug: slugify(title),
@@ -247,7 +244,13 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
         status: 'PUBLISHED',
         publishedAt: new Date(),
       },
-    });
+      });
+    } catch (createErr) {
+      // The credit was already claimed; hand it back rather than charge for an
+      // offer that does not exist.
+      await posting.refund();
+      throw createErr;
+    }
 
     // Confirm to the recruiter that the offer is live. Not awaited: the job
     // is already published, and a mail failure must not fail the request.

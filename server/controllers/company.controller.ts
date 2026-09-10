@@ -11,6 +11,7 @@ import {
   uploadObject,
 } from "../utils/supabaseStorage";
 import { destroyCloudinaryAsset } from "../utils/cloudinary";
+import { getPostingQuota } from "../services/postingQuota.service";
 
 /**
  * The recruiter's own company profile.
@@ -35,6 +36,7 @@ const companySelect = {
   address: true,
   plan: true,
   verified: true,
+  postingCredits: true,
   logo: { select: { id: true, url: true } },
 } satisfies Prisma.CompanySelect;
 
@@ -63,9 +65,14 @@ export const getMyCompany = async (req: Request, res: Response, next: NextFuncti
   try {
     const membership = await resolveMembership(req.user!.id);
 
+    // Sent with the company so the dashboard can say what the recruiter may
+    // publish without a second round trip — and say it using the same rule the
+    // server enforces, rather than its own copy of it.
+    const quota = await getPostingQuota(membership.companyId);
+
     res.status(200).json({
       status: "success",
-      data: { company: membership.company, memberRole: membership.role },
+      data: { company: membership.company, memberRole: membership.role, quota },
     });
   } catch (err) {
     next(err);

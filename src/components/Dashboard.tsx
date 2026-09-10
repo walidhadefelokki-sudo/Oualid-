@@ -100,7 +100,7 @@ import {
   WILAYAS, COMPANY_SECTORS, COMPANY_SIZES,
   ANNONCE_PACKS, packUnitPrice, packSavingPercent, type AnnoncePack,
 } from '../constants';
-import companyService, { Company, sendCorporateEnquiry } from '../services/company.service';
+import companyService, { Company, PostingQuota, sendCorporateEnquiry } from '../services/company.service';
 import { translations, Language } from '../translations';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
@@ -164,6 +164,10 @@ type RecruiterTier =
  * padlock honest rather than decorative.
  */
 interface TierAccess {
+  /** Screen applicants with AI. Premium and above. */
+  aiFilter: boolean;
+  /** The CV directory of people who applied. Corporate only. */
+  repertoireCv: boolean;
   /** Watch a candidate's recorded presentation. Corporate only. */
   oralPresentation: boolean;
   /** Quiz results and shortlisting tools. Corporate only. */
@@ -173,9 +177,19 @@ interface TierAccess {
 }
 
 const TIER_ACCESS: Record<RecruiterTier, TierAccess> = {
-  free: { oralPresentation: false, preselection: false, sourcingIA: false },
-  paid: { oralPresentation: false, preselection: false, sourcingIA: false },
-  corporate: { oralPresentation: true, preselection: true, sourcingIA: true },
+  free: {
+    aiFilter: false, repertoireCv: false,
+    oralPresentation: false, preselection: false, sourcingIA: false,
+  },
+  paid: {
+    // Premium buys AI screening and nothing else beyond posting.
+    aiFilter: true, repertoireCv: false,
+    oralPresentation: false, preselection: false, sourcingIA: false,
+  },
+  corporate: {
+    aiFilter: true, repertoireCv: true,
+    oralPresentation: true, preselection: true, sourcingIA: true,
+  },
 };
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) => (
@@ -1097,12 +1111,6 @@ export default function Dashboard({
                 onClick={() => setActiveTab('ai-filter')}
               />
 
-              <SidebarItem
-                icon={BookOpen}
-                label="Répertoire CV"
-                active={activeTab === 'repertoire-cv'}
-                onClick={() => setActiveTab('repertoire-cv')}
-              />
             </>
           )}
 
@@ -1113,6 +1121,16 @@ export default function Dashboard({
           {recruiterTier === 'corporate' && (
             <>
               <SectionLabel>Corporate</SectionLabel>
+
+              {/* Répertoire CV is a Corporate feature. It sat in the Premium
+                  block above, so Premium accounts saw a tab their plan does
+                  not include. */}
+              <SidebarItem
+                icon={BookOpen}
+                label="Répertoire CV"
+                active={activeTab === 'repertoire-cv'}
+                onClick={() => setActiveTab('repertoire-cv')}
+              />
 
               <SidebarItem
                 icon={Volume2}
@@ -1603,6 +1621,7 @@ export default function Dashboard({
     name: '', industry: '', website: '', size: '', city: '', description: '',
   });
   const [companyRole, setCompanyRole] = useState<string>('');
+  const [postingQuota, setPostingQuota] = useState<PostingQuota | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -1624,8 +1643,9 @@ export default function Dashboard({
     if (isDemo) return;
     try {
       setLoadingCompany(true);
-      const { company: c, memberRole } = await companyService.getMyCompany();
+      const { company: c, memberRole, quota } = await companyService.getMyCompany();
       setCompanyRole(memberRole);
+      setPostingQuota(quota);
       applyCompany(c);
     } catch (error: any) {
       // A recruiter with no company yet is not an error worth shouting about.
@@ -3220,6 +3240,20 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
     if (user?.role === 'employer') {
       switch (activeTab) {
         case "repertoire-cv":
+          // Guarded on the page too: hiding a menu entry is not access
+          // control, and activeTab can be reached from elsewhere.
+          if (!access.repertoireCv) {
+            return (
+              <TierLockedScreen
+                title="Répertoire CV"
+                description="Consultez et filtrez les CV de tous les candidats ayant postulé à vos offres. Réservé au plan Corporate."
+                requiredTier="Corporate"
+                icon={BookOpen}
+                onUpgrade={() => setActiveTab('subscription')}
+              />
+            );
+          }
+
           return (
             <CVDirectory
               candidates={candidateList}
@@ -4059,6 +4093,46 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 </div>
               </div>
 
+              {/* What this plan may still publish, from the server's own
+                  quota rather than a second opinion computed here. */}
+              {postingQuota && (
+                <div
+                  className={`rounded-2xl border p-5 flex flex-wrap items-center gap-4 ${
+                    postingQuota.canPublish
+                      ? 'border-gray-100 bg-gray-50/60'
+                      : 'border-amber-200 bg-amber-50'
+                  } ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+                >
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
+                      {lt('Your allowance', 'Vos annonces', 'حصتك')}
+                    </p>
+                    <p className="font-black text-[#173E7D] mt-1">
+                      {postingQuota.remaining === null
+                        ? lt('Unlimited postings', 'Publications illimitées', 'نشر غير محدود')
+                        : lt(
+                            `${postingQuota.remaining} posting(s) remaining`,
+                            `${postingQuota.remaining} annonce(s) restante(s)`,
+                            `${postingQuota.remaining} إعلان متبقٍ`
+                          )}
+                    </p>
+                    {postingQuota.reason && (
+                      <p className="text-sm text-amber-800 font-medium mt-1.5">{postingQuota.reason}</p>
+                    )}
+                  </div>
+
+                  {!postingQuota.canPublish && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('subscription')}
+                      className="px-6 py-3 rounded-full bg-[#F68D58] text-white font-black text-[10px] uppercase tracking-widest hover:bg-[#173E7D] transition-all"
+                    >
+                      {lt('Buy postings', 'Acheter des annonces', 'شراء إعلانات')}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <form onSubmit={handlePostJob} className="space-y-10">
                 <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
                   <label className="text-sm font-bold text-gray-900">{t('position')} *</label>
@@ -4199,7 +4273,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                 <div className="pt-8 border-t border-gray-100 flex flex-col md:flex-row gap-4">
                   <button type="submit" className="flex-1 bg-[#0F172A] text-white px-12 py-5 rounded-full font-bold hover:bg-[#1e293b] transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-3">
-                    🚀 Publier l'offre
+                    {postingQuota && !postingQuota.canPublish
+                      ? lt('No postings left', "Plus d'annonce disponible", 'لا يوجد إعلان متاح')
+                      : "🚀 Publier l'offre"}
                   </button>
                   <button type="button" className="flex-1 bg-white text-gray-900 border border-gray-200 px-12 py-5 rounded-full font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-3">
                     Sauvegarder brouillon

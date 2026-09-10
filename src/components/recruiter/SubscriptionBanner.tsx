@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Crown, Check, ArrowRight, X } from 'lucide-react';
+import { Sparkles, Crown, Check, ArrowRight } from 'lucide-react';
 
 export type RecruiterTier = 'free' | 'paid' | 'corporate';
 
@@ -15,27 +14,6 @@ interface SubscriptionBannerProps {
    */
   hidden?: boolean;
 }
-
-/**
- * How long a dismissal lasts.
- *
- * Not forever: a recruiter who closes this while busy should not lose sight of
- * the paid plans permanently. Not session-only either, which would put it back
- * on every page load and read as nagging. A week is long enough to be a real
- * dismissal and short enough that the offer comes back.
- */
-const DISMISS_DAYS = 7;
-const STORAGE_KEY = 'dl_subscription_banner_dismissed_until';
-
-const readDismissedUntil = (): number => {
-  try {
-    return Number(localStorage.getItem(STORAGE_KEY)) || 0;
-  } catch {
-    // Private browsing and blocked site data both throw here. Showing the
-    // banner is the safe default.
-    return 0;
-  }
-};
 
 /**
  * Promotes the next paid tier up from wherever the recruiter is now.
@@ -54,22 +32,15 @@ export default function SubscriptionBanner({
   onUpgrade,
   hidden = false,
 }: SubscriptionBannerProps) {
-  const [dismissedUntil, setDismissedUntil] = useState(readDismissedUntil);
-
   const isRTL = language === 'ar';
   const t = (fr: string, ar: string) => (isRTL ? ar : fr);
 
-  const dismiss = () => {
-    const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000;
-    setDismissedUntil(until);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(until));
-    } catch {
-      // Dismissal still applies for this session even if it cannot persist.
-    }
-  };
-
-  if (hidden || tier === 'corporate' || Date.now() < dismissedUntil) return null;
+  // Not dismissible. Free and Annonces recruiters are the ones with something
+  // left to buy, and both were able to hide the offer for a week — Corporate,
+  // the only tier that never sees this, was the only one that could not. The
+  // banner stays put; the Abonnement page is where it stops being shown,
+  // because the plans are already on screen there.
+  if (hidden || tier === 'corporate') return null;
 
   const promotingCorporate = tier === 'paid';
 
@@ -140,20 +111,6 @@ export default function SubscriptionBanner({
         aria-label={content.title}
         className={`relative overflow-hidden rounded-[2rem] border p-7 md:p-8 mb-8 ${shell}`}
       >
-        <button
-          onClick={dismiss}
-          aria-label={t('Masquer', 'إخفاء')}
-          className={`absolute top-5 w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-            isRTL ? 'left-5' : 'right-5'
-          } ${
-            promotingCorporate
-              ? 'text-white/50 hover:text-white hover:bg-white/10'
-              : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          <X size={16} />
-        </button>
-
         <div
           className={`flex flex-col lg:flex-row lg:items-center gap-7 ${
             isRTL ? 'lg:flex-row-reverse' : ''

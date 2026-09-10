@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { grantPostings } from "../services/postingQuota.service";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 
@@ -290,6 +291,41 @@ export const getStats = async (req: Request, res: Response, next: NextFunction) 
         pendingTickets,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Credits a company with paid job postings, after a pack purchase.
+ *
+ * Manual for now: the payment form has no processor behind it, so a purchase
+ * is confirmed here rather than by a webhook. When Chargily is wired in, its
+ * callback should call grantPostings directly and this becomes the manual
+ * fallback for support.
+ */
+export const grantCompanyPostings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { postings } = req.body as { postings?: number };
+
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) return next(new AppError("Company not found", 404));
+
+    const updated = await grantPostings(id, Number(postings));
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id,
+        action: "GRANT_COMPANY_POSTINGS",
+        entity: "Company",
+        entityId: id,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      },
+    });
+
+    res.status(200).json({ status: "success", data: { company: updated } });
   } catch (err) {
     next(err);
   }

@@ -15,7 +15,25 @@ export interface Company {
   address?: string | null;
   plan: "FREE" | "PREMIUM" | "CORPORATE";
   verified: boolean;
+  /** Paid postings still in hand. Only meaningful on PREMIUM. */
+  postingCredits: number;
   logo?: { id: string; url: string } | null;
+}
+
+/**
+ * What this company may still publish.
+ *
+ * Computed server-side from the same code that enforces it, so the button and
+ * the API cannot disagree about whether a posting is allowed.
+ */
+export interface PostingQuota {
+  plan: "FREE" | "PREMIUM" | "CORPORATE";
+  used: number;
+  /** null means unlimited. */
+  remaining: number | null;
+  credits: number;
+  canPublish: boolean;
+  reason: string | null;
 }
 
 export type CompanyUpdate = Partial<
@@ -27,7 +45,7 @@ export type CompanyUpdate = Partial<
 
 export const companyService = {
   /** The caller's own company, plus their role in it. */
-  async getMyCompany(): Promise<{ company: Company; memberRole: string }> {
+  async getMyCompany(): Promise<{ company: Company; memberRole: string; quota: PostingQuota }> {
     const { data } = await api.get("/companies/me");
     return data.data;
   },

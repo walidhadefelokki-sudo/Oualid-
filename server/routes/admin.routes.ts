@@ -15,6 +15,9 @@ router.get("/stats", adminController.getStats);
 router.get("/companies", adminController.getAllCompanies);
 router.get("/companies/:id", adminController.getCompany);
 router.patch("/companies/:id/plan", adminController.updateCompanyPlan);
+// Credits an annonce pack onto a company. Manual until a payment processor
+// can call grantPostings from its webhook.
+router.patch("/companies/:id/postings", adminController.grantCompanyPostings);
 
 // Users
 router.get("/users", adminController.getAllUsers);

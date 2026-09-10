@@ -1520,6 +1520,84 @@ var notifyJobMatch = async (params) => {
   );
 };
 
+// server/services/postingQuota.service.ts
+init_prisma();
+var FREE_JOB_ALLOWANCE = 1;
+var getPostingQuota = async (companyId) => {
+  const company = await prisma_default.company.findUnique({
+    where: { id: companyId },
+    select: { plan: true, postingCredits: true }
+  });
+  if (!company) {
+    throw new AppError("No company associated with this recruiter account.", 400);
+  }
+  const used = await prisma_default.job.count({ where: { companyId } });
+  if (company.plan === "CORPORATE") {
+    return {
+      plan: company.plan,
+      used,
+      remaining: null,
+      credits: company.postingCredits,
+      canPublish: true,
+      reason: null
+    };
+  }
+  if (company.plan === "FREE") {
+    const remaining = Math.max(FREE_JOB_ALLOWANCE - used, 0);
+    return {
+      plan: company.plan,
+      used,
+      remaining,
+      credits: company.postingCredits,
+      canPublish: remaining > 0,
+      reason: remaining > 0 ? null : "Votre offre gratuite est d\xE9j\xE0 publi\xE9e. Achetez un pack d'annonces ou passez au plan Corporate pour publier davantage."
+    };
+  }
+  return {
+    plan: company.plan,
+    used,
+    remaining: company.postingCredits,
+    credits: company.postingCredits,
+    canPublish: company.postingCredits > 0,
+    reason: company.postingCredits > 0 ? null : "Vous n'avez plus d'annonce disponible. Achetez un pack pour publier une nouvelle offre."
+  };
+};
+var consumePosting = async (companyId) => {
+  const quota = await getPostingQuota(companyId);
+  if (!quota.canPublish) {
+    throw new AppError(quota.reason ?? "Publication limit reached.", 403);
+  }
+  if (quota.plan !== "PREMIUM") {
+    return { refund: async () => {
+    } };
+  }
+  const claimed = await prisma_default.company.updateMany({
+    where: { id: companyId, postingCredits: { gt: 0 } },
+    data: { postingCredits: { decrement: 1 } }
+  });
+  if (claimed.count === 0) {
+    throw new AppError(
+      "Vous n'avez plus d'annonce disponible. Achetez un pack pour publier une nouvelle offre.",
+      403
+    );
+  }
+  return {
+    refund: async () => {
+      await prisma_default.company.update({ where: { id: companyId }, data: { postingCredits: { increment: 1 } } }).catch((err) => console.error(`Could not refund a posting credit to ${companyId}:`, err));
+    }
+  };
+};
+var grantPostings = async (companyId, amount) => {
+  if (!Number.isInteger(amount) || amount <= 0 || amount > 1e3) {
+    throw new AppError("The number of postings must be a whole number between 1 and 1000.", 400);
+  }
+  return prisma_default.company.update({
+    where: { id: companyId },
+    data: { postingCredits: { increment: amount } },
+    select: { id: true, name: true, plan: true, postingCredits: true }
+  });
+};
+
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -1651,15 +1729,6 @@ var createJob = async (req, res, next) => {
       return next(new AppError("No company associated with this recruiter account", 400));
     }
     const plan = await getRecruiterPlan(req.user.id);
-    const existingJobsCount = await prisma_default.job.count({
-      where: { recruiterId: user.recruiterProfile.id }
-    });
-    if (plan === "FREE" && existingJobsCount >= 5) {
-      return next(new AppError("Free plan limit reached (5 jobs). Please upgrade.", 403));
-    }
-    if (plan === "PREMIUM" && existingJobsCount >= 20) {
-      return next(new AppError("Premium plan limit reached (20 jobs). Please upgrade to Corporate.", 403));
-    }
     const {
       title,
       description,
@@ -1679,6 +1748,7 @@ var createJob = async (req, res, next) => {
     if (!title || !description || !location || !type || !experienceLevel) {
       return next(new AppError("title, description, location, type and experienceLevel are required", 400));
     }
+    const posting = await consumePosting(membership.companyId);
     let isFeatured = featured || false;
     if (isFeatured && plan === "FREE") {
       isFeatured = false;
@@ -1691,29 +1761,35 @@ var createJob = async (req, res, next) => {
         isFeatured = false;
       }
     }
-    const job = await prisma_default.job.create({
-      data: {
-        title,
-        slug: slugify3(title),
-        description,
-        location,
-        wilaya,
-        country,
-        remote: remote ?? false,
-        type,
-        experienceLevel,
-        vacancies: vacancies ?? 1,
-        salaryMin,
-        salaryMax,
-        currency: currency ?? "DZD",
-        categoryId: categoryId || void 0,
-        featured: isFeatured,
-        recruiterId: user.recruiterProfile.id,
-        companyId: membership.companyId,
-        status: "PUBLISHED",
-        publishedAt: /* @__PURE__ */ new Date()
-      }
-    });
+    let job;
+    try {
+      job = await prisma_default.job.create({
+        data: {
+          title,
+          slug: slugify3(title),
+          description,
+          location,
+          wilaya,
+          country,
+          remote: remote ?? false,
+          type,
+          experienceLevel,
+          vacancies: vacancies ?? 1,
+          salaryMin,
+          salaryMax,
+          currency: currency ?? "DZD",
+          categoryId: categoryId || void 0,
+          featured: isFeatured,
+          recruiterId: user.recruiterProfile.id,
+          companyId: membership.companyId,
+          status: "PUBLISHED",
+          publishedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch (createErr) {
+      await posting.refund();
+      throw createErr;
+    }
     sendJobPublishedEmail(user.email, {
       companyName: membership.company.name,
       jobTitle: job.title,
@@ -4327,6 +4403,28 @@ var getStats = async (req, res, next) => {
     next(err);
   }
 };
+var grantCompanyPostings = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { postings } = req.body;
+    const company = await prisma_default.company.findUnique({ where: { id } });
+    if (!company) return next(new AppError("Company not found", 404));
+    const updated = await grantPostings(id, Number(postings));
+    await prisma_default.auditLog.create({
+      data: {
+        userId: req.user?.id,
+        action: "GRANT_COMPANY_POSTINGS",
+        entity: "Company",
+        entityId: id,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"]
+      }
+    });
+    res.status(200).json({ status: "success", data: { company: updated } });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/admin.routes.ts
 var router6 = Router6();
@@ -4336,6 +4434,7 @@ router6.get("/stats", getStats);
 router6.get("/companies", getAllCompanies);
 router6.get("/companies/:id", getCompany);
 router6.patch("/companies/:id/plan", updateCompanyPlan);
+router6.patch("/companies/:id/postings", grantCompanyPostings);
 router6.get("/users", getAllUsers);
 router6.patch("/users/:id/status", updateUserStatus);
 router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
@@ -4622,6 +4721,7 @@ var companySelect = {
   address: true,
   plan: true,
   verified: true,
+  postingCredits: true,
   logo: { select: { id: true, url: true } }
 };
 var resolveMembership = async (userId) => {
@@ -4638,9 +4738,10 @@ var resolveMembership = async (userId) => {
 var getMyCompany = async (req, res, next) => {
   try {
     const membership = await resolveMembership(req.user.id);
+    const quota = await getPostingQuota(membership.companyId);
     res.status(200).json({
       status: "success",
-      data: { company: membership.company, memberRole: membership.role }
+      data: { company: membership.company, memberRole: membership.role, quota }
     });
   } catch (err) {
     next(err);

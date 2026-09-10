@@ -12,6 +12,7 @@ import {
   Users, 
   TrendingUp, 
   ChevronRight, 
+  ChevronDown, 
   MapPin, 
   Clock, 
   Building2,
@@ -757,8 +758,8 @@ export default function App() {
               className={`bg-white p-2.5 rounded-[2.5rem] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.35)] ring-1 ring-black/5 flex flex-col md:flex-row gap-2 ${language === 'ar' ? 'md:flex-row-reverse' : ''}`}
             >
               <div
-                className={`flex-[1.5] flex items-center px-6 gap-4 rounded-[2rem] transition-colors focus-within:bg-gray-50 border-b md:border-b-0 md:border-r border-gray-100 py-4 ${
-                  language === 'ar' ? 'flex-row-reverse md:border-r-0 md:border-l' : ''
+                className={`flex-[1.5] flex items-center px-6 gap-4 rounded-[2rem] py-4 border border-[#173E7D]/25 transition-colors focus-within:border-[#173E7D] focus-within:bg-[#173E7D]/[0.03] ${
+                  language === 'ar' ? 'flex-row-reverse' : ''
                 }`}
               >
                 <Search size={22} className="text-[#F68D58] shrink-0" />
@@ -783,7 +784,7 @@ export default function App() {
               </div>
 
               <div
-                className={`flex-1 flex items-center px-6 gap-4 rounded-[2rem] transition-colors focus-within:bg-gray-50 py-4 ${
+                className={`flex-1 flex items-center px-6 gap-4 rounded-[2rem] py-4 border border-[#173E7D]/25 transition-colors focus-within:border-[#173E7D] focus-within:bg-[#173E7D]/[0.03] ${
                   language === 'ar' ? 'flex-row-reverse' : ''
                 }`}
               >
@@ -807,6 +808,7 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+                <ChevronDown size={18} className="text-[#173E7D]/50 shrink-0 pointer-events-none" />
               </div>
 
               <button

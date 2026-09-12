@@ -365,6 +365,19 @@ export default function Dashboard({
     (user?.recruiterTier as RecruiterTier) || 'free'
   );
 
+  /**
+   * Company.plan is the server's own word for what this account may do — the
+   * same column postingQuota and requireRecruiterTier read. Mapping it here
+   * means one upgrade path: whatever changes the plan (a pack purchase, the
+   * super admin's plans table) reaches the menus and the gates the next time
+   * the company loads, rather than waiting for a fresh sign-in.
+   */
+  const PLAN_TO_TIER: Record<string, RecruiterTier> = {
+    FREE: 'free',
+    PREMIUM: 'paid',
+    CORPORATE: 'corporate',
+  };
+
   useEffect(() => {
     if (user?.recruiterTier) {
       setRecruiterTier(user.recruiterTier as RecruiterTier);
@@ -1718,6 +1731,11 @@ export default function Dashboard({
 
   const applyCompany = (c: Company) => {
     setCompany(c);
+
+    // The live plan wins over whatever the session was issued with.
+    if (c?.plan && PLAN_TO_TIER[c.plan]) {
+      setRecruiterTier(PLAN_TO_TIER[c.plan]);
+    }
     setCompanyForm({
       name: c.name ?? '',
       industry: c.industry ?? '',
@@ -7493,12 +7511,54 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     active={activeTab === 'candidates'} 
                     onClick={() => { setActiveTab('candidates'); setIsSidebarOpen(false); }} 
                   />
-                  <SidebarItem 
-                    icon={Cpu} 
-                    label="Filtre IA" 
-                    active={activeTab === 'ai-filter'} 
-                    onClick={() => { setActiveTab('ai-filter'); setIsSidebarOpen(false); }} 
-                  />
+                  {/* Premium and Corporate. Gratuit does not include the AI
+                      filter, and this menu used to offer it to everyone. */}
+                  {(recruiterTier === 'paid' || recruiterTier === 'corporate') && (
+                    <SidebarItem
+                      icon={Cpu}
+                      label={lt('AI filter', 'Filtre IA', 'فلتر الذكاء الاصطناعي')}
+                      active={activeTab === 'ai-filter'}
+                      onClick={() => { setActiveTab('ai-filter'); setIsSidebarOpen(false); }}
+                    />
+                  )}
+
+                  {/* Corporate. These five pages were reachable only from the
+                      mobile drawer, so on a laptop they did not exist. */}
+                  {recruiterTier === 'corporate' && (
+                    <>
+                      <SectionLabel>Corporate</SectionLabel>
+                      <SidebarItem
+                        icon={BookOpen}
+                        label={lt('CV directory', 'Répertoire CV', 'دليل السير الذاتية')}
+                        active={activeTab === 'repertoire-cv'}
+                        onClick={() => { setActiveTab('repertoire-cv'); setIsSidebarOpen(false); }}
+                      />
+                      <SidebarItem
+                        icon={BookOpen}
+                        label={lt('CV database', 'Base de CV', 'قاعدة السير الذاتية')}
+                        active={activeTab === 'sourcing-ia'}
+                        onClick={() => { setActiveTab('sourcing-ia'); setIsSidebarOpen(false); }}
+                      />
+                      <SidebarItem
+                        icon={Volume2}
+                        label={lt('Oral presentations', 'Présentations orales', 'العروض الشفهية')}
+                        active={activeTab === 'oral-results'}
+                        onClick={() => { setActiveTab('oral-results'); setIsSidebarOpen(false); }}
+                      />
+                      <SidebarItem
+                        icon={Award}
+                        label={lt('Quiz results', 'Résultats Quiz', 'نتائج الاختبارات')}
+                        active={activeTab === 'quiz-results'}
+                        onClick={() => { setActiveTab('quiz-results'); setIsSidebarOpen(false); }}
+                      />
+                      <SidebarItem
+                        icon={Star}
+                        label={lt('Shortlist', 'Préselection', 'الانتقاء المسبق')}
+                        active={activeTab === 'preselected'}
+                        onClick={() => { setActiveTab('preselected'); setIsSidebarOpen(false); }}
+                      />
+                    </>
+                  )}
                   <SectionLabel>{t('tools')}</SectionLabel>
                   <SidebarItem 
                     icon={PlusCircle} 

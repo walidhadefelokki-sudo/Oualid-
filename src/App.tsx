@@ -287,42 +287,6 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleDemoCandidate = async () => {
-    // Prevent multiple clicks
-    if (loading) return;
-    
-    setUser({
-      uid: 'demo-candidate',
-      displayName: 'Amine Benali',
-      email: 'amine.benali@example.dz',
-      photoURL: 'https://i.pravatar.cc/150?u=amine',
-      role: 'user'
-    });
-    setIsDemo(true);
-    setView('dashboard');
-    setIsLoginOpen(false);
-    setIsAuthModalOpen(false);
-    setIsMenuOpen(false);
-  };
-
-  const handleDemoEmployer = async (tier: 'free' | 'paid' | 'corporate') => {
-    // Prevent multiple clicks
-    if (loading) return;
-
-    setUser({
-      uid: 'demo-employer',
-      displayName: 'Oualid Elhadef Elokki',
-      email: 'oualidelhadefelokki@outlook.com',
-      photoURL: 'https://i.pravatar.cc/150?u=oualid',
-      role: 'employer',
-      recruiterTier: tier,   // ← add this line
-    });
-    setIsDemo(true);
-    setView('dashboard');
-    setIsLoginOpen(false);
-    setIsAuthModalOpen(false);
-    setIsMenuOpen(false);
-  };
 
   const [formData, setFormData] = useState({
     name: '',
@@ -330,7 +294,6 @@ export default function App() {
     phone: '',
     resume: null as File | null
   });
-  const [showRecruiterPlans, setShowRecruiterPlans] = useState(false);
   const handleOpenRegister = (role: 'user' | 'employer') => {
     setModalInitialRole(role);
     setModalInitialStep('form');
@@ -1959,7 +1922,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ layout: { type: 'spring', stiffness: 260, damping: 28 } }}
-              className={`bg-white w-full rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20 ${showRecruiterPlans ? 'max-w-4xl' : 'max-w-sm'}`}
+              className={"bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden border border-white/20"}
             >
               <div className="p-8 text-center">
                 <button 
@@ -2018,83 +1981,31 @@ export default function App() {
                   </button>
                 </form>
 
-                <div className="relative py-2 mb-5">
+                <div className="relative py-3">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-100"></div>
                   </div>
                   <div className="relative flex justify-center text-[9px] uppercase tracking-widest font-black text-gray-300">
-                    <span className="bg-white px-2">{language === 'fr' ? 'DÉMO' : 'تجريبي'}</span>
+                    <span className="bg-white px-2">{language === 'fr' ? 'Ou' : 'أو'}</span>
                   </div>
                 </div>
 
-                <AnimatePresence mode="wait">
-                  {!showRecruiterPlans ? (
-                    <motion.div
-                      key="demo-entry"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="grid grid-cols-2 gap-3 mb-6"
-                    >
-                      <button 
-                        onClick={handleDemoCandidate}
-                        className="flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 text-[#173E7D] p-4 rounded-2xl font-black hover:bg-gray-50 transition-all shadow-sm group"
-                      >
-                        <UserIcon size={20} className="group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] uppercase tracking-tighter">{language === 'fr' ? "Candidat" : "مترشح"}</span>
-                      </button>
-                      <button 
-                        onClick={() => setShowRecruiterPlans(true)}
-                        className="flex flex-col items-center justify-center gap-2 bg-white border border-gray-100 text-[#173E7D] p-4 rounded-2xl font-black hover:bg-gray-50 transition-all shadow-sm group"
-                      >
-                        <Building2 size={20} className="group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] uppercase tracking-tighter">{language === 'fr' ? "Recruteur" : "صاحب عمل"}</span>
-                      </button>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="recruiter-plans"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="mb-6 text-left"
-                    >
-                      <button
-                        onClick={() => setShowRecruiterPlans(false)}
-                        className="mb-4 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-[#173E7D] transition-colors"
-                      >
-                        <ArrowLeft size={13} />
-                        {language === 'fr' ? 'Retour' : 'رجوع'}
-                      </button>
-                      <p className="mb-4 text-[11px] font-semibold text-gray-400">
-                        {language === 'fr' ? 'Choisissez le plan à explorer' : 'اختر الخطة التي تريد تجربتها'}
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {RECRUITER_PLANS.map((plan) => (
-                          <RecruiterPlanCard
-                            key={plan.tier}
-                            plan={plan}
-                            language={language}
-                            onSelect={handleDemoEmployer}
-                          />
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {!showRecruiterPlans && (
-                  <div className="flex flex-col gap-2">
-                    <button 
-                      onClick={handleDemoCandidate}
-                      className="text-gray-400 hover:text-[#173E7D] font-black text-[10px] uppercase tracking-widest transition-colors"
-                    >
-                      {language === 'fr' ? "S'inscrire" : "سجل الآن"}
-                    </button>
-                  </div>
-                )}
+                <div className="flex flex-col gap-3">
+                  <p className="text-[11px] font-semibold text-gray-400">
+                    {language === 'fr' ? "Vous n'avez pas encore de compte ?" : 'ليس لديك حساب بعد؟'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLoginOpen(false);
+                      setModalInitialStep('selection');
+                      setIsAuthModalOpen(true);
+                    }}
+                    className="w-full bg-white border border-[#173E7D]/20 text-[#173E7D] py-3 rounded-xl font-black text-sm hover:bg-[#173E7D] hover:text-white hover:border-[#173E7D] transition-all duration-300 uppercase tracking-[0.2em]"
+                  >
+                    {language === 'fr' ? 'Inscription' : 'إنشاء حساب'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

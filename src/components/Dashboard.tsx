@@ -198,6 +198,35 @@ const TIER_ACCESS: Record<RecruiterTier, TierAccess> = {
   },
 };
 
+/**
+ * "N إعلان" in correct Arabic.
+ *
+ * Arabic counts in five bands, not two, so a single noun form is wrong almost
+ * everywhere: the pack cards read "10 إعلان" and "5 إعلان" where the plural
+ * إعلانات is required, and "2 إعلان" where Arabic uses a dual — إعلانين, which
+ * carries the two itself, so the numeral is dropped.
+ *
+ *    0        لا إعلانات
+ *    1        إعلان واحد        (the numeral is in the word)
+ *    2        إعلانين           (dual, likewise)
+ *    3-10     N إعلانات         (plural)
+ *    11-99    N إعلاناً          (singular accusative — tamyīz)
+ *    100, 1000 and multiples    N إعلان   (singular genitive)
+ *
+ * The bands past ten matter here because paid postings are granted in any
+ * amount up to 1000, not only in the four pack sizes.
+ */
+const arabicAnnonces = (count: number): string => {
+  if (count === 0) return 'لا إعلانات';
+  if (count === 1) return 'إعلان واحد';
+  if (count === 2) return 'إعلانين';
+
+  const lastTwo = count % 100;
+  if (lastTwo === 0) return `${count} إعلان`;
+  if (lastTwo >= 3 && lastTwo <= 10) return `${count} إعلانات`;
+  return `${count} إعلاناً`;
+};
+
 const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) => (
   <button 
     onClick={onClick}
@@ -4157,7 +4186,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                           {lt(`Pack ${pack.jobs}`, `Pack ${pack.jobs}`, `باقة ${pack.jobs}`)}
                         </p>
                         <p className="text-2xl font-display font-black text-[#173E7D] tracking-tight mt-2">
-                          {pack.jobs} {lt(pack.jobs > 1 ? 'postings' : 'posting', pack.jobs > 1 ? 'annonces' : 'annonce', 'إعلان')}
+                          {lt(
+                            `${pack.jobs} ${pack.jobs > 1 ? 'postings' : 'posting'}`,
+                            `${pack.jobs} ${pack.jobs > 1 ? 'annonces' : 'annonce'}`,
+                            arabicAnnonces(pack.jobs)
+                          )}
                         </p>
                         <p dir="ltr" className="text-sm font-bold text-gray-500 mt-1">
                           {pack.label} DA
@@ -4224,7 +4257,10 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         : lt(
                             `${postingQuota.remaining} posting(s) remaining`,
                             `${postingQuota.remaining} annonce(s) restante(s)`,
-                            `${postingQuota.remaining} إعلان متبقٍ`
+                            postingQuota.remaining === 0
+                              ? 'لم يتبقَ لديك أي إعلان'
+                              : `يتبقى لديك ${arabicAnnonces(postingQuota.remaining)}`
+
                           )}
                     </p>
                     {postingQuota.reason && (

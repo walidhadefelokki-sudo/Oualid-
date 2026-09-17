@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X } from "lucide-react";
 import CrmTab from "./CrmTab";
 import adminService, {
   AdminStats,
@@ -17,36 +17,82 @@ const PLAN_OPTIONS: Array<"FREE" | "PREMIUM" | "CORPORATE"> = ["FREE", "PREMIUM"
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
   const [tab, setTab] = useState<Tab>("overview");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  /* Choosing a section closes the drawer — on a phone it covers the very
+     content you just asked to see. On desktop the sidebar is always in the
+     layout and this does nothing. */
+  const go = (next: Tab) => {
+    setTab(next);
+    setMenuOpen(false);
+  };
+
+  const nav = (
+    <>
+      <div className="flex items-center gap-2 mb-8 px-2">
+        <LayoutDashboard size={22} />
+        <span className="font-display text-lg">Admin</span>
+      </div>
+
+      <nav className="flex flex-col gap-1">
+        <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => go("overview")} />
+        <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => go("plans")} />
+        <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => go("crm")} />
+        <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => go("preselection")} />
+      </nav>
+
+      <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
+        <LogOut size={16} />
+        <span className="text-sm">Retour au site</span>
+      </button>
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-accent flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-primary text-white flex flex-col p-4 shrink-0">
-        <div className="flex items-center gap-2 mb-8 px-2">
-          <LayoutDashboard size={22} />
-          <span className="font-display text-lg">Admin</span>
-        </div>
-
-        <nav className="flex flex-col gap-1">
-          <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => setTab("overview")} />
-          <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => setTab("plans")} />
-          <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => setTab("crm")} />
-          <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => setTab("preselection")} />
-        </nav>
-
-        <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
-          <LogOut size={16} />
-          <span className="text-sm">Retour au site</span>
-        </button>
+      {/* Desktop sidebar. Was w-64 shrink-0 at every width, so on a 375px
+          phone it took two thirds of the screen and left the tables ~119px. */}
+      <aside className="hidden lg:flex w-64 bg-primary text-white flex-col p-4 shrink-0">
+        {nav}
       </aside>
 
-      {/* Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        {tab === "overview" && <OverviewTab />}
-        {tab === "plans" && <PlansTab />}
-        {tab === "crm" && <CrmTab />}
-        {tab === "preselection" && <PreselectionTab />}
-      </main>
+      {/* Mobile drawer */}
+      {menuOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-primary text-white flex flex-col p-4 z-50 lg:hidden shadow-2xl">
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="absolute top-4 right-4 text-white/70 hover:text-white"
+              aria-label="Fermer le menu"
+            >
+              <X size={20} />
+            </button>
+            {nav}
+          </aside>
+        </>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Only way into the menu once the sidebar is hidden. */}
+        <header className="lg:hidden flex items-center gap-3 bg-primary text-white px-4 py-3 sticky top-0 z-30">
+          <button onClick={() => setMenuOpen(true)} aria-label="Ouvrir le menu">
+            <Menu size={22} />
+          </button>
+          <span className="font-display">Admin</span>
+        </header>
+
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
+          {tab === "overview" && <OverviewTab />}
+          {tab === "plans" && <PlansTab />}
+          {tab === "crm" && <CrmTab />}
+          {tab === "preselection" && <PreselectionTab />}
+        </main>
+      </div>
     </div>
   );
 };
@@ -187,8 +233,10 @@ const PlansTab: React.FC = () => {
       ) : companies.length === 0 ? (
         <EmptyBox message="Aucune entreprise pour le moment." />
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        /* overflow-hidden clipped the six columns rather than letting them
+           scroll, so on a phone the plan control was simply unreachable. */
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-primary/5 text-left text-primary/60 uppercase text-xs">
               <tr>
                 <th className="px-4 py-3">Entreprise</th>
@@ -356,8 +404,8 @@ const PreselectionTab: React.FC = () => {
       ) : (
         <div className="flex flex-col gap-3">
           {apps.map((a) => (
-            <div key={a.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center justify-between">
-              <div>
+            <div key={a.id} className="bg-white rounded-xl p-4 shadow-sm flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold">
                   {a.candidate.user.firstName || ""} {a.candidate.user.lastName || ""}
                   <span className="text-primary/50 font-normal"> — {a.candidate.user.email}</span>

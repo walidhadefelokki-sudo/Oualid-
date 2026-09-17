@@ -150,7 +150,7 @@ const LeadsView: React.FC = () => {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative flex-1 min-w-full sm:min-w-[220px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -257,7 +257,7 @@ const LeadRow: React.FC<{
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
       <div className="p-4 flex flex-wrap items-center gap-4">
-        <button onClick={onToggle} className="flex-1 min-w-[200px] text-left">
+        <button onClick={onToggle} className="flex-1 min-w-full sm:min-w-[200px] text-left">
           <div className="font-semibold">{lead.companyName}</div>
           <div className="text-sm text-gray-500">
             {lead.contactName || "—"}
@@ -458,7 +458,7 @@ const ContactsView: React.FC = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative flex-1 min-w-full sm:min-w-[220px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -532,7 +532,7 @@ const ContactRow: React.FC<{
           {fullName(contact).charAt(0).toUpperCase()}
         </div>
 
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-full sm:min-w-[200px]">
           <div className="font-semibold">{fullName(contact)}</div>
           <div className="text-sm text-gray-500">
             {contact.email}

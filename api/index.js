@@ -5080,8 +5080,12 @@ import crypto7 from "crypto";
 import axios2 from "axios";
 var MODE = (process.env.CHARGILY_MODE?.trim() || "test").toLowerCase();
 var API_BASE = MODE === "live" ? "https://pay.chargily.net/api/v2" : "https://pay.chargily.net/test/api/v2";
+var readKey = () => {
+  const raw = process.env.CHARGILY_SECRET_KEY ?? "";
+  return raw.trim().replace(/^["']|["']$/g, "").trim();
+};
 var secretKey = () => {
-  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  const key = readKey();
   if (!key) {
     throw new AppError(
       "Le paiement en ligne n'est pas configur\xE9. Contactez le support.",
@@ -5090,7 +5094,7 @@ var secretKey = () => {
   }
   return key;
 };
-var keyPrefix = process.env.CHARGILY_SECRET_KEY?.trim().slice(0, 8) ?? "";
+var keyPrefix = readKey().slice(0, 8);
 if (keyPrefix) {
   const keyIsLive = keyPrefix.startsWith("live_");
   if (MODE === "live" && !keyIsLive) {
@@ -5103,7 +5107,7 @@ if (keyPrefix) {
     );
   }
 }
-var isChargilyConfigured = () => Boolean(process.env.CHARGILY_SECRET_KEY?.trim());
+var isChargilyConfigured = () => Boolean(readKey());
 var createCheckout = async (input) => {
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new AppError("Invalid amount.", 400);
@@ -5139,17 +5143,25 @@ var createCheckout = async (input) => {
     };
   } catch (err) {
     if (err instanceof AppError) throw err;
+    const status = err?.response?.status;
     const detail = err?.response?.data;
-    console.error("Chargily checkout failed:", err?.response?.status, detail ?? err?.message);
+    console.error("Chargily checkout failed:", status, detail ?? err?.message);
+    if (status === 401) {
+      throw new AppError(
+        `Le paiement en ligne est mal configur\xE9 (cl\xE9 Chargily refus\xE9e, mode \xAB ${MODE} \xBB). Contactez le support.`,
+        502
+      );
+    }
+    const reason = typeof detail?.message === "string" ? detail.message : typeof detail?.error === "string" ? detail.error : null;
     throw new AppError(
-      "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
+      reason ? `Le paiement n'a pas pu \xEAtre cr\xE9\xE9 : ${reason}` : "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
       502
     );
   }
 };
 var verifyWebhookSignature = (rawBody, signature) => {
   if (!signature) return false;
-  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  const key = readKey();
   if (!key) return false;
   const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");

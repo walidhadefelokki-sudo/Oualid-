@@ -25,8 +25,22 @@ const API_BASE =
     ? "https://pay.chargily.net/api/v2"
     : "https://pay.chargily.net/test/api/v2";
 
+/**
+ * The key, with the ways it usually arrives damaged undone.
+ *
+ * .env strips surrounding quotes; a dashboard env-var field does not. Pasting
+ * "test_sk_…" with the quotes into Vercel stores the quotes, and the header
+ * becomes Bearer "test_sk_…" — which Chargily answers with a flat 401
+ * Unauthenticated, indistinguishable from a wrong key. Same for a stray space
+ * picked up by a double-click selection.
+ */
+const readKey = () => {
+  const raw = process.env.CHARGILY_SECRET_KEY ?? "";
+  return raw.trim().replace(/^["']|["']$/g, "").trim();
+};
+
 const secretKey = () => {
-  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  const key = readKey();
   if (!key) {
     throw new AppError(
       "Le paiement en ligne n'est pas configuré. Contactez le support.",
@@ -45,7 +59,7 @@ const secretKey = () => {
  * like "payments are broken" rather than "the config is half-changed", so say
  * so at startup instead.
  */
-const keyPrefix = process.env.CHARGILY_SECRET_KEY?.trim().slice(0, 8) ?? "";
+const keyPrefix = readKey().slice(0, 8);
 if (keyPrefix) {
   const keyIsLive = keyPrefix.startsWith("live_");
   if (MODE === "live" && !keyIsLive) {
@@ -60,7 +74,7 @@ if (keyPrefix) {
 }
 
 /** True when the integration is usable, for a health check or a UI hint. */
-export const isChargilyConfigured = () => Boolean(process.env.CHARGILY_SECRET_KEY?.trim());
+export const isChargilyConfigured = () => Boolean(readKey());
 
 export const chargilyMode = () => MODE;
 
@@ -124,12 +138,33 @@ export const createCheckout = async (
   } catch (err: any) {
     if (err instanceof AppError) throw err;
 
-    // Log the provider's own message; show the customer something useful.
+    const status = err?.response?.status;
     const detail = err?.response?.data;
-    console.error("Chargily checkout failed:", err?.response?.status, detail ?? err?.message);
+    console.error("Chargily checkout failed:", status, detail ?? err?.message);
+
+    /* A flat "try again" was wrong for the most common failure by far. 401 is
+     * not transient — it means the key is absent, wrong, or belongs to the
+     * other mode — and telling someone to retry sends them round a loop that
+     * cannot succeed. The provider's own reason is included, which is safe:
+     * these are strings like "Unauthenticated." and never contain the key. */
+    if (status === 401) {
+      throw new AppError(
+        `Le paiement en ligne est mal configuré (clé Chargily refusée, mode « ${MODE} »). Contactez le support.`,
+        502
+      );
+    }
+
+    const reason =
+      typeof detail?.message === "string"
+        ? detail.message
+        : typeof detail?.error === "string"
+          ? detail.error
+          : null;
 
     throw new AppError(
-      "Impossible de créer le paiement. Réessayez dans un instant.",
+      reason
+        ? `Le paiement n'a pas pu être créé : ${reason}`
+        : "Impossible de créer le paiement. Réessayez dans un instant.",
       502
     );
   }
@@ -148,7 +183,7 @@ export const createCheckout = async (
 export const verifyWebhookSignature = (rawBody: Buffer | string, signature?: string): boolean => {
   if (!signature) return false;
 
-  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  const key = readKey();
   if (!key) return false;
 
   const expected = crypto.createHmac("sha256", key).update(rawBody).digest("hex");

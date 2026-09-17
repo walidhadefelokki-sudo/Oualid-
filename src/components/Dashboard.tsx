@@ -7733,7 +7733,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   icon={Cpu}
                   label={lt('AI filter', 'Filtre IA', 'فلتر الذكاء الاصطناعي')}
                   active={activeTab === 'ai-filter'}
-                  onClick={() => { setActiveTab('ai-filter'); setIsSidebarOpen(false); }}
+                  onClick={() => setActiveTab('ai-filter')}
                 />
               )}
 
@@ -7747,31 +7747,31 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     icon={BookOpen}
                     label={lt('CV directory', 'Répertoire CV', 'دليل السير الذاتية')}
                     active={activeTab === 'repertoire-cv'}
-                    onClick={() => { setActiveTab('repertoire-cv'); setIsSidebarOpen(false); }}
+                    onClick={() => setActiveTab('repertoire-cv')}
                   />
                   <SidebarItem
                     icon={BookOpen}
                     label={lt('CV database', 'Base de CV', 'قاعدة السير الذاتية')}
                     active={activeTab === 'sourcing-ia'}
-                    onClick={() => { setActiveTab('sourcing-ia'); setIsSidebarOpen(false); }}
+                    onClick={() => setActiveTab('sourcing-ia')}
                   />
                   <SidebarItem
                     icon={Volume2}
                     label={lt('Oral presentations', 'Présentations orales', 'العروض الشفهية')}
                     active={activeTab === 'oral-results'}
-                    onClick={() => { setActiveTab('oral-results'); setIsSidebarOpen(false); }}
+                    onClick={() => setActiveTab('oral-results')}
                   />
                   <SidebarItem
                     icon={Award}
                     label={lt('Quiz results', 'Résultats Quiz', 'نتائج الاختبارات')}
                     active={activeTab === 'quiz-results'}
-                    onClick={() => { setActiveTab('quiz-results'); setIsSidebarOpen(false); }}
+                    onClick={() => setActiveTab('quiz-results')}
                   />
                   <SidebarItem
                     icon={Star}
                     label={lt('Shortlist', 'Préselection', 'الانتقاء المسبق')}
                     active={activeTab === 'preselected'}
-                    onClick={() => { setActiveTab('preselected'); setIsSidebarOpen(false); }}
+                    onClick={() => setActiveTab('preselected')}
                   />
                 </>
               )}

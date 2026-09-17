@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import Logo2 from './components/Logo2';
@@ -262,7 +262,22 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'landing' | 'dashboard'>('landing');
+  /**
+   * The dashboard has a real address.
+   *
+   * There is still no router — two views do not warrant one — but the view is
+   * kept in step with the path, so /dashboard is linkable, survives a refresh,
+   * and back/forward behave. vercel.json already rewrites every path to
+   * index.html, so the server serves the app whatever the URL says.
+   *
+   * /auth/callback is deliberately not a view: it is matched further down,
+   * before any of this runs, and must not be rewritten underneath itself.
+   */
+  const [view, setView] = useState<'landing' | 'dashboard'>(
+    typeof window !== 'undefined' && window.location.pathname === '/dashboard'
+      ? 'dashboard'
+      : 'landing'
+  );
   const [loginRole, setLoginRole] = useState<'user' | 'employer'>('user');
   const [language, setLanguage] = useState<Language>('fr');
 
@@ -374,6 +389,37 @@ export default function App() {
     };
 
 
+  /**
+   * Writes the view into the address bar, and reads it back on back/forward.
+   *
+   * replaceState on the first run rather than pushState: opening /dashboard
+   * directly should not leave a phantom entry behind it that Back returns to.
+   */
+  const didSyncUrl = useRef(false);
+  useEffect(() => {
+    if (window.location.pathname === '/auth/callback') return;
+
+    const path = view === 'dashboard' ? '/dashboard' : '/';
+    if (window.location.pathname !== path) {
+      const url = path + window.location.search + window.location.hash;
+      if (didSyncUrl.current) {
+        window.history.pushState({ view }, '', url);
+      } else {
+        window.history.replaceState({ view }, '', url);
+      }
+    }
+    didSyncUrl.current = true;
+  }, [view]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (window.location.pathname === '/auth/callback') return;
+      setView(window.location.pathname === '/dashboard' ? 'dashboard' : 'landing');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
    const handleLogout = async () => {
       try {
         localStorage.removeItem('token');
@@ -383,6 +429,81 @@ export default function App() {
         console.error("Error during logout:", error);
       }
     };
+
+  /**
+   * Signs out after 15 minutes without interaction.
+   *
+   * The JWT lasts 30 days, which is right for "remember me" and wrong for a
+   * session left open on a shared or unattended machine. This closes that
+   * window in the browser: the token is discarded, so the next request has
+   * nothing to send.
+   *
+   * The deadline lives in localStorage rather than only in a timer, for two
+   * reasons. Activity in one tab has to count for all of them. And a timer
+   * alone does not run while a laptop is asleep — on waking, a stale deadline
+   * is noticed at once instead of silently granting another fifteen minutes.
+   */
+  useEffect(() => {
+    if (!user) return;
+
+    const IDLE_MS = 15 * 60 * 1000;
+    const KEY = 'lastActivityAt';
+
+    const touch = () => {
+      try {
+        localStorage.setItem(KEY, String(Date.now()));
+      } catch {
+        // Private mode can refuse writes; the interval below still applies.
+      }
+    };
+
+    const isExpired = () => {
+      let last: number;
+      try {
+        last = Number(localStorage.getItem(KEY)) || Date.now();
+      } catch {
+        return false; // unreadable storage — treat as active
+      }
+      return Date.now() - last >= IDLE_MS;
+    };
+
+    touch();
+
+    // passive: these fire constantly and must never hold up scrolling.
+    const events: (keyof WindowEventMap)[] = [
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'focus',
+    ];
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+
+    const check = () => {
+      if (!isExpired()) return;
+      try {
+        localStorage.removeItem(KEY);
+      } catch {
+        /* ignore */
+      }
+      handleLogout();
+    };
+
+    // Every 30s, and again the moment the tab is looked at — which is when a
+    // session that idled out while hidden ought to be noticed.
+    const interval = window.setInterval(check, 30_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, touch));
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     // Test Firestore connection

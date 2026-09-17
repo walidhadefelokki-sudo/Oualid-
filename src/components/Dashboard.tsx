@@ -263,6 +263,8 @@ interface Job {
   benefits: string[];
   logo: string;
   sector: string;
+  /** From the backend. Absent on a draft that was never published. */
+  publishedAt?: string | null;
 }
 
 interface JobCardProps {
@@ -1521,14 +1523,15 @@ export default function Dashboard({
       transition={{ duration: 0.5 }}
       whileHover={{ y: -15, scale: 1.02 }}
       onClick={() => setSelectedJob(job)}
-      className="bg-white p-6 sm:p-8 lg:p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+      className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border border-[#D4AF37]/40 hover:border-[#D4AF37]/80 shadow-[0_0_0_1px_rgba(212,175,55,0.15),0_25px_50px_-15px_rgba(0,0,0,0.5)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
-      {/* Decorative background element */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
+      {/* The gold bloom the Corporate plan card uses. pointer-events-none, so a
+          blurred decoration cannot swallow a click meant for the card. */}
+      <div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#D4AF37]/20 blur-3xl" />
 
       {/* Header: Logo & Badges */}
       <div className="relative z-10 flex justify-between items-start mb-10">
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-50 overflow-hidden group-hover:scale-110 transition-transform duration-500">
+        <div className="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 overflow-hidden group-hover:scale-110 transition-transform duration-500 shrink-0">
           <img 
             src={job.logo} 
             alt={job.company} 
@@ -1540,10 +1543,10 @@ export default function Dashboard({
           />
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100/50">
+          <span className="px-5 py-2 bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
             {job.type}
           </span>
-          <span className="px-5 py-2 bg-blue-50 text-[#173E7D] rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100/50">
+          <span className="px-5 py-2 bg-white/10 text-white/80 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20 whitespace-nowrap">
             {job.remote}
           </span>
         </div>
@@ -1551,62 +1554,69 @@ export default function Dashboard({
 
       {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col">
-        <h4 className="text-2xl font-black text-[#173E7D] group-hover:text-[#F68D58] transition-colors leading-tight mb-3">
+        <h4 className="text-2xl font-black text-white group-hover:text-[#D4AF37] transition-colors leading-tight mb-3 break-words">
           {job.title}
         </h4>
-        <div className="flex items-center gap-2 text-gray-400 font-bold uppercase tracking-wider text-[10px] mb-6">
-          <Building2 size={14} className="text-[#F68D58]" />
-          {job.company}
+        <div className="flex items-center gap-2 text-white/50 font-bold uppercase tracking-wider text-[10px] mb-6">
+          <Building2 size={14} className="text-[#D4AF37] shrink-0" />
+          <span className="truncate">{job.company}</span>
         </div>
 
-        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
+        <p className="text-white/60 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
           {job.description}
         </p>
 
         {/* Requirements Tags */}
         <div className="flex flex-wrap gap-2 pt-2 mb-8">
           {job.requirements.slice(0, 3).map((req, idx) => (
-            <span key={idx} className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+            <span key={idx} className="px-3 py-1 bg-white/5 text-white/60 text-[10px] font-bold rounded-lg border border-white/10">
               {req}
             </span>
           ))}
           {job.requirements.length > 3 && (
-            <span className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+            <span className="px-3 py-1 bg-white/5 text-white/60 text-[10px] font-bold rounded-lg border border-white/10">
               +{job.requirements.length - 3}
             </span>
           )}
         </div>
 
         {/* Meta Info */}
-        <div className="flex items-center gap-6 text-[10px] text-gray-400 mb-10 font-bold uppercase tracking-widest mt-auto">
-          <div className="flex items-center gap-2">
-            <MapPin size={16} className="text-[#F68D58]" />
-            {job.location}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] text-white/50 mb-10 font-bold uppercase tracking-widest mt-auto">
+          <div className="flex items-center gap-2 min-w-0">
+            <MapPin size={16} className="text-[#D4AF37] shrink-0" />
+            <span className="truncate">{job.location}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock size={16} className="text-[#F68D58]" />
-            {lt('2 days ago', 'Il y a 2j', 'منذ يومين')}
-          </div>
+          {/* Was a hardcoded "Il y a 2j" on every card whatever its age. Now
+              the real publication date, and omitted when there is not one. */}
+          {job.publishedAt && (
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-[#D4AF37] shrink-0" />
+              {timeAgo(job.publishedAt)}
+            </div>
+          )}
         </div>
 
         {/* Footer: Actions (estimated salary intentionally not shown) */}
-        <div className="relative z-10 flex items-center justify-end pt-8 mt-8 border-t border-gray-50">
+        <div className="relative z-10 flex items-center justify-end pt-8 mt-8 border-t border-white/10">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleSave(job.id);
               }}
+              aria-pressed={isSaved}
+              aria-label={lt('Save this offer', 'Enregistrer cette offre', 'حفظ هذا العرض')}
               className={`p-4 rounded-2xl transition-all ${
-                isSaved 
-                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                  : 'bg-gray-50 text-gray-300 hover:text-[#F68D58] hover:bg-orange-50'
+                isSaved
+                  ? 'bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] shadow-lg shadow-black/30'
+                  : 'bg-white/10 text-white/50 border border-white/20 hover:text-[#D4AF37] hover:border-[#D4AF37]/60'
               }`}
             >
               <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
             </button>
-            <button 
-              className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-[#173E7D] group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-500 shadow-sm"
+            <button
+              aria-label={lt('Open this offer', 'Ouvrir cette offre', 'فتح هذا العرض')}
+              className="w-14 h-14 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center text-white group-hover:bg-gradient-to-r group-hover:from-[#D4AF37] group-hover:to-[#F0D989] group-hover:text-[#0B1E3D] group-hover:border-transparent transition-all duration-500"
             >
               <ChevronRight size={28} className={isRTL ? 'rotate-180' : ''} />
             </button>
@@ -2501,6 +2511,7 @@ export default function Dashboard({
     benefits: [],
     logo: job.company?.logo?.url || 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&q=80&w=200',
     sector: job.category?.name || '',
+    publishedAt: job.publishedAt ?? job.createdAt ?? null,
   });
 
   const [realJobs, setRealJobs] = useState<Job[]>([]);

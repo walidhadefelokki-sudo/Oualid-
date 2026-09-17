@@ -161,7 +161,7 @@ var FROM_ADDRESS = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 var FROM_NAME = "Dar L'Emploi";
 var FROM_REGISTER = process.env.EMAIL_FROM_REGISTER?.trim() || FROM_ADDRESS;
 var FROM_INFO = process.env.EMAIL_FROM_INFO?.trim() || FROM_ADDRESS;
-var formatDate = (date = /* @__PURE__ */ new Date()) => date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+var formatDate = (date2 = /* @__PURE__ */ new Date()) => date2.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 var detailRow = (icon, label, value) => `
   <tr>
     <td style="padding:6px 0;color:${BRAND.ink};font-size:15px;line-height:1.6;">
@@ -388,7 +388,7 @@ var sendWelcomeEmail = async (email, name, role) => role === "RECRUITER" ? sendR
 var sendApplicationSentEmail = async (email, details) => {
   const greeting = details.firstName?.trim() || "et merci";
   const city = details.city?.trim() || "Non pr&eacute;cis&eacute;e";
-  const date = formatDate(details.appliedAt);
+  const date2 = formatDate(details.appliedAt);
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(
@@ -396,7 +396,7 @@ var sendApplicationSentEmail = async (email, details) => {
   )}
 
     ${detailBlock(
-    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#127970;", "Entreprise", details.company) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date", date)
+    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#127970;", "Entreprise", details.company) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date", date2)
   )}
 
     ${paragraph(
@@ -417,7 +417,7 @@ var sendApplicationSentEmail = async (email, details) => {
     `Poste : ${details.jobTitle}`,
     `Entreprise : ${details.company}`,
     `Localisation : ${details.city ?? "Non pr\xE9cis\xE9e"}`,
-    `Date : ${date}`,
+    `Date : ${date2}`,
     "",
     "Votre profil a \xE9t\xE9 transmis \xE0 l'entreprise. Si celle-ci souhaite poursuivre le processus de recrutement, elle pourra vous contacter directement.",
     "",
@@ -436,7 +436,7 @@ var sendApplicationSentEmail = async (email, details) => {
 var sendJobPublishedEmail = async (email, details) => {
   const greeting = details.companyName?.trim() || "et merci";
   const city = details.city?.trim() || "Non pr&eacute;cis&eacute;e";
-  const date = formatDate(details.publishedAt);
+  const date2 = formatDate(details.publishedAt);
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(
@@ -446,7 +446,7 @@ var sendJobPublishedEmail = async (email, details) => {
 
     <p style="margin:0 0 6px;color:${BRAND.navy};font-size:15px;font-weight:700;">D&eacute;tails de votre offre</p>
     ${detailBlock(
-    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date de publication", date)
+    detailRow("&#128204;", "Poste", details.jobTitle) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Date de publication", date2)
   )}
 
     ${paragraph(
@@ -467,7 +467,7 @@ var sendJobPublishedEmail = async (email, details) => {
     "D\xE9tails de votre offre",
     `Poste : ${details.jobTitle}`,
     `Localisation : ${details.city ?? "Non pr\xE9cis\xE9e"}`,
-    `Date de publication : ${date}`,
+    `Date de publication : ${date2}`,
     "",
     "Vous pouvez suivre les candidatures et consulter les profils des candidats directement depuis votre espace entreprise.",
     APP_URL,
@@ -5051,8 +5051,423 @@ router8.patch("/me", updateMyCompany);
 router8.patch("/me/logo", handleAvatarUpload, updateMyCompanyLogo);
 var company_routes_default = router8;
 
-// server/routes/preselection.routes.ts
+// server/routes/payment.routes.ts
 import { Router as Router9 } from "express";
+
+// server/controllers/payment.controller.ts
+init_prisma();
+
+// server/constants/annoncePacks.ts
+var ANNONCE_PACKS = [
+  { id: "pack-1", jobs: 1, price: 5900 },
+  { id: "pack-2", jobs: 2, price: 11e3 },
+  { id: "pack-5", jobs: 5, price: 25e3 },
+  { id: "pack-10", jobs: 10, price: 45e3 }
+];
+var requirePack = (packId) => {
+  if (typeof packId !== "string") {
+    throw new AppError("A pack must be chosen.", 400);
+  }
+  const pack = ANNONCE_PACKS.find((p) => p.id === packId);
+  if (!pack) {
+    throw new AppError("Unknown pack.", 400);
+  }
+  return pack;
+};
+
+// server/services/chargily.service.ts
+import crypto7 from "crypto";
+import axios2 from "axios";
+var MODE = (process.env.CHARGILY_MODE?.trim() || "test").toLowerCase();
+var API_BASE = MODE === "live" ? "https://pay.chargily.net/api/v2" : "https://pay.chargily.net/test/api/v2";
+var secretKey = () => {
+  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  if (!key) {
+    throw new AppError(
+      "Le paiement en ligne n'est pas configur\xE9. Contactez le support.",
+      503
+    );
+  }
+  return key;
+};
+var isChargilyConfigured = () => Boolean(process.env.CHARGILY_SECRET_KEY?.trim());
+var createCheckout = async (input) => {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    throw new AppError("Invalid amount.", 400);
+  }
+  try {
+    const { data } = await axios2.post(
+      `${API_BASE}/checkouts`,
+      {
+        amount: input.amount,
+        currency: "dzd",
+        success_url: input.successUrl,
+        failure_url: input.failureUrl,
+        description: input.description,
+        locale: input.locale ?? "fr",
+        metadata: input.metadata
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey()}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 15e3
+      }
+    );
+    if (!data?.id || !data?.checkout_url) {
+      throw new AppError("Chargily returned an unexpected response.", 502);
+    }
+    return {
+      id: data.id,
+      url: data.checkout_url,
+      amount: data.amount,
+      status: data.status
+    };
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const detail = err?.response?.data;
+    console.error("Chargily checkout failed:", err?.response?.status, detail ?? err?.message);
+    throw new AppError(
+      "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
+      502
+    );
+  }
+};
+var verifyWebhookSignature = (rawBody, signature) => {
+  if (!signature) return false;
+  const key = process.env.CHARGILY_SECRET_KEY?.trim();
+  if (!key) return false;
+  const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(signature, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto7.timingSafeEqual(a, b);
+};
+
+// server/services/invoicePdf.service.ts
+import { jsPDF } from "jspdf";
+var NAVY = { r: 23, g: 62, b: 125 };
+var ORANGE = { r: 246, g: 141, b: 88 };
+var GREY = { r: 107, g: 118, b: 134 };
+var money = (amount, currency) => `${amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency.toUpperCase()}`;
+var date = (d) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+var renderInvoicePdf = (data) => {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const left = 56;
+  const right = pageWidth - 56;
+  doc.setFillColor(NAVY.r, NAVY.g, NAVY.b);
+  doc.rect(0, 0, pageWidth, 110, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(24);
+  doc.text("Dar L'emploi", left, 52);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Plateforme de recrutement - Algerie", left, 72);
+  doc.text("darlemploi.dz", left, 88);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("FACTURE", right, 52, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(data.invoiceNumber, right, 72, { align: "right" });
+  doc.text(date(data.paidAt), right, 88, { align: "right" });
+  let y = 160;
+  doc.setTextColor(GREY.r, GREY.g, GREY.b);
+  doc.setFontSize(9);
+  doc.text("FACTURE A", left, y);
+  y += 18;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(data.companyName, left, y);
+  if (data.buyerEmail) {
+    y += 16;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(GREY.r, GREY.g, GREY.b);
+    doc.text(data.buyerEmail, left, y);
+  }
+  y += 46;
+  doc.setFillColor(245, 247, 250);
+  doc.rect(left, y - 16, right - left, 28, "F");
+  doc.setTextColor(GREY.r, GREY.g, GREY.b);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("DESIGNATION", left + 12, y + 2);
+  doc.text("QTE", right - 150, y + 2, { align: "right" });
+  doc.text("MONTANT", right - 12, y + 2, { align: "right" });
+  y += 42;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(`Pack d'annonces (${data.packId})`, left + 12, y);
+  doc.text(String(data.jobs), right - 150, y, { align: "right" });
+  doc.text(money(data.amount, data.currency), right - 12, y, { align: "right" });
+  y += 16;
+  doc.setFontSize(9);
+  doc.setTextColor(GREY.r, GREY.g, GREY.b);
+  doc.text(
+    `${data.jobs} annonce${data.jobs > 1 ? "s" : ""} creditee${data.jobs > 1 ? "s" : ""} sur le compte`,
+    left + 12,
+    y
+  );
+  y += 40;
+  doc.setDrawColor(230, 233, 238);
+  doc.line(left, y, right, y);
+  y += 28;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(NAVY.r, NAVY.g, NAVY.b);
+  doc.text("TOTAL PAYE", right - 150, y, { align: "right" });
+  doc.setTextColor(ORANGE.r, ORANGE.g, ORANGE.b);
+  doc.setFontSize(15);
+  doc.text(money(data.amount, data.currency), right - 12, y, { align: "right" });
+  y += 34;
+  doc.setFillColor(232, 248, 240);
+  doc.roundedRect(left, y - 16, 150, 26, 6, 6, "F");
+  doc.setTextColor(16, 138, 91);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("PAIEMENT CONFIRME", left + 12, y + 1);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(GREY.r, GREY.g, GREY.b);
+  let fy = 720;
+  doc.text(`Regle par Chargily Pay le ${date(data.paidAt)}.`, left, fy);
+  if (data.checkoutId) {
+    fy += 13;
+    doc.text(`Reference de transaction : ${data.checkoutId}`, left, fy);
+  }
+  fy += 13;
+  doc.text("Ce document est genere automatiquement et ne necessite pas de signature.", left, fy);
+  return Buffer.from(doc.output("arraybuffer"));
+};
+
+// server/controllers/payment.controller.ts
+var appUrl = () => (process.env.APP_URL?.trim() || process.env.CORS_ORIGIN?.split(",")[0]?.trim() || "http://localhost:5173").replace(/\/$/, "");
+var resolveMembership2 = async (userId) => {
+  const membership = await prisma_default.companyMember.findFirst({
+    where: { recruiter: { userId } },
+    orderBy: { createdAt: "asc" },
+    include: { company: { select: { id: true, name: true, plan: true } } }
+  });
+  if (!membership) {
+    throw new AppError("No company is attached to this account.", 404);
+  }
+  return membership;
+};
+var listPacks = async (_req, res) => {
+  res.status(200).json({
+    status: "success",
+    data: { packs: ANNONCE_PACKS, online: isChargilyConfigured() }
+  });
+};
+var startPackCheckout = async (req, res, next) => {
+  try {
+    if (!isChargilyConfigured()) {
+      return next(
+        new AppError("Le paiement en ligne n'est pas encore activ\xE9. Contactez le support.", 503)
+      );
+    }
+    const membership = await resolveMembership2(req.user.id);
+    const pack = requirePack(req.body?.packId);
+    const order = await prisma_default.packOrder.create({
+      data: {
+        companyId: membership.companyId,
+        buyerId: req.user.id,
+        packId: pack.id,
+        jobs: pack.jobs,
+        amount: pack.price,
+        currency: "dzd",
+        status: "PENDING"
+      }
+    });
+    let checkout;
+    try {
+      checkout = await createCheckout({
+        amount: pack.price,
+        successUrl: `${appUrl()}/?payment=success&order=${order.id}`,
+        failureUrl: `${appUrl()}/?payment=failed&order=${order.id}`,
+        description: `${pack.jobs} annonce(s) \u2014 Dar L'emploi`,
+        // Matched back on the webhook. The amount is not read from here.
+        metadata: { orderId: order.id, companyId: membership.companyId, packId: pack.id }
+      });
+    } catch (err) {
+      await prisma_default.packOrder.update({
+        where: { id: order.id },
+        data: { status: "FAILED" }
+      });
+      throw err;
+    }
+    const updated = await prisma_default.packOrder.update({
+      where: { id: order.id },
+      data: { checkoutId: checkout.id, checkoutUrl: checkout.url }
+    });
+    res.status(201).json({
+      status: "success",
+      data: { orderId: updated.id, checkoutUrl: checkout.url }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var nextInvoiceNumber = async () => {
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const prefix = `INV-${year}-`;
+  const last = await prisma_default.packOrder.findFirst({
+    where: { invoiceNumber: { startsWith: prefix } },
+    orderBy: { invoiceNumber: "desc" },
+    select: { invoiceNumber: true }
+  });
+  const seq = last?.invoiceNumber ? Number(last.invoiceNumber.slice(prefix.length)) + 1 : 1;
+  return `${prefix}${String(seq).padStart(6, "0")}`;
+};
+var chargilyWebhook = async (req, res) => {
+  const raw = req.rawBody;
+  if (!raw) {
+    console.error("Chargily webhook: raw body missing \u2014 cannot verify signature.");
+    return res.status(400).json({ message: "Cannot verify payload" });
+  }
+  const signature = req.header("signature") || req.header("x-signature") || void 0;
+  if (!verifyWebhookSignature(raw, signature)) {
+    console.warn("Chargily webhook: bad signature, rejected.");
+    return res.status(403).json({ message: "Invalid signature" });
+  }
+  const event = req.body;
+  if (event?.type !== "checkout.paid") {
+    return res.status(200).json({ received: true, ignored: event?.type ?? "unknown" });
+  }
+  const checkoutId = event.data?.id;
+  if (!checkoutId) {
+    return res.status(400).json({ message: "Missing checkout id" });
+  }
+  try {
+    const order = await prisma_default.packOrder.findUnique({ where: { checkoutId } });
+    if (!order) {
+      console.error(`Chargily webhook: no order for checkout ${checkoutId}`);
+      return res.status(200).json({ received: true, matched: false });
+    }
+    if (order.status === "PAID") {
+      return res.status(200).json({ received: true, alreadyApplied: true });
+    }
+    const invoiceNumber = await nextInvoiceNumber();
+    const claimed = await prisma_default.packOrder.updateMany({
+      where: { id: order.id, status: "PENDING" },
+      data: { status: "PAID", paidAt: /* @__PURE__ */ new Date(), invoiceNumber }
+    });
+    if (claimed.count === 0) {
+      return res.status(200).json({ received: true, alreadyApplied: true });
+    }
+    await prisma_default.company.updateMany({
+      where: { id: order.companyId, plan: "FREE" },
+      data: { plan: "PREMIUM" }
+    });
+    await grantPostings(order.companyId, order.jobs);
+    console.log(
+      `Chargily: order ${order.id} paid \u2014 ${order.jobs} annonce(s), ${order.amount} DZD, invoice ${invoiceNumber}`
+    );
+    res.status(200).json({ received: true, applied: true });
+  } catch (err) {
+    console.error("Chargily webhook processing failed:", err);
+    res.status(500).json({ message: "Processing failed" });
+  }
+};
+var listInvoices = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership2(req.user.id);
+    const invoices = await prisma_default.packOrder.findMany({
+      where: { companyId: membership.companyId, status: "PAID" },
+      orderBy: { paidAt: "desc" },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        packId: true,
+        jobs: true,
+        amount: true,
+        currency: true,
+        paidAt: true,
+        checkoutId: true
+      }
+    });
+    res.status(200).json({ status: "success", data: { invoices } });
+  } catch (err) {
+    next(err);
+  }
+};
+var downloadInvoice = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership2(req.user.id);
+    const order = await prisma_default.packOrder.findFirst({
+      where: { id: req.params.id, companyId: membership.companyId, status: "PAID" },
+      include: {
+        company: { select: { name: true } },
+        buyer: { select: { email: true } }
+      }
+    });
+    if (!order || !order.paidAt || !order.invoiceNumber) {
+      return next(new AppError("Facture introuvable.", 404));
+    }
+    const pdf = renderInvoicePdf({
+      invoiceNumber: order.invoiceNumber,
+      paidAt: order.paidAt,
+      companyName: order.company.name,
+      buyerEmail: order.buyer?.email ?? null,
+      packId: order.packId,
+      jobs: order.jobs,
+      amount: order.amount,
+      currency: order.currency,
+      checkoutId: order.checkoutId
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${order.invoiceNumber}.pdf"`
+    );
+    res.setHeader("Content-Length", pdf.length);
+    res.send(pdf);
+  } catch (err) {
+    next(err);
+  }
+};
+var getOrderStatus = async (req, res, next) => {
+  try {
+    const membership = await resolveMembership2(req.user.id);
+    const order = await prisma_default.packOrder.findFirst({
+      where: { id: req.params.id, companyId: membership.companyId },
+      select: {
+        id: true,
+        status: true,
+        jobs: true,
+        amount: true,
+        currency: true,
+        invoiceNumber: true,
+        paidAt: true
+      }
+    });
+    if (!order) return next(new AppError("Commande introuvable.", 404));
+    res.status(200).json({ status: "success", data: { order } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/routes/payment.routes.ts
+var router9 = Router9();
+router9.post("/webhook/chargily", chargilyWebhook);
+router9.get("/packs", listPacks);
+router9.use(protect);
+router9.use(restrictTo("RECRUITER", "ADMIN"));
+router9.post("/checkout", startPackCheckout);
+router9.get("/orders/:id", getOrderStatus);
+router9.get("/invoices", listInvoices);
+router9.get("/invoices/:id/pdf", downloadInvoice);
+var payment_routes_default = router9;
+
+// server/routes/preselection.routes.ts
+import { Router as Router10 } from "express";
 
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
@@ -5270,94 +5685,94 @@ var preselection_controller_default = {
 };
 
 // server/routes/preselection.routes.ts
-var router9 = Router9();
-router9.get(
+var router10 = Router10();
+router10.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   preselection_controller_default.getMyPreselection
 );
-router9.get(
+router10.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getPreselection
 );
-router9.patch(
+router10.patch(
   "/application/:applicationId/review",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.reviewCandidate
 );
-router9.patch(
+router10.patch(
   "/application/:applicationId/shortlist",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.shortlistCandidate
 );
-router9.patch(
+router10.patch(
   "/application/:applicationId/reject",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.rejectCandidate
 );
-router9.patch(
+router10.patch(
   "/application/:applicationId/comment",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
 );
-router9.get(
+router10.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterPreselections
 );
-router9.get(
+router10.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterStatistics
 );
-router9.get(
+router10.get(
   "/recruiter/ranking",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRanking
 );
-router9.get(
+router10.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAllPreselections
 );
-router9.get(
+router10.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAdminStatistics
 );
-router9.patch(
+router10.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.recalculatePreselection
 );
-router9.delete(
+router10.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.deletePreselection
 );
-var preselection_routes_default = router9;
+var preselection_routes_default = router10;
 
 // server/routes/oralPresentation.routes.ts
 import express from "express";
@@ -5903,46 +6318,46 @@ var getRecruiterStatistics2 = async (req, res, next) => {
 };
 
 // server/routes/oralPresentation.routes.ts
-var router10 = express.Router();
-router10.use(protect);
-router10.post(
+var router11 = express.Router();
+router11.use(protect);
+router11.post(
   "/me/upload-url",
   restrictTo("CANDIDATE"),
   createPresentationUploadUrl
 );
-router10.post(
+router11.post(
   "/me/confirm",
   restrictTo("CANDIDATE"),
   confirmPresentationUpload
 );
-router10.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
-router10.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
-router10.get(
+router11.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
+router11.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
+router11.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterPresentations
 );
-router10.get(
+router11.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics2
 );
-router10.get(
+router11.get(
   "/candidate/:candidateId",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getPresentationByCandidateId
 );
-router10.patch(
+router11.patch(
   "/candidate/:candidateId/recruiter-score",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   updateRecruiterScore
 );
-router10.get("/", restrictTo("ADMIN"), getAllPresentations);
-var oralPresentation_routes_default = router10;
+router11.get("/", restrictTo("ADMIN"), getAllPresentations);
+var oralPresentation_routes_default = router11;
 
 // server/routes/quiz.routes.ts
 import express2 from "express";
@@ -6523,37 +6938,37 @@ var deleteAttempt = async (req, res, next) => {
 };
 
 // server/routes/quiz.routes.ts
-var router11 = express2.Router();
-router11.use(protect);
-router11.post("/start", restrictTo("CANDIDATE"), startQuiz);
-router11.get("/", restrictTo("CANDIDATE"), getQuiz);
-router11.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
-router11.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
-router11.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
-router11.get(
+var router12 = express2.Router();
+router12.use(protect);
+router12.post("/start", restrictTo("CANDIDATE"), startQuiz);
+router12.get("/", restrictTo("CANDIDATE"), getQuiz);
+router12.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
+router12.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
+router12.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
+router12.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterAttempts
 );
-router11.get(
+router12.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics3
 );
-router11.get(
+router12.get(
   "/attempt/:id",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getAttemptById
 );
-router11.get("/all", restrictTo("ADMIN"), getAllAttempts);
-router11.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
-var quiz_routes_default = router11;
+router12.get("/all", restrictTo("ADMIN"), getAllAttempts);
+router12.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
+var quiz_routes_default = router12;
 
 // server/routes/aiAnalysis.routes.ts
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 
 // server/controllers/aiAnalysis.controller.ts
 var AIAnalysisController = class {
@@ -6666,43 +7081,43 @@ var AIAnalysisController = class {
 var aiAnalysis_controller_default = new AIAnalysisController();
 
 // server/routes/aiAnalysis.routes.ts
-var router12 = Router10();
-router12.use(protect);
-router12.get(
+var router13 = Router11();
+router13.use(protect);
+router13.get(
   "/:applicationId",
   restrictTo("CANDIDATE", "RECRUITER", "ADMIN"),
   aiAnalysis_controller_default.getAnalysis
 );
-router12.post(
+router13.post(
   "/:applicationId/analyze",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.analyzeApplication
 );
-router12.post(
+router13.post(
   "/:applicationId/recalculate",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.recalculate
 );
-router12.get(
+router13.get(
   "/recruiter/all",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getRecruiterAnalyses
 );
-router12.get(
+router13.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getStatistics
 );
-router12.delete(
+router13.delete(
   "/:applicationId",
   restrictTo("ADMIN"),
   aiAnalysis_controller_default.deleteAnalysis
 );
-var aiAnalysis_routes_default = router12;
+var aiAnalysis_routes_default = router13;
 
 // server/routes/candidateProfile.routes.ts
 import express3 from "express";
@@ -7247,36 +7662,36 @@ var listCandidateDirectory = async (req, res, next) => {
 };
 
 // server/routes/candidateProfile.routes.ts
-var router13 = express3.Router();
-router13.use(protect);
-router13.get(
+var router14 = express3.Router();
+router14.use(protect);
+router14.get(
   "/directory",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   listCandidateDirectory
 );
-router13.get(
+router14.get(
   "/:candidateId/cv-document",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvDocument
 );
-router13.get(
+router14.get(
   "/:candidateId/cv-file",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvFile
 );
-router13.use(restrictTo("CANDIDATE"));
-router13.patch("/me", updateMyProfile);
-router13.post("/me/cv/upload-url", createCvUploadUrl);
-router13.post("/me/cv/confirm", confirmCvUpload);
-router13.post("/me/cv", handleCvUpload, uploadCV);
-router13.get("/me/cv", getMyCV);
-router13.get("/me/cv-builder", getMyCvBuilder);
-router13.put("/me/cv-builder", saveMyCvBuilder);
-var candidateProfile_routes_default = router13;
+router14.use(restrictTo("CANDIDATE"));
+router14.patch("/me", updateMyProfile);
+router14.post("/me/cv/upload-url", createCvUploadUrl);
+router14.post("/me/cv/confirm", confirmCvUpload);
+router14.post("/me/cv", handleCvUpload, uploadCV);
+router14.get("/me/cv", getMyCV);
+router14.get("/me/cv-builder", getMyCvBuilder);
+router14.put("/me/cv-builder", saveMyCvBuilder);
+var candidateProfile_routes_default = router14;
 
 // server/routes/candidateScore.routes.ts
-import { Router as Router11 } from "express";
+import { Router as Router12 } from "express";
 
 // server/controllers/candidateScore.controller.ts
 var getMyScore = async (req, res, next) => {
@@ -7426,71 +7841,71 @@ var deleteScore = async (req, res, next) => {
 };
 
 // server/routes/candidateScore.routes.ts
-var router14 = Router11();
-router14.get(
+var router15 = Router12();
+router15.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   getMyScore
 );
-router14.get(
+router15.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateScore
 );
-router14.patch(
+router15.patch(
   "/application/:applicationId/interview-score",
   protect,
   restrictTo("RECRUITER"),
   updateInterviewScore
 );
-router14.patch(
+router15.patch(
   "/application/:applicationId/recruiter-score",
   protect,
   restrictTo("RECRUITER"),
   updateRecruiterScore2
 );
-router14.get(
+router15.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterScores
 );
-router14.get(
+router15.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterStatistics4
 );
-router14.get(
+router15.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   getAllScores
 );
-router14.get(
+router15.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   getAdminStatistics3
 );
-router14.patch(
+router15.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   recalculateScore
 );
-router14.delete(
+router15.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   deleteScore
 );
-var candidateScore_routes_default = router14;
+var candidateScore_routes_default = router15;
 
 // server/routes/notification.routes.ts
-import { Router as Router12 } from "express";
+import { Router as Router13 } from "express";
 
 // server/controllers/notification.controller.ts
 init_prisma();
@@ -7538,12 +7953,12 @@ var markAllNotificationsRead = async (req, res, next) => {
 };
 
 // server/routes/notification.routes.ts
-var router15 = Router12();
-router15.use(protect);
-router15.get("/", getMyNotifications);
-router15.patch("/read-all", markAllNotificationsRead);
-router15.patch("/:id/read", markNotificationRead);
-var notification_routes_default = router15;
+var router16 = Router13();
+router16.use(protect);
+router16.get("/", getMyNotifications);
+router16.patch("/read-all", markAllNotificationsRead);
+router16.patch("/:id/read", markNotificationRead);
+var notification_routes_default = router16;
 
 // server/app.ts
 dotenv3.config();
@@ -7593,7 +8008,13 @@ function createApp() {
       credentials: true
     })
   );
-  app2.use(express4.json());
+  app2.use(
+    express4.json({
+      verify: (req, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
   app2.use(cookieParser());
   app2.use(passport_default.initialize());
   if (!configureGoogleStrategy()) {
@@ -7624,6 +8045,17 @@ function createApp() {
     }
   });
   app2.use("/api/contact", contactLimiter);
+  const checkoutLimiter = rateLimit({
+    windowMs: 15 * 60 * 1e3,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      status: "error",
+      message: "Trop de tentatives de paiement. R\xE9essayez dans quelques minutes."
+    }
+  });
+  app2.use("/api/payments/checkout", checkoutLimiter);
   app2.use("/api/auth", auth_routes_default);
   app2.use("/api/jobs", job_routes_default);
   app2.use("/api/categories", category_routes_default);
@@ -7632,6 +8064,7 @@ function createApp() {
   app2.use("/api/admin", admin_routes_default);
   app2.use("/api/crm", crm_routes_default);
   app2.use("/api/companies", company_routes_default);
+  app2.use("/api/payments", payment_routes_default);
   app2.use("/api/preselection", preselection_routes_default);
   app2.use("/api/oral-presentations", oralPresentation_routes_default);
   app2.use("/api/quiz", quiz_routes_default);

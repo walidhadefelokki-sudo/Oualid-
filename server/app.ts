@@ -14,6 +14,7 @@ import contactRoutes from "./routes/contact.routes";
 import adminRoutes from "./routes/admin.routes";
 import crmRoutes from "./routes/crm.routes";
 import companyRoutes from "./routes/company.routes";
+import paymentRoutes from "./routes/payment.routes";
 import preselectionRoutes from "./routes/preselection.routes";
 import oralPresentationRoutes from "./routes/oralPresentation.routes";
 import quizRoutes from "./routes/quiz.routes";
@@ -102,7 +103,18 @@ export function createApp() {
     })
   );
 
-  app.use(express.json());
+  // The raw bytes are kept alongside the parsed body because Chargily signs
+  // its webhooks with an HMAC over exactly what it sent. Re-serialising the
+  // parsed object reorders keys and drops whitespace, so the digest would
+  // never match. Done here rather than with a route-specific express.raw()
+  // so it cannot be broken by someone reordering the mounts later.
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    })
+  );
 
   // OAuth uses two short-lived HttpOnly cookies (state nonce, token handoff),
   // so the callback can be verified and the JWT delivered without ever
@@ -156,6 +168,22 @@ export function createApp() {
   });
   app.use("/api/contact", contactLimiter);
 
+  // Creating a checkout calls Chargily and writes an order row, so it is
+  // worth a ceiling. Mounted on the checkout path only — the webhook must
+  // never be limited, or a retry Chargily sends after an outage gets dropped
+  // and a customer who paid is never credited.
+  const checkoutLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      status: "error",
+      message: "Trop de tentatives de paiement. Réessayez dans quelques minutes.",
+    },
+  });
+  app.use("/api/payments/checkout", checkoutLimiter);
+
   // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/jobs", jobRoutes);
@@ -165,6 +193,7 @@ export function createApp() {
   app.use("/api/admin", adminRoutes);
   app.use("/api/crm", crmRoutes);
   app.use("/api/companies", companyRoutes);
+  app.use("/api/payments", paymentRoutes);
   app.use("/api/preselection", preselectionRoutes);
   app.use("/api/oral-presentations", oralPresentationRoutes);
   app.use("/api/quiz", quizRoutes);

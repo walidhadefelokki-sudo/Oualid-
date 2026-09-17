@@ -4,6 +4,8 @@ import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
 import SubscriptionBanner from "./recruiter/SubscriptionBanner";
 import SubscriptionStatus from "./recruiter/SubscriptionStatus";
+import InvoiceList from "./recruiter/InvoiceList";
+import paymentService from "../services/payment.service";
 import CandidateDirectory from "./recruiter/CandidateDirectory";
 import RecruiterPlanCard, {
   RECRUITER_PLANS,
@@ -936,6 +938,125 @@ export default function Dashboard({
     }
   };
 
+  /**
+   * Sends the buyer to Chargily for the selected pack.
+   *
+   * Only the pack id crosses the wire. The server prices it from its own
+   * catalogue, records the order at that price and gives back a hosted
+   * checkout URL — so the amount charged is never something the browser chose.
+   */
+  const handleBuyPack = async () => {
+    if (startingCheckout) return;
+
+    setStartingCheckout(true);
+    try {
+      const { checkoutUrl } = await paymentService.startCheckout(selectedPack.id);
+      // A full navigation, not a popup: Chargily's page is where the card
+      // details are entered and it must own the address bar for that.
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      const detail = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(
+        detail ||
+          lt(
+            'Could not start the payment. Please try again.',
+            "Impossible de démarrer le paiement. Réessayez.",
+            'تعذر بدء الدفع. حاول مرة أخرى.'
+          ),
+        'error'
+      );
+      setStartingCheckout(false);
+    }
+  };
+
+  /**
+   * Reports what happened after Chargily sends the customer back.
+   *
+   * The redirect is not proof of payment — it only means the browser came
+   * home. Confirmation arrives separately, on the webhook, and may land
+   * shortly after. So this polls the order's real state for a few seconds
+   * rather than announcing success because the URL said so, and says plainly
+   * when it is still waiting.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('payment');
+    const orderId = params.get('order');
+    if (!outcome) return;
+
+    // Clear the parameters immediately so a refresh does not replay this.
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, '', clean);
+
+    if (outcome !== 'success' || !orderId) {
+      showToast(
+        lt(
+          'Payment was not completed.',
+          "Le paiement n'a pas abouti.",
+          'لم تكتمل عملية الدفع.'
+        ),
+        'error'
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    const settle = async () => {
+      // ~15s: long enough for the webhook in practice, short enough that the
+      // customer is not left staring at a spinner if something is wrong.
+      for (let attempt = 0; attempt < 10 && !cancelled; attempt++) {
+        try {
+          const order = await paymentService.getOrder(orderId);
+
+          if (order.status === 'PAID') {
+            if (cancelled) return;
+            showToast(
+              lt(
+                `Payment confirmed — ${order.jobs} posting(s) added.`,
+                `Paiement confirmé — ${order.jobs} annonce(s) ajoutée(s).`,
+                `تم تأكيد الدفع — أضيفت ${order.jobs} إعلانات.`
+              )
+            );
+            setInvoicesVersion((v) => v + 1);
+            loadCompany();          // picks up the new plan and credit balance
+            setActiveTab('subscription');
+            return;
+          }
+
+          if (order.status === 'FAILED' || order.status === 'CANCELED') {
+            if (cancelled) return;
+            showToast(
+              lt('Payment failed.', 'Le paiement a échoué.', 'فشل الدفع.'),
+              'error'
+            );
+            return;
+          }
+        } catch {
+          // Keep polling; a single failed read is not an answer.
+        }
+
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      if (cancelled) return;
+      showToast(
+        lt(
+          'Payment received, still being confirmed. Your postings will appear shortly.',
+          'Paiement reçu, confirmation en cours. Vos annonces apparaîtront sous peu.',
+          'تم استلام الدفع، التأكيد جارٍ. ستظهر إعلاناتك قريباً.'
+        )
+      );
+      setActiveTab('subscription');
+    };
+
+    settle();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
 
@@ -1670,6 +1791,10 @@ export default function Dashboard({
 
   // Defaults to the single posting, which is the plan the cards advertise.
   const [selectedPack, setSelectedPack] = useState<AnnoncePack>(ANNONCE_PACKS[0]);
+
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  /** Bumped when a payment lands, so the invoice list refetches. */
+  const [invoicesVersion, setInvoicesVersion] = useState(0);
 
   // "Commencer" on the Premium card scrolls here rather than opening checkout:
   // Premium is priced per pack, so sending someone straight to a card form
@@ -4121,6 +4246,12 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 })}
               </div>
 
+              {/* Receipts live beside the thing that produces them. */}
+              <InvoiceList
+                language={language === 'ar' ? 'ar' : 'fr'}
+                refreshKey={invoicesVersion}
+              />
+
               {/* Pay-per-posting. Sits under the plans because it is an
                   alternative to a subscription, not a fourth plan. */}
               <div
@@ -4202,23 +4333,18 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
                 <button
                   onClick={() => {
-                    setSelectedPlan({
-                      name: `${selectedPack.jobs} annonce(s)`,
-                      price: selectedPack.label,
-                      tier: 'paid',
-                      jobs: selectedPack.jobs,
-                    });
-                    setSettingsTab('billing');
-                    setBillingView('payment');
-                    setActiveTab('settings');
+                    handleBuyPack();
                   }}
-                  className="w-full mt-8 py-5 rounded-[1.5rem] bg-[#F68D58] text-white font-black text-[12px] uppercase tracking-[0.2em] hover:bg-[#173E7D] transition-all shadow-lg shadow-orange-500/20"
+                  disabled={startingCheckout}
+                  className="w-full mt-8 py-5 rounded-[1.5rem] bg-[#F68D58] text-white font-black text-[12px] uppercase tracking-[0.2em] hover:bg-[#173E7D] transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {lt(
-                    `Pay ${selectedPack.label} DA`,
-                    `Payer ${selectedPack.label} DA`,
-                    `ادفع ${selectedPack.label} دج`
-                  )}
+                  {startingCheckout
+                    ? lt('Redirecting…', 'Redirection…', 'جارٍ التحويل…')
+                    : lt(
+                        `Pay ${selectedPack.label} DA`,
+                        `Payer ${selectedPack.label} DA`,
+                        `ادفع ${selectedPack.label} دج`
+                      )}
                 </button>
               </div>
             </div>

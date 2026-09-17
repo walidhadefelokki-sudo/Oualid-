@@ -794,17 +794,19 @@ model User {
   quiz         Quiz?
   quizAttempts QuizAttempt[]
 
-  refreshTokens  RefreshToken[]
-  sessions       UserSession[]
-  accounts       Account[]
-  notifications  Notification[]
-  auditLogs      AuditLog[]
-  supportTickets SupportTicket[]
-  ownedLeads     Lead[]         @relation("LeadOwner")
-  convertedFrom  Lead[]         @relation("LeadConverted")
-  crmNotesWritten CrmNote[]     @relation("CrmNoteAuthor")
-  crmNotesAbout   CrmNote[]     @relation("CrmNoteSubject")
-  deviceTokens   DeviceToken[]
+  refreshTokens   RefreshToken[]
+  sessions        UserSession[]
+  accounts        Account[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  supportTickets  SupportTicket[]
+  ownedLeads      Lead[]          @relation("LeadOwner")
+  convertedFrom   Lead[]          @relation("LeadConverted")
+  crmNotesWritten CrmNote[]       @relation("CrmNoteAuthor")
+  crmNotesAbout   CrmNote[]       @relation("CrmNoteSubject")
+  deviceTokens    DeviceToken[]
+
+  packOrders PackOrder[] @relation("PackOrderBuyer")
 
   @@index([email])
   @@index([role])
@@ -931,6 +933,7 @@ model Company {
 
   members           CompanyMember[]
   subscriptions     Subscription[]
+  packOrders        PackOrder[]
   jobs              Job[]
   favoriteCompanies FavoriteCompany[]
 
@@ -1071,7 +1074,7 @@ model Lead {
 
   /// Set when the lead signs up, so their pre-signup history is not orphaned.
   convertedUserId String?
-  convertedUser   User?   @relation("LeadConverted", fields: [convertedUserId], references: [id], onDelete: SetNull)
+  convertedUser   User?     @relation("LeadConverted", fields: [convertedUserId], references: [id], onDelete: SetNull)
   convertedAt     DateTime?
 
   /// When someone should follow up.
@@ -1111,4 +1114,60 @@ model CrmNote {
 
   @@index([leadId])
   @@index([subjectId])
+}
+
+/// A purchase of an annonce pack through Chargily Pay.
+///
+/// The row is created *before* the customer is sent to the checkout, holding
+/// the price the server decided on. That is the whole point: the client only
+/// ever names a pack id, so a price edited in the browser has nothing to act
+/// on — the amount charged and the amount recorded both come from the server's
+/// own catalogue.
+///
+/// It doubles as the invoice: once Chargily confirms payment the row gets an
+/// invoiceNumber and paidAt, and the PDF is rendered from it on demand rather
+/// than stored.
+model PackOrder {
+  id String @id @default(uuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  /// Who started the purchase. Kept if they leave the company.
+  buyerId String?
+  buyer   User?   @relation("PackOrderBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+
+  /// Catalogue id (pack-1, pack-2, pack-5, pack-10), for the record.
+  packId   String
+  /// Annonces this pack grants, copied at purchase time so a later catalogue
+  /// change cannot rewrite what someone already bought.
+  jobs     Int
+  /// Whole dinars, as sent to Chargily.
+  amount   Int
+  currency String @default("dzd")
+
+  status PackOrderStatus @default(PENDING)
+
+  /// Chargily's checkout id. Unique so a replayed webhook cannot be applied
+  /// twice — the credit grant keys off this.
+  checkoutId  String? @unique
+  checkoutUrl String?
+
+  /// Assigned only once paid, so invoice numbers have no gaps for abandoned
+  /// checkouts.
+  invoiceNumber String? @unique
+
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+}
+
+enum PackOrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
 }

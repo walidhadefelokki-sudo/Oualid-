@@ -424,6 +424,13 @@ export default function App() {
           role: normalizeRole(u.role),
           recruiterTier: u.recruiterTier,
         });
+
+        // Chargily sends the customer back to the site root with ?payment=…
+        // on it. Land them in the dashboard, which reads the same parameters
+        // and reports what actually happened to the order.
+        if (new URLSearchParams(window.location.search).has('payment')) {
+          setView('dashboard');
+        }
       } catch (err) {
         // Token invalid/expired
         localStorage.removeItem('token');

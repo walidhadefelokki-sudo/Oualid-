@@ -7726,12 +7726,55 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 active={activeTab === 'candidates'} 
                 onClick={() => setActiveTab('candidates')} 
               />
-              <SidebarItem 
-                icon={Cpu} 
-                label="Filtre IA" 
-                active={activeTab === 'ai-filter'} 
-                onClick={() => setActiveTab('ai-filter')} 
-              />
+              {/* Premium and Corporate. Gratuit does not include the AI
+                  filter, and this menu offered it to everyone. */}
+              {(recruiterTier === 'paid' || recruiterTier === 'corporate') && (
+                <SidebarItem
+                  icon={Cpu}
+                  label={lt('AI filter', 'Filtre IA', 'فلتر الذكاء الاصطناعي')}
+                  active={activeTab === 'ai-filter'}
+                  onClick={() => { setActiveTab('ai-filter'); setIsSidebarOpen(false); }}
+                />
+              )}
+
+              {/* Corporate. These five pages exist and the mobile drawer has
+                  always linked them, but this menu never did — so a Corporate
+                  customer on a laptop could not reach what they pay for. */}
+              {recruiterTier === 'corporate' && (
+                <>
+                  <SectionLabel>Corporate</SectionLabel>
+                  <SidebarItem
+                    icon={BookOpen}
+                    label={lt('CV directory', 'Répertoire CV', 'دليل السير الذاتية')}
+                    active={activeTab === 'repertoire-cv'}
+                    onClick={() => { setActiveTab('repertoire-cv'); setIsSidebarOpen(false); }}
+                  />
+                  <SidebarItem
+                    icon={BookOpen}
+                    label={lt('CV database', 'Base de CV', 'قاعدة السير الذاتية')}
+                    active={activeTab === 'sourcing-ia'}
+                    onClick={() => { setActiveTab('sourcing-ia'); setIsSidebarOpen(false); }}
+                  />
+                  <SidebarItem
+                    icon={Volume2}
+                    label={lt('Oral presentations', 'Présentations orales', 'العروض الشفهية')}
+                    active={activeTab === 'oral-results'}
+                    onClick={() => { setActiveTab('oral-results'); setIsSidebarOpen(false); }}
+                  />
+                  <SidebarItem
+                    icon={Award}
+                    label={lt('Quiz results', 'Résultats Quiz', 'نتائج الاختبارات')}
+                    active={activeTab === 'quiz-results'}
+                    onClick={() => { setActiveTab('quiz-results'); setIsSidebarOpen(false); }}
+                  />
+                  <SidebarItem
+                    icon={Star}
+                    label={lt('Shortlist', 'Préselection', 'الانتقاء المسبق')}
+                    active={activeTab === 'preselected'}
+                    onClick={() => { setActiveTab('preselected'); setIsSidebarOpen(false); }}
+                  />
+                </>
+              )}
               <SectionLabel>{t('tools')}</SectionLabel>
               <SidebarItem 
                 icon={PlusCircle} 

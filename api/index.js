@@ -5090,6 +5090,19 @@ var secretKey = () => {
   }
   return key;
 };
+var keyPrefix = process.env.CHARGILY_SECRET_KEY?.trim().slice(0, 8) ?? "";
+if (keyPrefix) {
+  const keyIsLive = keyPrefix.startsWith("live_");
+  if (MODE === "live" && !keyIsLive) {
+    console.error(
+      "CHARGILY_MODE=live but CHARGILY_SECRET_KEY is a test key. Every payment will be rejected."
+    );
+  } else if (MODE !== "live" && keyIsLive) {
+    console.error(
+      "CHARGILY_SECRET_KEY is a LIVE key but CHARGILY_MODE is not live. Real cards will not be charged."
+    );
+  }
+}
 var isChargilyConfigured = () => Boolean(process.env.CHARGILY_SECRET_KEY?.trim());
 var createCheckout = async (input) => {
   if (!Number.isInteger(input.amount) || input.amount <= 0) {

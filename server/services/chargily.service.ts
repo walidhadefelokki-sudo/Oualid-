@@ -36,6 +36,29 @@ const secretKey = () => {
   return key;
 };
 
+/**
+ * Refuses to run with a key that does not belong to the mode.
+ *
+ * The two are set independently, so going live is two edits and it is easy to
+ * make one of them. A live key against the test endpoint quietly takes no real
+ * money; a test key against the live endpoint rejects every payment. Both look
+ * like "payments are broken" rather than "the config is half-changed", so say
+ * so at startup instead.
+ */
+const keyPrefix = process.env.CHARGILY_SECRET_KEY?.trim().slice(0, 8) ?? "";
+if (keyPrefix) {
+  const keyIsLive = keyPrefix.startsWith("live_");
+  if (MODE === "live" && !keyIsLive) {
+    console.error(
+      "CHARGILY_MODE=live but CHARGILY_SECRET_KEY is a test key. Every payment will be rejected."
+    );
+  } else if (MODE !== "live" && keyIsLive) {
+    console.error(
+      "CHARGILY_SECRET_KEY is a LIVE key but CHARGILY_MODE is not live. Real cards will not be charged."
+    );
+  }
+}
+
 /** True when the integration is usable, for a health check or a UI hint. */
 export const isChargilyConfigured = () => Boolean(process.env.CHARGILY_SECRET_KEY?.trim());
 

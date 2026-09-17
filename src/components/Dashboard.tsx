@@ -1523,7 +1523,7 @@ export default function Dashboard({
       transition={{ duration: 0.5 }}
       whileHover={{ y: -15, scale: 1.02 }}
       onClick={() => setSelectedJob(job)}
-      className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border border-[#D4AF37]/40 hover:border-[#D4AF37]/80 shadow-[0_0_0_1px_rgba(212,175,55,0.15),0_25px_50px_-15px_rgba(0,0,0,0.5)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+      className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border-2 border-[#D4AF37] hover:border-[#F0D989] shadow-[0_0_0_1px_rgba(212,175,55,0.35),0_25px_50px_-15px_rgba(0,0,0,0.55)] hover:shadow-[0_0_0_1px_rgba(240,217,137,0.55),0_30px_60px_-15px_rgba(0,0,0,0.6)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
     >
       {/* The gold bloom the Corporate plan card uses. pointer-events-none, so a
           blurred decoration cannot swallow a click meant for the card. */}

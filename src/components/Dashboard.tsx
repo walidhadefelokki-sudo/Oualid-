@@ -127,6 +127,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import JobOfferCard from "./JobOfferCard";
+import { shareJobLink } from "../utils/shareJob";
 
 // Language proficiency, shared by the CV preview and the PDF export so the
 // bar in the on-screen CV and the bar in the downloaded file always agree.
@@ -1523,6 +1524,7 @@ export default function Dashboard({
       job={job as any}
       language={language === 'ar' ? 'ar' : 'fr'}
       onOpen={(j) => setSelectedJob(j as any)}
+      onShare={(j) => shareJob(j as any)}
       isSaved={isSaved}
       onToggleSave={onToggleSave}
     />
@@ -2345,6 +2347,23 @@ export default function Dashboard({
     }
   };
   const cvPreviewRef = useRef<HTMLDivElement>(null);
+  /**
+   * Hands out the same /jobs/<id> link the home page does, through the same
+   * helper — so an offer shared from the dashboard and one shared from the
+   * public page are the same address.
+   */
+  const shareJob = async (job: { id: string; title?: string; company?: string }) => {
+    const outcome = await shareJobLink(job, {
+      title: "Dar L'emploi",
+      copyPrompt: lt('Copy the link', 'Copiez le lien', 'انسخ الرابط'),
+    });
+
+    // Only a copy needs saying; a dismissed share sheet is not news.
+    if (outcome === 'copied') {
+      showToast(lt('Link copied', 'Lien copié', 'تم نسخ الرابط'));
+    }
+  };
+
   const handleApplyToJob = async (jobId: string) => {
     if (!user) {
       alert(language === 'ar' ? 'يرجى تسجيل الدخول للتقديم.' : 'Veuillez vous connecter pour postuler.');

@@ -96,6 +96,8 @@ import RecruiterPlanCard, {
   type RecruiterPlan,
 } from './constants/recruiterPlans';
 import JobOfferCard from './components/JobOfferCard';
+import applicationService from './services/application.service';
+import { shareJobLink } from './utils/shareJob';
 
 function TierLockedScreen({
   title,
@@ -332,12 +334,66 @@ export default function App() {
     setIsAuthModalOpen(true);
   };
 
-  const handleApply = (e: React.FormEvent) => {
+  const [applying, setApplying] = useState(false);
+
+  /**
+   * Applies to the offer on screen, through the same endpoint the dashboard
+   * uses.
+   *
+   * What was here before did not apply to anything: it alerted "Candidature
+   * envoyée !" and cleared the form, so every application sent from the home
+   * page was discarded while the candidate was told it had been received. The
+   * form it belonged to asked for a name, an email, a phone number and a CV
+   * file, none of which the applications API takes — it reads the CV already
+   * on the candidate's profile, which is also what makes one application
+   * comparable to the next.
+   */
+  const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Placeholder for Firebase submission
-    alert('Candidature envoyée ! (Intégration Firebase en attente)');
-    setSelectedJob(null);
-    setFormData({ name: '', email: '', phone: '', resume: null });
+    if (!selectedJob || applying) return;
+
+    // Applying needs an account, because an application belongs to one.
+    if (!user) {
+      setSelectedJob(null);
+      setIsLoginOpen(true);
+      return;
+    }
+
+    if (user.role !== 'user') {
+      setShareNotice(
+        language === 'ar'
+          ? 'التقديم متاح لحسابات المترشحين فقط.'
+          : 'Seuls les comptes candidat peuvent postuler.'
+      );
+      setTimeout(() => setShareNotice(null), 3500);
+      return;
+    }
+
+    setApplying(true);
+    try {
+      await applicationService.applyToJob(selectedJob.id);
+      setShareNotice(
+        language === 'ar'
+          ? 'تم إرسال ترشحك بنجاح.'
+          : 'Votre candidature a été envoyée.'
+      );
+      setTimeout(() => setShareNotice(null), 3500);
+      setSelectedJob(null);
+      if (/^\/jobs\//.test(window.location.pathname)) {
+        window.history.replaceState({}, '', '/');
+      }
+    } catch (err) {
+      const detail = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setShareNotice(
+        detail ||
+          (language === 'ar'
+            ? 'تعذر إرسال ترشحك.'
+            : "Votre candidature n'a pas pu être envoyée.")
+      );
+      setTimeout(() => setShareNotice(null), 4500);
+    } finally {
+      setApplying(false);
+    }
   };
 
   const scrollToSection = (id: string) => {
@@ -440,39 +496,19 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  /** The canonical address of one offer. Absolute — it is going into a paste. */
-  const jobShareUrl = (jobId: string) => `${window.location.origin}/jobs/${jobId}`;
+  // The URL and the fallback chain live in utils/shareJob, shared with the
+  // dashboard so both hand out the same address.
 
-  /**
-   * Shares an offer.
-   *
-   * Uses the native share sheet where there is one, which on a phone is what
-   * people expect and reaches WhatsApp directly. Falls back to the clipboard,
-   * then to a prompt — the Clipboard API needs a secure context and is not
-   * guaranteed, and silently doing nothing would look like a broken button.
-   */
+  /** Only "copied" is worth a word — a dismissed share sheet is not news. */
   const shareJob = async (job: { id: string; title?: string; company?: string }) => {
-    const url = jobShareUrl(job.id);
-    const title = job.title
-      ? `${job.title}${job.company ? ' — ' + job.company : ''}`
-      : "Dar L'emploi";
+    const outcome = await shareJobLink(job, {
+      title: "Dar L'emploi",
+      copyPrompt: language === 'ar' ? 'انسخ الرابط' : 'Copiez le lien',
+    });
 
-    if (navigator.share) {
-      try {
-        await navigator.share({ title, url });
-        return;
-      } catch (err) {
-        // Dismissing the sheet is a choice, not a failure to report.
-        if ((err as Error)?.name === 'AbortError') return;
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(url);
+    if (outcome === 'copied') {
       setShareNotice(language === 'ar' ? 'تم نسخ الرابط' : 'Lien copié');
       setTimeout(() => setShareNotice(null), 2500);
-    } catch {
-      window.prompt(language === 'ar' ? 'انسخ الرابط' : 'Copiez le lien', url);
     }
   };
 
@@ -2055,64 +2091,61 @@ export default function App() {
                 <p className="text-blue-200 text-xl font-light">{selectedJob.company} &bull; {selectedJob.location}</p>
               </div>
 
-              <form onSubmit={handleApply} className="p-12 space-y-10">
-                <div className="space-y-4">
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block">{language === 'fr' ? 'Nom complet' : 'الاسم الكامل'}</label>
-                  <input 
-                    required
-                    type="text" 
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder={language === 'fr' ? "Ahmed Benali" : "أحمد بن علي"} 
-                    className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
-                  />
+              <form onSubmit={handleApply} className="p-6 sm:p-10 space-y-6">
+                {/* The offer itself, so the decision can be made here rather
+                    than from the card's two-line excerpt. */}
+                {selectedJob.description && (
+                  <p className="text-gray-600 leading-relaxed whitespace-pre-line line-clamp-[12]">
+                    {selectedJob.description}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedJob.type && (
+                    <span className="px-4 py-2 rounded-full bg-blue-50 text-[#173E7D] text-[11px] font-black uppercase tracking-widest">
+                      {selectedJob.type}
+                    </span>
+                  )}
+                  {selectedJob.remote && (
+                    <span className="px-4 py-2 rounded-full bg-gray-50 text-gray-500 text-[11px] font-black uppercase tracking-widest">
+                      {selectedJob.remote}
+                    </span>
+                  )}
+                  {selectedJob.location && (
+                    <span className="px-4 py-2 rounded-full bg-gray-50 text-gray-500 text-[11px] font-black uppercase tracking-widest">
+                      {selectedJob.location}
+                    </span>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                  <div className="space-y-4">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block">{language === 'fr' ? 'Adresse e-mail' : 'البريد الإلكتروني'}</label>
-                    <input 
-                      required
-                      type="email" 
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      placeholder="ahmed@exemple.dz" 
-                      className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
-                    />
-                  </div>
-                  <div className="space-y-4">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block">{language === 'fr' ? 'Numéro de téléphone' : 'رقم الهاتف'}</label>
-                    <input 
-                      required
-                      type="tel" 
-                      value={formData.phone}
-                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                      placeholder="+213 5XX XX XX XX" 
-                      className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
-                    />
-                  </div>
+
+                {/* Applications carry the CV on file. Said plainly, because
+                    this modal used to ask for one and then discard it. */}
+                <div className="rounded-3xl bg-gray-50 border border-gray-100 p-5 text-sm text-gray-500 font-medium">
+                  {user
+                    ? language === 'ar'
+                      ? 'سيتم إرسال ترشحك بالسيرة الذاتية الموجودة في ملفك الشخصي.'
+                      : 'Votre candidature sera envoyée avec le CV de votre profil.'
+                    : language === 'ar'
+                      ? 'أنشئ حساباً أو سجّل الدخول للتقديم على هذا العرض.'
+                      : 'Connectez-vous ou créez un compte pour postuler à cette offre.'}
                 </div>
-                <div className="space-y-4">
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 block">{language === 'fr' ? 'CV (PDF)' : 'السيرة الذاتية (PDF)'}</label>
-                  <div className="border-2 border-dashed border-gray-100 rounded-[2.5rem] p-16 text-center hover:border-[#F68D58] hover:bg-orange-50/30 transition-all cursor-pointer relative group">
-                    <input 
-                      type="file" 
-                      accept=".pdf"
-                      onChange={(e) => setFormData({...formData, resume: e.target.files?.[0] || null})}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                    <div className="flex flex-col items-center gap-6 text-gray-400 group-hover:text-[#F68D58] transition-colors">
-                      <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center group-hover:bg-white shadow-inner transition-all">
-                        <Briefcase size={40} strokeWidth={1.5} />
-                      </div>
-                      <span className="font-black text-sm tracking-widest uppercase">{formData.resume ? formData.resume.name : (language === 'fr' ? 'Cliquez ou glissez pour télécharger votre CV' : 'انقر أو اسحب لتحميل سيرتك الذاتية')}</span>
-                    </div>
-                  </div>
-                </div>
-                <button 
+
+                <button
                   type="submit"
-                  className="w-full bg-[#173E7D] text-white py-7 rounded-3xl font-black text-xl hover:bg-[#F68D58] transition-all duration-500 shadow-2xl shadow-blue-900/20 uppercase tracking-[0.2em]"
+                  disabled={applying}
+                  className="w-full bg-[#173E7D] text-white py-4 sm:py-6 rounded-3xl font-black text-base sm:text-xl hover:bg-[#F68D58] transition-all duration-500 shadow-2xl shadow-blue-900/20 uppercase tracking-[0.2em] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {language === 'fr' ? 'Envoyer la candidature' : 'إرسال الطلب'}
+                  {applying
+                    ? language === 'ar'
+                      ? 'جارٍ الإرسال…'
+                      : 'Envoi…'
+                    : !user
+                      ? language === 'ar'
+                        ? 'تسجيل الدخول للتقديم'
+                        : 'Se connecter pour postuler'
+                      : language === 'ar'
+                        ? 'إرسال الطلب'
+                        : 'Envoyer la candidature'}
                 </button>
               </form>
             </motion.div>

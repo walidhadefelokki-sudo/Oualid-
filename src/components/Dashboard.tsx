@@ -4143,7 +4143,16 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         size="lg"
                         price={pricing.price}
                         priceSuffix={pricing.suffix}
-                        featuredLabel={lt('Best choice', 'Meilleur choix', 'الخيار الأفضل')}
+                        /* Only the paid tier, as on the home page. This was
+                           passed unconditionally, so Gratuit and Corporate
+                           both wore a "Meilleur choix" badge — and on the
+                           plan they are already on it collided with the
+                           "Votre plan" pill above it. */
+                        featuredLabel={
+                          plan.tier === 'paid' && !isCurrent
+                            ? lt('Best choice', 'Meilleur choix', 'الخيار الأفضل')
+                            : undefined
+                        }
                         ctaLabel={
                           isCurrent
                             ? lt('Current plan', 'Plan actuel', 'الباقة الحالية')

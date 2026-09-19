@@ -184,7 +184,7 @@ export default function RecruiterPlanCard({
       whileHover={{ y: -6 }}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
       className={`relative flex flex-col rounded-[1.75rem] border ${plan.accent.border} ${plan.accent.hoverBorder} ${plan.accent.cardBg} ${plan.accent.glow} ${
-        isLarge ? 'p-9 rounded-[2.25rem]' : 'p-6'
+        isLarge ? 'p-6 sm:p-9 rounded-[2.25rem]' : 'p-5 sm:p-6'
       } transition-colors duration-300 overflow-hidden`}
     >
       {featuredLabel && (
@@ -276,7 +276,7 @@ export default function RecruiterPlanCard({
       <button
         onClick={() => onSelect(plan.tier)}
         className={`mt-6 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 ${
-          isLarge ? 'py-5 rounded-2xl' : 'py-3'
+          isLarge ? 'py-4 sm:py-5 rounded-2xl' : 'py-3'
         } ${plan.accent.button}`}
       >
         {ctaLabel ?? (language === 'fr' ? plan.cta : plan.ctaAr)}

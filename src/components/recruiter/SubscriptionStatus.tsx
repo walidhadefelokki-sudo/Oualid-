@@ -165,7 +165,7 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
             : 'bg-white border-gray-100'
         }`}
       >
-        <div className="p-8 md:p-10">
+        <div className="p-5 sm:p-8 md:p-10">
           <div
             className={`flex flex-wrap items-start justify-between gap-6 ${
               isRTL ? 'flex-row-reverse' : ''
@@ -186,7 +186,7 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
                 }`}
               >
                 <h3
-                  className={`text-3xl font-display font-black tracking-tight ${
+                  className={`text-2xl sm:text-3xl font-display font-black tracking-tight break-words ${
                     isCorporate ? 'text-white' : 'text-[#173E7D]'
                   }`}
                 >
@@ -233,7 +233,10 @@ export default function SubscriptionStatus({ language, onBuyPostings }: Props) {
 
             {/* Days left, or an honest note that there is no term to count. */}
             <div
-              className={`rounded-3xl px-6 py-5 min-w-[180px] ${
+              /* min-w-[180px] plus the plan block was wider than a phone,
+                 so the two could not sit side by side and the row overflowed.
+                 Full width below sm, its own column above. */
+              className={`rounded-3xl px-5 sm:px-6 py-4 sm:py-5 w-full sm:w-auto sm:min-w-[180px] ${
                 isCorporate ? 'bg-white/10 border border-white/15' : 'bg-gray-50 border border-gray-100'
               } ${isRTL ? 'text-right' : ''}`}
             >

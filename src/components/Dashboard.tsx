@@ -4092,7 +4092,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           return (
             <div className="space-y-10">
               <div className={isRTL ? 'text-right' : ''}>
-                <h2 className="text-4xl font-display font-black text-[#173E7D] tracking-tight">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black text-[#173E7D] tracking-tight">
                   {lt('Subscription', 'Abonnement', 'الاشتراك')}
                 </h2>
                 <p className="text-gray-500 mt-1 font-medium">
@@ -4125,7 +4125,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   its own, listing different plan names and features, so what a
                   recruiter compared before signing up did not match what they
                   found once inside. */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-8 items-stretch">
                 {RECRUITER_PLANS.map((plan) => {
                   const pricing = HOME_PLAN_PRICING[plan.tier];
                   const isCurrent = plan.tier === recruiterTier;
@@ -4197,7 +4197,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   alternative to a subscription, not a fourth plan. */}
               <div
                 ref={buyPostingsRef}
-                className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8 md:p-10 scroll-mt-28"
+                className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-5 sm:p-8 md:p-10 scroll-mt-28"
               >
                 <div className={`flex flex-wrap items-end justify-between gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className={isRTL ? 'text-right' : ''}>
@@ -4218,7 +4218,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       {lt('Total', 'Total', 'المجموع')}
                     </p>
                     {/* Updates the moment a pack is chosen. */}
-                    <p dir="ltr" className="text-4xl md:text-5xl font-display font-black text-[#173E7D] tracking-tighter leading-none mt-1">
+                    <p dir="ltr" className="text-3xl sm:text-4xl md:text-5xl font-display font-black text-[#173E7D] tracking-tighter leading-none mt-1">
                       {selectedPack.label}
                       <span className="text-lg font-bold text-gray-400 ml-2">DA</span>
                     </p>
@@ -4277,7 +4277,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     handleBuyPack();
                   }}
                   disabled={startingCheckout}
-                  className="w-full mt-8 py-5 rounded-[1.5rem] bg-[#F68D58] text-white font-black text-[12px] uppercase tracking-[0.2em] hover:bg-[#173E7D] transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full mt-8 py-4 sm:py-5 rounded-[1.5rem] bg-[#F68D58] text-white font-black text-[11px] sm:text-[12px] uppercase tracking-wide sm:tracking-[0.2em] hover:bg-[#173E7D] transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {startingCheckout
                     ? lt('Redirecting…', 'Redirection…', 'جارٍ التحويل…')

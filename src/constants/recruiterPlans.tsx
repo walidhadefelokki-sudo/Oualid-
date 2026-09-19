@@ -183,7 +183,11 @@ export default function RecruiterPlanCard({
     <motion.div
       whileHover={{ y: -6 }}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-      className={`relative flex flex-col rounded-[1.75rem] border ${plan.accent.border} ${plan.accent.hoverBorder} ${plan.accent.cardBg} ${plan.accent.glow} ${
+      /* w-full: the dashboard wraps this in a flex row, and a flex item with
+         no width sizes to its content — so on one column the card stopped at
+         its intrinsic width and left the rest of the row empty. h-full so the
+         grid's items-stretch can still even the three out. */
+      className={`relative flex h-full w-full flex-col rounded-[1.75rem] border ${plan.accent.border} ${plan.accent.hoverBorder} ${plan.accent.cardBg} ${plan.accent.glow} ${
         isLarge ? 'p-6 sm:p-9 rounded-[2.25rem]' : 'p-5 sm:p-6'
       } transition-colors duration-300 overflow-hidden`}
     >

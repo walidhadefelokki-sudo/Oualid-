@@ -1608,6 +1608,121 @@ var setPostings = async (companyId, credits) => {
   });
 };
 
+// server/services/jobMatch.service.ts
+init_prisma();
+var WEIGHT = {
+  skill: 10,
+  // per skill found in the title or description
+  titleWord: 8,
+  // per meaningful word shared with their current job title
+  wilaya: 12,
+  // same wilaya — the strongest single signal in Algeria
+  experience: 6,
+  // seniority band matches their years
+  recent: 3
+  // published in the last fortnight
+};
+var STOPWORDS = /* @__PURE__ */ new Set([
+  "de",
+  "du",
+  "des",
+  "la",
+  "le",
+  "les",
+  "un",
+  "une",
+  "et",
+  "en",
+  "pour",
+  "avec",
+  "sur",
+  "dans",
+  "au",
+  "aux",
+  "chez",
+  "par",
+  "the",
+  "and",
+  "for",
+  "with",
+  "of",
+  "junior",
+  "senior",
+  "stage",
+  "cdi",
+  "cdd",
+  "h",
+  "f"
+]);
+var normalise = (value) => value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9؀-ۿ\s+#.]/g, " ");
+var words = (value) => normalise(value).split(/\s+/).filter((w) => w.length > 2 && !STOPWORDS.has(w));
+var bandFor = (years) => {
+  if (years <= 0) return "INTERN";
+  if (years <= 2) return "JUNIOR";
+  if (years <= 5) return "MID";
+  if (years <= 10) return "SENIOR";
+  return "LEAD";
+};
+var getMatchedJobsForCandidate = async (userId, limit = 6) => {
+  const profile = await prisma_default.candidateProfile.findUnique({
+    where: { userId },
+    select: {
+      skills: true,
+      wilaya: true,
+      city: true,
+      currentJobTitle: true,
+      yearsExperience: true
+    }
+  });
+  if (!profile) return [];
+  const skills = (profile.skills ?? []).map((s) => normalise(s).trim()).filter(Boolean);
+  const titleWords = profile.currentJobTitle ? words(profile.currentJobTitle) : [];
+  const wilaya = profile.wilaya ? normalise(profile.wilaya).trim() : "";
+  if (!skills.length && !titleWords.length && !wilaya) return [];
+  const band = profile.yearsExperience != null ? bandFor(profile.yearsExperience) : null;
+  const jobs = await prisma_default.job.findMany({
+    where: { status: "PUBLISHED" },
+    orderBy: { publishedAt: "desc" },
+    take: 200,
+    include: {
+      company: { select: { name: true, logo: { select: { url: true } } } },
+      category: { select: { name: true } }
+    }
+  });
+  const fortnightAgo = Date.now() - 14 * 24 * 60 * 60 * 1e3;
+  const scored = jobs.map((job) => {
+    const haystack = normalise(`${job.title} ${job.description}`);
+    const reasons = [];
+    let score = 0;
+    const hitSkills = skills.filter((s) => haystack.includes(s));
+    if (hitSkills.length) {
+      score += hitSkills.length * WEIGHT.skill;
+      reasons.push(hitSkills.slice(0, 3).join(", "));
+    }
+    const hitTitle = titleWords.filter((w) => haystack.includes(w));
+    if (hitTitle.length) {
+      score += hitTitle.length * WEIGHT.titleWord;
+      if (!hitSkills.length) reasons.push(hitTitle.slice(0, 2).join(", "));
+    }
+    if (wilaya) {
+      const place = normalise(`${job.wilaya ?? ""} ${job.location ?? ""}`);
+      if (place.includes(wilaya)) {
+        score += WEIGHT.wilaya;
+        reasons.push(profile.wilaya);
+      }
+    }
+    if (band && job.experienceLevel === band) {
+      score += WEIGHT.experience;
+    }
+    if (job.publishedAt && job.publishedAt.getTime() > fortnightAgo) {
+      score += WEIGHT.recent;
+    }
+    const relevant = hitSkills.length > 0 || hitTitle.length > 0;
+    return { job, score: relevant ? score : 0, reasons };
+  });
+  return scored.filter((m) => m.score > 0).sort((a, b) => b.score - a.score || (b.job.publishedAt?.getTime() ?? 0) - (a.job.publishedAt?.getTime() ?? 0)).slice(0, limit);
+};
+
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -1944,6 +2059,42 @@ var deleteJob = async (req, res, next) => {
     next(err);
   }
 };
+var getMatchedJobs = async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 6, 20);
+    const matches = await getMatchedJobsForCandidate(req.user.id, limit);
+    res.status(200).json({
+      status: "success",
+      results: matches.length,
+      data: {
+        jobs: matches.map(({ job, reasons }) => ({
+          id: job.id,
+          title: job.title,
+          slug: job.slug,
+          description: job.description,
+          location: job.location,
+          wilaya: job.wilaya,
+          remote: job.remote,
+          type: job.type,
+          experienceLevel: job.experienceLevel,
+          salaryMin: job.salaryMin,
+          salaryMax: job.salaryMax,
+          currency: job.currency,
+          featured: job.featured,
+          urgent: job.urgent,
+          publishedAt: job.publishedAt,
+          createdAt: job.createdAt,
+          company: job.company,
+          category: job.category,
+          /** Why this one matched — short, human phrases. */
+          matchReasons: reasons
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/middleware/role.middleware.ts
 var restrictTo = (...roles) => {
@@ -1959,6 +2110,12 @@ var restrictTo = (...roles) => {
 var router2 = Router2();
 router2.get("/", getAllJobs);
 router2.get("/recruiter/mine", protect, restrictTo("RECRUITER", "ADMIN"), getRecruiterJobs);
+router2.get(
+  "/me/recommended",
+  protect,
+  restrictTo("CANDIDATE", "ADMIN"),
+  getMatchedJobs
+);
 router2.get("/:id", getJob);
 router2.use(protect);
 router2.post("/", restrictTo("RECRUITER", "ADMIN"), createJob);

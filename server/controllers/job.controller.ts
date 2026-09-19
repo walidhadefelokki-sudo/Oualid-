@@ -6,6 +6,7 @@ import { sendJobMatchEmail, sendJobPublishedEmail } from "../utils/email";
 import { notifyJobMatch } from "../services/notification.service";
 import { consumePosting } from "../services/postingQuota.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
+import { getMatchedJobsForCandidate } from "../services/jobMatch.service";
 
 // Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
 // the random suffix keeps the (unique) Job.slug collision-free without
@@ -423,6 +424,55 @@ export const deleteJob = async (req: Request, res: Response, next: NextFunction)
     res.status(204).json({
       status: "success",
       data: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Offers ranked against the signed-in candidate's own profile.
+ *
+ * Returns the same job shape as the public list, so the landing page can swap
+ * these in for the featured ones without a second mapper — plus a `reasons`
+ * array, which is the point: the candidate is shown why each offer is here.
+ *
+ * An empty array is a real answer, not a failure. A candidate who has not
+ * filled in skills, a job title or a wilaya has nothing to match on, and the
+ * caller falls back to the ordinary featured list.
+ */
+export const getMatchedJobs = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 6, 20);
+    const matches = await getMatchedJobsForCandidate(req.user!.id, limit);
+
+    res.status(200).json({
+      status: "success",
+      results: matches.length,
+      data: {
+        jobs: matches.map(({ job, reasons }) => ({
+          id: job.id,
+          title: job.title,
+          slug: job.slug,
+          description: job.description,
+          location: job.location,
+          wilaya: job.wilaya,
+          remote: job.remote,
+          type: job.type,
+          experienceLevel: job.experienceLevel,
+          salaryMin: job.salaryMin,
+          salaryMax: job.salaryMax,
+          currency: job.currency,
+          featured: job.featured,
+          urgent: job.urgent,
+          publishedAt: job.publishedAt,
+          createdAt: job.createdAt,
+          company: job.company,
+          category: job.category,
+          /** Why this one matched — short, human phrases. */
+          matchReasons: reasons,
+        })),
+      },
     });
   } catch (err) {
     next(err);

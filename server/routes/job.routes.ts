@@ -7,6 +7,15 @@ const router = Router();
 
 router.get("/", jobController.getAllJobs);
 router.get("/recruiter/mine", protect, restrictTo("RECRUITER", "ADMIN"), jobController.getRecruiterJobs);
+// Before the /:id route: Express matches in order, so "recommended" would
+// otherwise be read as a job id and 404.
+router.get(
+  "/me/recommended",
+  protect,
+  restrictTo("CANDIDATE", "ADMIN"),
+  jobController.getMatchedJobs
+);
+
 router.get("/:id", jobController.getJob);
 
 router.use(protect);

@@ -164,6 +164,12 @@ export default function App() {
   const [featuredJobs, setFeaturedJobs] = useState<PublicJob[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [featuredError, setFeaturedError] = useState(false);
+  /**
+   * Offers picked for the signed-in candidate, which replace the featured
+   * ones when there are any. Empty for a visitor, a recruiter, or a candidate
+   * whose profile has nothing to match on — all of which fall back.
+   */
+  const [matchedJobs, setMatchedJobs] = useState<PublicJob[]>([]);
 
   const [partTimeJobs, setPartTimeJobs] = useState<PublicJob[]>([]);
   const [partTimeLoading, setPartTimeLoading] = useState(true);
@@ -293,7 +299,13 @@ export default function App() {
   // is what keeps the same job from appearing in both sections.
   const spotlightJob = featuredJobs.length > 0 ? featuredJobs[0] : null;
   const displaySpotlightJob = spotlightJob ? toCardJob(spotlightJob) : null;
-  const displayFeaturedJobs = featuredJobs.slice(1).map(toCardJob);
+  /* Matched offers win when the candidate has any. They are not sliced the
+     way featured ones are — featured drops its first entry because that one is
+     already the spotlight above, which does not apply here. */
+  const showingMatches = matchedJobs.length > 0;
+  const displayFeaturedJobs = showingMatches
+    ? matchedJobs.map(toCardJob)
+    : featuredJobs.slice(1).map(toCardJob);
   const displayPartTimeJobs = partTimeJobs.map(toCardJob);
 
   const [isDemo, setIsDemo] = useState(false);
@@ -573,6 +585,29 @@ export default function App() {
       window.clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'user') {
+      setMatchedJobs([]);
+      return;
+    }
+
+    let cancelled = false;
+    jobService
+      .getMatchedJobs(6)
+      .then((jobs) => {
+        if (!cancelled) setMatchedJobs(jobs);
+      })
+      .catch(() => {
+        // Non-fatal by design: the section falls back to the featured offers
+        // rather than emptying out.
+        if (!cancelled) setMatchedJobs([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -1650,7 +1685,22 @@ export default function App() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-24 gap-8">
             <div className={language === 'ar' ? 'text-right' : ''}>
               <span className="text-[#F68D58] font-black text-sm tracking-[0.5em] uppercase mb-6 block">{language === 'fr' ? 'Opportunités' : 'فرص العمل'}</span>
-              <h2 className="text-6xl md:text-7xl font-display font-bold text-[#173E7D] mb-6 tracking-tighter">{language === 'fr' ? 'Postes à la une' : 'وظائف مميزة'}</h2>
+              <h2 className="text-3xl sm:text-5xl md:text-7xl font-display font-bold text-[#173E7D] mb-6 tracking-tighter">
+                {showingMatches
+                  ? language === 'fr'
+                    ? 'Postes pour vous'
+                    : 'وظائف تناسبك'
+                  : language === 'fr'
+                    ? 'Postes à la une'
+                    : 'وظائف مميزة'}
+              </h2>
+              {showingMatches && (
+                <p className="text-gray-500 font-medium -mt-2 mb-6">
+                  {language === 'fr'
+                    ? 'Choisis selon votre profil : compétences, métier et wilaya.'
+                    : 'مختارة حسب ملفك: مهاراتك ومهنتك وولايتك.'}
+                </p>
+              )}
               <p className="text-2xl text-gray-500 font-light max-w-2xl">{language === 'fr' ? 'Découvrez les meilleures opportunités sélectionnées pour vous.' : 'اكتشف أفضل الفرص المختارة لك.'}</p>
             </div>
             <button 

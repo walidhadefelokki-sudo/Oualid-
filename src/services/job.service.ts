@@ -102,6 +102,18 @@ class JobService {
   }
 
   /**
+   * Offers ranked against the signed-in candidate's own profile.
+   *
+   * An empty array is a real answer, not an error: a candidate with no skills,
+   * job title or wilaya on file has nothing to match on, and the caller falls
+   * back to the featured list.
+   */
+  async getMatchedJobs(limit = 6): Promise<PublicJob[]> {
+    const { data } = await api.get("/jobs/me/recommended", { params: { limit } });
+    return data.data.jobs;
+  }
+
+  /**
    * Public: part-time openings, for the dedicated landing-page section.
    */
   async getPartTimeJobs(limit = 6): Promise<PublicJob[]> {

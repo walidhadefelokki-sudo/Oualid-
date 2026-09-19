@@ -4638,11 +4638,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </div>
 
                   {canEditCompany && (
-                    <div className="flex justify-end pt-6 border-t border-gray-50">
+                    <div className="flex justify-stretch sm:justify-end pt-6 border-t border-gray-50">
                       <button
                         onClick={handleSaveCompany}
                         disabled={savingCompany}
-                        className="bg-[#173E7D] text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-[#1e4fa1] transition-all shadow-lg shadow-blue-900/10 disabled:opacity-60"
+                        className="w-full sm:w-auto bg-[#173E7D] text-white px-6 sm:px-12 py-3.5 sm:py-4 rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-[#1e4fa1] transition-all shadow-lg shadow-blue-900/10 disabled:opacity-60"
                       >
                         {savingCompany
                           ? lt('Saving…', 'Enregistrement…', 'جارٍ الحفظ…')
@@ -8217,13 +8217,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* CV Footer / Actions */}
-              <div className="p-6 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-                <div className="flex gap-4">
+              <div className="p-5 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                   {/* Both of these had no onClick at all. */}
                   <button
                     onClick={handleDownloadCandidateCv}
                     disabled={downloadingCandidateCv || isGeneratingEmployerPDF}
-                    className="px-5 sm:px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full sm:w-auto px-5 sm:px-8 py-3.5 sm:py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {downloadingCandidateCv ? (
                       <>
@@ -8238,12 +8238,12 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </button>
                   <button
                     onClick={() => window.print()}
-                    className="px-5 sm:px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                    className="w-full sm:w-auto px-5 sm:px-8 py-3.5 sm:py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-gray-50 transition-all"
                   >
                     {lt('Print', 'Imprimer', 'طباعة')}
                   </button>
                 </div>
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <AnimatePresence>
                     {showContactOptions && (
                       <motion.div
@@ -8275,7 +8275,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </AnimatePresence>
                   <button 
                     onClick={() => setShowContactOptions(!showContactOptions)}
-                    className="px-5 sm:px-10 py-4 bg-[#F68D58] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#e57d47] transition-all shadow-xl shadow-orange-500/20"
+                    className="w-full sm:w-auto px-5 sm:px-10 py-3.5 sm:py-4 bg-[#F68D58] text-white rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-[#e57d47] transition-all shadow-xl shadow-orange-500/20"
                   >
                     Contacter le candidat
                   </button>
@@ -8381,18 +8381,18 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* Footer */}
-              <div className="p-6 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-                <button 
+              <div className="p-5 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3">
+                <button
                   onClick={() => setSelectedJob(null)}
-                  className="px-5 sm:px-8 py-4 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  className="w-full sm:w-auto px-5 sm:px-8 py-3.5 sm:py-4 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-gray-50 transition-all"
                 >
-                  Fermer
+                  {lt('Close', 'Fermer', 'إغلاق')}
                 </button>
-                <button 
+                <button
                   onClick={() => setShowApplyConfirmation(true)}
-                  className="px-6 sm:px-12 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
+                  className="w-full sm:w-auto px-6 sm:px-12 py-3.5 sm:py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase text-[11px] sm:text-sm tracking-wide sm:tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
                 >
-                  Postuler maintenant
+                  {lt('Apply now', 'Postuler maintenant', 'قدّم الآن')}
                 </button>
               </div>
             </motion.div>

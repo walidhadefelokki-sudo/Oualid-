@@ -13,6 +13,7 @@ import {
   TrendingUp, 
   ChevronRight, 
   ChevronDown, 
+  Share2, 
   MapPin, 
   Clock, 
   Building2,
@@ -150,6 +151,8 @@ export default function App() {
   const [colorIndex, setColorIndex] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
+  /** Brief confirmation after copying a share link. */
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
 
   // --- Landing page live data -------------------------------------------
   // The sectors grid, "Postes à la une" and the part-time section all read
@@ -398,6 +401,9 @@ export default function App() {
   const didSyncUrl = useRef(false);
   useEffect(() => {
     if (window.location.pathname === '/auth/callback') return;
+    // A shared offer owns the address while its modal is open. Rewriting it to
+    // "/" here would blank the link the moment the page finished loading.
+    if (/^\/jobs\//.test(window.location.pathname) && selectedJob) return;
 
     const path = view === 'dashboard' ? '/dashboard' : '/';
     if (window.location.pathname !== path) {
@@ -418,6 +424,70 @@ export default function App() {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  /** The canonical address of one offer. Absolute — it is going into a paste. */
+  const jobShareUrl = (jobId: string) => `${window.location.origin}/jobs/${jobId}`;
+
+  /**
+   * Shares an offer.
+   *
+   * Uses the native share sheet where there is one, which on a phone is what
+   * people expect and reaches WhatsApp directly. Falls back to the clipboard,
+   * then to a prompt — the Clipboard API needs a secure context and is not
+   * guaranteed, and silently doing nothing would look like a broken button.
+   */
+  const shareJob = async (job: { id: string; title?: string; company?: string }) => {
+    const url = jobShareUrl(job.id);
+    const title = job.title
+      ? `${job.title}${job.company ? ' — ' + job.company : ''}`
+      : "Dar L'emploi";
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url });
+        return;
+      } catch (err) {
+        // Dismissing the sheet is a choice, not a failure to report.
+        if ((err as Error)?.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareNotice(language === 'ar' ? 'تم نسخ الرابط' : 'Lien copié');
+      setTimeout(() => setShareNotice(null), 2500);
+    } catch {
+      window.prompt(language === 'ar' ? 'انسخ الرابط' : 'Copiez le lien', url);
+    }
+  };
+
+  /**
+   * Opens the offer named in the address, so a shared link lands on it.
+   *
+   * The offer is fetched rather than looked up among the featured ones: a
+   * shared link is usually to something that is not on the front page.
+   */
+  useEffect(() => {
+    const match = window.location.pathname.match(/^\/jobs\/([\w-]+)$/);
+    if (!match) return;
+
+    let cancelled = false;
+    jobService
+      .getJob(match[1])
+      .then((job) => {
+        if (!cancelled) setSelectedJob(toCardJob(job));
+      })
+      .catch(() => {
+        // Deleted, unpublished, or simply a bad link — send them to the front
+        // page rather than leaving a dead address in the bar.
+        if (!cancelled) window.history.replaceState({}, '', '/');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
    const handleLogout = async () => {
@@ -1648,8 +1718,22 @@ export default function App() {
                   transition={{ delay: i * 0.1 }}
                   whileHover={{ y: -15, scale: 1.02 }}
                   onClick={() => setSelectedJob(job as any)}
-                  className="bg-white p-10 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] border-2 border-[#173E7D] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
+                  className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-8 sm:p-10 rounded-[3.5rem] border-2 border-[#D4AF37] hover:border-[#F0D989] shadow-[0_0_0_1px_rgba(212,175,55,0.35),0_25px_50px_-15px_rgba(0,0,0,0.55)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
                 >
+                  <div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#D4AF37]/20 blur-3xl" />
+
+                  {/* stopPropagation, or sharing would also open the apply
+                      modal that the card click is wired to. */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      shareJob(job as any);
+                    }}
+                    aria-label={language === 'ar' ? 'مشاركة العرض' : "Partager l'offre"}
+                    className="absolute top-6 right-6 z-20 p-3 rounded-2xl bg-white/10 border border-white/20 text-white/70 hover:text-[#D4AF37] hover:border-[#D4AF37]/60 transition-colors"
+                  >
+                    <Share2 size={16} />
+                  </button>
                   {job.featured && (
                     <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">
                       {language === 'fr' ? 'À la une' : 'مميز'}
@@ -1940,8 +2024,14 @@ export default function App() {
 
       {/* Application Modal */}
       <AnimatePresence>
+        {shareNotice && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] px-6 py-3 rounded-2xl bg-[#0B1E3D] text-white font-bold text-sm shadow-2xl border border-[#D4AF37]/40">
+            {shareNotice}
+          </div>
+        )}
+
         {selectedJob && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1957,12 +2047,29 @@ export default function App() {
             >
               <div className="bg-[#173E7D] p-12 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-                <button 
-                  onClick={() => setSelectedJob(null)}
-                  className="absolute top-10 right-10 text-white/60 hover:text-white transition-all hover:rotate-90 duration-500"
-                >
-                  <X size={32} />
-                </button>
+                <div className="absolute top-6 right-6 sm:top-10 sm:right-10 flex items-center gap-2">
+                  <button
+                    onClick={() => shareJob(selectedJob)}
+                    aria-label={language === 'ar' ? 'مشاركة العرض' : "Partager l'offre"}
+                    className="p-2 sm:p-2.5 rounded-xl bg-white/10 border border-white/20 text-white/70 hover:text-[#F68D58] transition-colors"
+                  >
+                    <Share2 size={20} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedJob(null);
+                      // A shared link put /jobs/:id in the bar; closing the
+                      // offer should not leave the address pointing at it.
+                      if (/^\/jobs\//.test(window.location.pathname)) {
+                        window.history.replaceState({}, '', '/');
+                      }
+                    }}
+                    aria-label={language === 'ar' ? 'إغلاق' : 'Fermer'}
+                    className="text-white/60 hover:text-white transition-all hover:rotate-90 duration-500"
+                  >
+                    <X size={28} />
+                  </button>
+                </div>
                 <span className="text-[#F68D58] font-black text-xs tracking-[0.5em] uppercase mb-6 block">{language === 'fr' ? 'Candidature' : 'طلب توظيف'}</span>
                 <h3 className="text-4xl md:text-5xl font-display font-bold mb-4 tracking-tighter leading-tight">{language === 'fr' ? `Postuler pour ${selectedJob.title}` : `التقدم لوظيفة ${selectedJob.title}`}</h3>
                 <p className="text-blue-200 text-xl font-light">{selectedJob.company} &bull; {selectedJob.location}</p>
@@ -1977,7 +2084,7 @@ export default function App() {
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     placeholder={language === 'fr' ? "Ahmed Benali" : "أحمد بن علي"} 
-                    className="w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-medium"
+                    className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
@@ -1989,7 +2096,7 @@ export default function App() {
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       placeholder="ahmed@exemple.dz" 
-                      className="w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-medium"
+                      className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
                     />
                   </div>
                   <div className="space-y-4">
@@ -2000,7 +2107,7 @@ export default function App() {
                       value={formData.phone}
                       onChange={(e) => setFormData({...formData, phone: e.target.value})}
                       placeholder="+213 5XX XX XX XX" 
-                      className="w-full px-8 py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-lg font-medium"
+                      className="w-full px-5 sm:px-8 py-3.5 sm:py-5 rounded-3xl border border-gray-100 outline-none focus:border-[#F68D58] transition-all bg-gray-50/50 text-base sm:text-lg font-medium"
                     />
                   </div>
                 </div>

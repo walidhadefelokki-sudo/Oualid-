@@ -7598,7 +7598,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <button
                       type="submit"
                       disabled={isSavingJob}
-                      className="flex-1 bg-[#173E7D] text-white py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                      className="flex-1 bg-[#173E7D] text-white py-3.5 sm:py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-xl shadow-blue-900/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                     >
                       {isSavingJob ? (
                         <>
@@ -7616,7 +7616,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       type="button"
                       onClick={() => setEditingJobId(null)}
                       disabled={isSavingJob}
-                      className="px-8 py-5 rounded-[1.5rem] bg-gray-50 text-gray-500 font-black text-[11px] uppercase tracking-[0.2em] hover:bg-gray-100 transition-all disabled:opacity-40"
+                      className="px-5 sm:px-8 py-3.5 sm:py-5 rounded-[1.5rem] bg-gray-50 text-gray-500 font-black text-[11px] uppercase tracking-[0.2em] hover:bg-gray-100 transition-all disabled:opacity-40"
                     >
                       {lt('Cancel', 'Annuler', 'إلغاء')}
                     </button>
@@ -8147,7 +8147,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     </p>
                     <button
                       onClick={() => setCorporateOpen(false)}
-                      className="mt-8 px-10 py-4 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
+                      className="mt-8 px-5 sm:px-10 py-4 rounded-full bg-[#173E7D] text-white font-black text-[11px] uppercase tracking-widest hover:bg-[#F68D58] transition-all"
                     >
                       {lt('Close', 'Fermer', 'إغلاق')}
                     </button>
@@ -8219,7 +8219,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <button
                         type="button"
                         onClick={() => setCorporateOpen(false)}
-                        className="px-8 py-4 rounded-2xl border border-gray-200 text-gray-500 font-black text-[12px] uppercase tracking-widest hover:bg-gray-50 transition-all"
+                        className="px-5 sm:px-8 py-4 rounded-2xl border border-gray-200 text-gray-500 font-black text-[12px] uppercase tracking-widest hover:bg-gray-50 transition-all"
                       >
                         {lt('Cancel', 'Annuler', 'إلغاء')}
                       </button>
@@ -8269,14 +8269,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     <p className="font-bold text-xs uppercase tracking-widest">{lt("Loading CV…", "Chargement du CV…", "جارٍ تحميل السيرة الذاتية…")}</p>
                   </div>
                 ) : candidateCvError ? (
-                  <div className="py-24 px-10 text-center">
+                  <div className="py-24 px-5 sm:px-10 text-center">
                     <p className="text-xl font-black text-[#173E7D] mb-2">CV indisponible</p>
                     <p className="text-gray-400 font-medium">{candidateCvError}</p>
                   </div>
                 ) : (
                   <>
                     {candidateCvDoc && !candidateCvHasBuilt && (
-                      <div className="px-10 pt-8">
+                      <div className="px-5 sm:px-10 pt-8">
                         <p className="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 uppercase tracking-widest">
                           Ce candidat n'a pas encore complété son CV en ligne
                         </p>
@@ -8302,7 +8302,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <button
                     onClick={handleDownloadCandidateCv}
                     disabled={downloadingCandidateCv || isGeneratingEmployerPDF}
-                    className="px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="px-5 sm:px-8 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {downloadingCandidateCv ? (
                       <>
@@ -8317,7 +8317,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </button>
                   <button
                     onClick={() => window.print()}
-                    className="px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                    className="px-5 sm:px-8 py-4 bg-white text-[#173E7D] border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
                   >
                     {lt('Print', 'Imprimer', 'طباعة')}
                   </button>
@@ -8354,7 +8354,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   </AnimatePresence>
                   <button 
                     onClick={() => setShowContactOptions(!showContactOptions)}
-                    className="px-10 py-4 bg-[#F68D58] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#e57d47] transition-all shadow-xl shadow-orange-500/20"
+                    className="px-5 sm:px-10 py-4 bg-[#F68D58] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#e57d47] transition-all shadow-xl shadow-orange-500/20"
                   >
                     Contacter le candidat
                   </button>
@@ -8417,7 +8417,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
                         <FileText size={16} className="text-[#F68D58]" /> Description du Poste
                       </h4>
-                      <p className="text-gray-600 leading-relaxed text-lg font-medium">
+                      <p className="text-gray-600 leading-relaxed text-base sm:text-lg font-medium">
                         {selectedJob.description}
                       </p>
                     </section>
@@ -8463,13 +8463,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               <div className="p-6 sm:p-8 lg:p-10 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                 <button 
                   onClick={() => setSelectedJob(null)}
-                  className="px-8 py-4 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  className="px-5 sm:px-8 py-4 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
                 >
                   Fermer
                 </button>
                 <button 
                   onClick={() => setShowApplyConfirmation(true)}
-                  className="px-12 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
+                  className="px-6 sm:px-12 py-4 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
                 >
                   Postuler maintenant
                 </button>
@@ -8568,13 +8568,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                     setShowApplyConfirmation(false);
                     setSelectedJob(null);
                   }}
-                  className="w-full py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
+                  className="w-full py-3.5 sm:py-5 bg-[#173E7D] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#0A1118] transition-all shadow-xl shadow-blue-900/20"
                 >
                   {language === 'ar' ? 'نعم، قدم الآن' : 'Oui, postuler'}
                 </button>
                 <button 
                   onClick={() => setShowApplyConfirmation(false)}
-                  className="w-full py-5 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  className="w-full py-3.5 sm:py-5 bg-white text-gray-400 border border-gray-200 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
                 >
                   {language === 'ar' ? 'إلغاء' : 'Annuler'}
                 </button>

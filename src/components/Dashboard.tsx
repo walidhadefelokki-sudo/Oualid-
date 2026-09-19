@@ -126,6 +126,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import JobOfferCard from "./JobOfferCard";
 
 // Language proficiency, shared by the CV preview and the PDF export so the
 // bar in the on-screen CV and the bar in the downloaded file always agree.
@@ -1515,115 +1516,16 @@ export default function Dashboard({
     );
   };
 
+  /* The card itself now lives in components/JobOfferCard, shared with the
+     home page — the two had drifted into near-copies of the same design. */
   const JobCard: React.FC<JobCardProps> = ({ job, isSaved, onToggleSave }) => (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5 }}
-      whileHover={{ y: -15, scale: 1.02 }}
-      onClick={() => setSelectedJob(job)}
-      className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-6 sm:p-8 lg:p-10 rounded-[3.5rem] border-2 border-[#D4AF37] hover:border-[#F0D989] shadow-[0_0_0_1px_rgba(212,175,55,0.35),0_25px_50px_-15px_rgba(0,0,0,0.55)] hover:shadow-[0_0_0_1px_rgba(240,217,137,0.55),0_30px_60px_-15px_rgba(0,0,0,0.6)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
-    >
-      {/* The gold bloom the Corporate plan card uses. pointer-events-none, so a
-          blurred decoration cannot swallow a click meant for the card. */}
-      <div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#D4AF37]/20 blur-3xl" />
-
-      {/* Header: Logo & Badges */}
-      <div className="relative z-10 flex justify-between items-start mb-10">
-        <div className="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 overflow-hidden group-hover:scale-110 transition-transform duration-500 shrink-0">
-          <img 
-            src={job.logo} 
-            alt={job.company} 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${job.company}&background=173E7D&color=fff`;
-            }}
-          />
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <span className="px-5 py-2 bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-            {job.type}
-          </span>
-          <span className="px-5 py-2 bg-white/10 text-white/80 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20 whitespace-nowrap">
-            {job.remote}
-          </span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 flex-1 flex flex-col">
-        <h4 className="text-2xl font-black text-white group-hover:text-[#D4AF37] transition-colors leading-tight mb-3 break-words">
-          {job.title}
-        </h4>
-        <div className="flex items-center gap-2 text-white/50 font-bold uppercase tracking-wider text-[10px] mb-6">
-          <Building2 size={14} className="text-[#D4AF37] shrink-0" />
-          <span className="truncate">{job.company}</span>
-        </div>
-
-        <p className="text-white/60 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
-          {job.description}
-        </p>
-
-        {/* Requirements Tags */}
-        <div className="flex flex-wrap gap-2 pt-2 mb-8">
-          {job.requirements.slice(0, 3).map((req, idx) => (
-            <span key={idx} className="px-3 py-1 bg-white/5 text-white/60 text-[10px] font-bold rounded-lg border border-white/10">
-              {req}
-            </span>
-          ))}
-          {job.requirements.length > 3 && (
-            <span className="px-3 py-1 bg-white/5 text-white/60 text-[10px] font-bold rounded-lg border border-white/10">
-              +{job.requirements.length - 3}
-            </span>
-          )}
-        </div>
-
-        {/* Meta Info */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] text-white/50 mb-10 font-bold uppercase tracking-widest mt-auto">
-          <div className="flex items-center gap-2 min-w-0">
-            <MapPin size={16} className="text-[#D4AF37] shrink-0" />
-            <span className="truncate">{job.location}</span>
-          </div>
-          {/* Was a hardcoded "Il y a 2j" on every card whatever its age. Now
-              the real publication date, and omitted when there is not one. */}
-          {job.publishedAt && (
-            <div className="flex items-center gap-2">
-              <Clock size={16} className="text-[#D4AF37] shrink-0" />
-              {timeAgo(job.publishedAt)}
-            </div>
-          )}
-        </div>
-
-        {/* Footer: Actions (estimated salary intentionally not shown) */}
-        <div className="relative z-10 flex items-center justify-end pt-8 mt-8 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSave(job.id);
-              }}
-              aria-pressed={isSaved}
-              aria-label={lt('Save this offer', 'Enregistrer cette offre', 'حفظ هذا العرض')}
-              className={`p-4 rounded-2xl transition-all ${
-                isSaved
-                  ? 'bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D] shadow-lg shadow-black/30'
-                  : 'bg-white/10 text-white/50 border border-white/20 hover:text-[#D4AF37] hover:border-[#D4AF37]/60'
-              }`}
-            >
-              <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
-            </button>
-            <button
-              aria-label={lt('Open this offer', 'Ouvrir cette offre', 'فتح هذا العرض')}
-              className="w-14 h-14 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center text-white group-hover:bg-gradient-to-r group-hover:from-[#D4AF37] group-hover:to-[#F0D989] group-hover:text-[#0B1E3D] group-hover:border-transparent transition-all duration-500"
-            >
-              <ChevronRight size={28} className={isRTL ? 'rotate-180' : ''} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </motion.div>
+    <JobOfferCard
+      job={job as any}
+      language={language === 'ar' ? 'ar' : 'fr'}
+      onOpen={(j) => setSelectedJob(j as any)}
+      isSaved={isSaved}
+      onToggleSave={onToggleSave}
+    />
   );
 
   // Profile State

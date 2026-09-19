@@ -17,6 +17,8 @@ export interface PublicJob {
   // GET /jobs/:id returns the full Job record, so these are available when
   // loading an existing offer into the recruiter's edit form.
   experienceLevel?: string | null;
+  /** Set when the offer went live. Null on a draft. */
+  publishedAt?: string | null;
   createdAt: string;
   company: {
     name: string;

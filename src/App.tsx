@@ -95,6 +95,7 @@ import RecruiterPlanCard, {
   type RecruiterTier,
   type RecruiterPlan,
 } from './constants/recruiterPlans';
+import JobOfferCard from './components/JobOfferCard';
 
 function TierLockedScreen({
   title,
@@ -259,6 +260,7 @@ export default function App() {
       logo: job.company?.logo?.url ?? '',
       color: 'bg-blue-50 text-blue-600',
       featured: job.featured,
+      publishedAt: job.publishedAt ?? job.createdAt ?? null,
       description: job.description,
       // The Job model has no free-form tag list; the sector is the one real
       // classification available, so the card shows that instead of inventing
@@ -1759,86 +1761,14 @@ export default function App() {
               {/* Real featured jobs from the API. Adapted into the shape this
                   card has always rendered, so the card markup below is
                   unchanged — only the data source moved. */}
-              {displayFeaturedJobs.map((job, i) => (
-                <motion.div 
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  whileHover={{ y: -15, scale: 1.02 }}
-                  onClick={() => setSelectedJob(job as any)}
-                  className="bg-gradient-to-b from-[#0B1E3D] to-[#173E7D] p-8 sm:p-10 rounded-[3.5rem] border-2 border-[#D4AF37] hover:border-[#F0D989] shadow-[0_0_0_1px_rgba(212,175,55,0.35),0_25px_50px_-15px_rgba(0,0,0,0.55)] transition-all duration-500 group cursor-pointer relative overflow-hidden flex flex-col h-full"
-                >
-                  <div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#D4AF37]/20 blur-3xl" />
-
-                  {/* stopPropagation, or sharing would also open the apply
-                      modal that the card click is wired to. */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      shareJob(job as any);
-                    }}
-                    aria-label={language === 'ar' ? 'مشاركة العرض' : "Partager l'offre"}
-                    className="absolute top-6 right-6 z-20 p-3 rounded-2xl bg-white/10 border border-white/20 text-white/70 hover:text-[#D4AF37] hover:border-[#D4AF37]/60 transition-colors"
-                  >
-                    <Share2 size={16} />
-                  </button>
-                  {job.featured && (
-                    <div className="absolute top-6 right-6 bg-[#F68D58] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-lg">
-                      {language === 'fr' ? 'À la une' : 'مميز'}
-                    </div>
-                  )}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -z-0 group-hover:bg-[#173E7D]/5 transition-colors" />
-                  
-                  <div className="relative z-10 flex-1 flex flex-col">
-                    <div className="flex justify-between items-start mb-10">
-                      <div className={`w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-50 overflow-hidden group-hover:scale-110 transition-transform duration-500`}>
-                        <img 
-                          src={job.logo} 
-                          alt={job.company} 
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <span className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest">{job.type}</span>
-                        <span className="px-5 py-2 bg-blue-50 text-[#173E7D] rounded-full text-[10px] font-black uppercase tracking-widest">{job.remote}</span>
-                      </div>
-                    </div>
-
-                    <h3 className="text-2xl font-black text-[#173E7D] mb-3 group-hover:text-[#F68D58] transition-colors leading-tight">{job.title}</h3>
-                    <div className="flex items-center gap-2 text-gray-400 font-bold uppercase tracking-wider text-[10px] mb-6">
-                      <Building2 size={14} className="text-[#F68D58]" />
-                      {job.company}
-                    </div>
-
-                    <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 font-medium mb-6">
-                      {job.description}
-                    </p>
-
-                    <div className="flex flex-wrap gap-2 mb-8">
-                      {job.requirements.map((req, idx) => (
-                        <span key={idx} className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
-                          {req}
-                        </span>
-                      ))}
-                    </div>
-                    
-                    <div className="flex items-center gap-6 text-[10px] text-gray-400 mb-10 font-bold uppercase tracking-widest mt-auto">
-                      <div className="flex items-center gap-2"><MapPin size={16} className="text-[#F68D58]" /> {job.location}</div>
-                      <div className="flex items-center gap-2"><Clock size={16} className="text-[#F68D58]" /> 2j</div>
-                    </div>
-
-                    <div className="flex items-center justify-end pt-8 border-t border-gray-50">
-                      <button
-                        className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-[#173E7D] group-hover:bg-[#F68D58] group-hover:text-white transition-all duration-500 shadow-sm"
-                      >
-                        <ChevronRight size={28} className={language === 'ar' ? 'rotate-180' : ''} />
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
+              {displayFeaturedJobs.map((job) => (
+                <JobOfferCard
+                  key={job.id}
+                  job={job as any}
+                  language={language}
+                  onOpen={(j) => setSelectedJob(j as any)}
+                  onShare={(j) => shareJob(j as any)}
+                />
               ))}
           </div>
         </div>

@@ -2059,7 +2059,13 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl relative z-10 overflow-hidden border border-white/20"
+              /* A capped height with an inner scroller. The description is
+                 whatever the recruiter wrote, so this panel has no fixed size.
+                 Without a cap a long one grew past the viewport with nothing to
+                 scroll, and the Postuler button at the bottom could not be
+                 reached. dvh, so the collapsing URL bar on iOS does not hide it
+                 either. */
+              className="bg-white w-full max-w-2xl my-auto rounded-[2.5rem] sm:rounded-[4rem] shadow-2xl relative z-10 overflow-hidden border border-white/20 flex flex-col max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]"
             >
               <div className="bg-[#173E7D] p-12 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
@@ -2091,11 +2097,11 @@ export default function App() {
                 <p className="text-blue-200 text-xl font-light">{selectedJob.company} &bull; {selectedJob.location}</p>
               </div>
 
-              <form onSubmit={handleApply} className="p-6 sm:p-10 space-y-6">
+              <form onSubmit={handleApply} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5 sm:p-10 space-y-6">
                 {/* The offer itself, so the decision can be made here rather
                     than from the card's two-line excerpt. */}
                 {selectedJob.description && (
-                  <p className="text-gray-600 leading-relaxed whitespace-pre-line line-clamp-[12]">
+                  <p className="text-gray-600 leading-relaxed whitespace-pre-line break-words">
                     {selectedJob.description}
                   </p>
                 )}

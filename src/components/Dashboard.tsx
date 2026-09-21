@@ -8313,10 +8313,11 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
               {/* Header */}
-              <div className="bg-[#173E7D] p-6 sm:p-8 lg:p-10 text-white relative">
-                <button 
+              <div className="bg-[#173E7D] p-5 sm:p-8 lg:p-10 text-white relative overflow-hidden">
+                <button
                   onClick={() => setSelectedJob(null)}
-                  className="absolute top-8 right-8 text-white/60 hover:text-white transition-colors"
+                  aria-label={lt('Close', 'Fermer', 'إغلاق')}
+                  className="absolute top-5 right-5 sm:top-8 sm:right-8 z-10 text-white/60 hover:text-white transition-colors"
                 >
                   <X size={28} />
                 </button>
@@ -8324,14 +8325,17 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                   <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-[2rem] flex items-center justify-center border border-white/20 shadow-2xl shrink-0">
                     <Building2 size={48} className="w-8 h-8 sm:w-12 sm:h-12" />
                   </div>
-                  <div className="space-y-2 min-w-0">
-                    <h3 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black tracking-tight break-words">{selectedJob.title}</h3>
-                    <p className="text-blue-200 text-base sm:text-xl font-medium tracking-wide uppercase break-words">{selectedJob.company}</p>
+                  {/* pr-10 keeps a long title from running under the close
+                      button, which sits over this block. */}
+                  <div className="space-y-2 min-w-0 pr-10 sm:pr-12">
+                    <h3 className="text-xl sm:text-3xl lg:text-4xl font-display font-black tracking-tight break-words">{selectedJob.title}</h3>
+                    <p className="text-blue-200 text-sm sm:text-xl font-medium tracking-wide uppercase break-words">{selectedJob.company}</p>
                     <div className="flex flex-wrap gap-2 sm:gap-4 mt-4">
-                      <span className="px-4 py-1.5 bg-white/10 rounded-full text-xs font-bold border border-white/10 flex items-center gap-2">
-                        <MapPin size={14} /> {selectedJob.location}
+                      <span className="px-4 py-1.5 bg-white/10 rounded-full text-xs font-bold border border-white/10 flex items-center gap-2 max-w-full min-w-0">
+                        <MapPin size={14} className="shrink-0" />
+                        <span className="truncate">{selectedJob.location}</span>
                       </span>
-                      <span className="px-4 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold border border-emerald-500/20">
+                      <span className="px-4 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold border border-emerald-500/20 max-w-full break-words">
                         {selectedJob.type}
                       </span>
                     </div>
@@ -8340,49 +8344,71 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-12 space-y-12 no-scrollbar">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-                  <div className="md:col-span-2 space-y-12">
-                    <section className="space-y-6">
+              {/* overflow-x-hidden with the vertical scroll: a description is
+                  whatever the recruiter pasted, and one long word — a URL, an
+                  email, an unspaced line — used to widen the whole dialog and
+                  leave the reader dragging sideways through it. Nothing here
+                  is meant to scroll horizontally, so the axis is closed and
+                  the text is made to wrap instead. */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-8 lg:p-12 space-y-10 no-scrollbar">
+                {/* min-w-0 on both columns: a grid track sizes to its widest
+                    item by default, so without it the unbreakable word wins
+                    and stretches the row regardless of the wrapping below. */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+                  <div className="md:col-span-2 min-w-0 space-y-10">
+                    <section className="space-y-5">
                       <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <FileText size={16} className="text-[#F68D58]" /> Description du Poste
+                        <FileText size={16} className="text-[#F68D58] shrink-0" />
+                        {lt('Job description', 'Description du poste', 'وصف المنصب')}
                       </h4>
-                      <p className="text-gray-600 leading-relaxed text-base sm:text-lg font-medium">
+                      {/* whitespace-pre-line keeps the recruiter's own line
+                          breaks; break-words handles the word that has none. */}
+                      <p className="text-gray-600 leading-relaxed text-base sm:text-lg font-medium whitespace-pre-line break-words">
                         {selectedJob.description}
                       </p>
                     </section>
 
-                    <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <CheckCircle2 size={16} className="text-[#F68D58]" /> Missions & Responsabilités
-                      </h4>
-                      <ul className="space-y-4">
-                        {selectedJob.requirements.map((req, i) => (
-                          <li key={i} className="flex items-start gap-4 text-gray-600 font-medium">
-                            <div className="w-2 h-2 bg-[#F68D58] rounded-full mt-2 shrink-0" />
-                            {req}
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
+                    {selectedJob.requirements?.length > 0 && (
+                      <section className="space-y-5">
+                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3">
+                          <CheckCircle2 size={16} className="text-[#F68D58] shrink-0" />
+                          {lt('Responsibilities', 'Missions & responsabilités', 'المهام والمسؤوليات')}
+                        </h4>
+                        <ul className="space-y-4">
+                          {selectedJob.requirements.map((req, i) => (
+                            <li key={i} className="flex items-start gap-4 text-gray-600 font-medium">
+                              <div className="w-2 h-2 bg-[#F68D58] rounded-full mt-2 shrink-0" />
+                              <span className="min-w-0 break-words">{req}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
                   </div>
 
-                  <div className="space-y-12">
-                    <section className="space-y-6">
-                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">{lt("Benefits", "Avantages", "المزايا")}</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedJob.benefits.map((ben, i) => (
-                          <span key={i} className="px-4 py-2 bg-gray-50 text-[#173E7D] text-xs font-black rounded-xl border border-gray-100">
-                            {ben}
-                          </span>
-                        ))}
-                      </div>
-                    </section>
+                  <div className="min-w-0 space-y-8">
+                    {selectedJob.benefits?.length > 0 && (
+                      <section className="space-y-5">
+                        <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">{lt("Benefits", "Avantages", "المزايا")}</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedJob.benefits.map((ben, i) => (
+                            <span key={i} className="px-4 py-2 bg-gray-50 text-[#173E7D] text-xs font-black rounded-xl border border-gray-100 max-w-full break-words">
+                              {ben}
+                            </span>
+                          ))}
+                        </div>
+                      </section>
+                    )}
 
-                    <section className="p-8 bg-blue-50 rounded-[2.5rem] border border-blue-100 space-y-6">
+                    <section className="p-5 sm:p-8 bg-blue-50 rounded-[2.5rem] border border-blue-100 space-y-6">
                       <div className="space-y-1">
                         <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{lt("Published on", "Date de publication", "تاريخ النشر")}</p>
-                        <p className="text-sm font-bold text-[#173E7D]">Il y a 2 jours</p>
+                        {/* Was a fixed "Il y a 2 jours" on every offer. */}
+                        <p className="text-sm font-bold text-[#173E7D]">
+                          {selectedJob.publishedAt
+                            ? timeAgo(selectedJob.publishedAt)
+                            : lt('Not specified', 'Non précisée', 'غير محددة')}
+                        </p>
                       </div>
                     </section>
                   </div>

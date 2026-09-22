@@ -4316,7 +4316,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 >
                   <div className="flex-1 min-w-[220px]">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
-                      {lt('Your allowance', 'Vos annonces', 'حصتك')}
+                      {lt('Your offers', 'Vos offres', 'عروضك')}
                     </p>
                     <p className="font-black text-[#173E7D] mt-1">
                       {postingQuota.remaining === null

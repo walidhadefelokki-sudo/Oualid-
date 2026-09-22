@@ -184,6 +184,23 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return next(new AppError("Incorrect email or password", 401));
     }
 
+    /* Suspending or deleting an account did nothing before this: neither
+     * sign-in nor `protect` looked at status, so the admin controls that set
+     * it were decorative and a suspended user kept working normally.
+     *
+     * Checked after the password, so this cannot be used to enumerate which
+     * addresses are registered. PENDING is deliberately allowed — registration
+     * never moves an account off it, and most accounts on the platform sit
+     * there, so treating it as unusable would lock nearly everyone out. */
+    if (user.status === "SUSPENDED") {
+      return next(
+        new AppError("Ce compte est suspendu. Contactez le support.", 403)
+      );
+    }
+    if (user.status === "DELETED" || user.deletedAt) {
+      return next(new AppError("Ce compte n'existe plus.", 403));
+    }
+
     const token = signToken(user.id, user.role);
 
     const recruiterTier =

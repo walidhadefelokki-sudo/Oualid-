@@ -1069,6 +1069,14 @@ var login = async (req, res, next) => {
     if (!user || !await bcrypt.compare(password, user.password)) {
       return next(new AppError("Incorrect email or password", 401));
     }
+    if (user.status === "SUSPENDED") {
+      return next(
+        new AppError("Ce compte est suspendu. Contactez le support.", 403)
+      );
+    }
+    if (user.status === "DELETED" || user.deletedAt) {
+      return next(new AppError("Ce compte n'existe plus.", 403));
+    }
     const token = signToken(user.id, user.role);
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
     res.status(200).json({
@@ -4696,6 +4704,188 @@ var grantCompanyPostings = async (req, res, next) => {
   }
 };
 
+// server/controllers/adminManage.controller.ts
+init_prisma();
+var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
+  data: {
+    userId: req.user?.id,
+    action,
+    entity,
+    entityId,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"]
+  }
+}).catch((err) => console.error(`Audit log failed for ${action}:`, err));
+var ROLES = ["CANDIDATE", "RECRUITER", "ADMIN"];
+var STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"];
+var updateUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, email, role, status } = req.body;
+    const target = await prisma_default.user.findUnique({ where: { id } });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+    if (req.user?.id === id && (role !== void 0 || status !== void 0)) {
+      return next(
+        new AppError("Vous ne pouvez pas modifier votre propre r\xF4le ou statut.", 400)
+      );
+    }
+    if (role !== void 0 && !ROLES.includes(role)) {
+      return next(new AppError(`role must be one of: ${ROLES.join(", ")}`, 400));
+    }
+    if (status !== void 0 && !STATUSES.includes(status)) {
+      return next(new AppError(`status must be one of: ${STATUSES.join(", ")}`, 400));
+    }
+    if (role !== void 0 && target.role === "ADMIN" && role !== "ADMIN") {
+      const admins = await prisma_default.user.count({
+        where: { role: "ADMIN", status: { not: "DELETED" } }
+      });
+      if (admins <= 1) {
+        return next(new AppError("Impossible de r\xE9trograder le dernier administrateur.", 400));
+      }
+    }
+    const nextEmail = email?.trim().toLowerCase();
+    if (nextEmail && nextEmail !== target.email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+        return next(new AppError("Adresse email invalide.", 400));
+      }
+      const taken = await prisma_default.user.findUnique({ where: { email: nextEmail } });
+      if (taken) return next(new AppError("Cette adresse email est d\xE9j\xE0 utilis\xE9e.", 400));
+    }
+    const user = await prisma_default.user.update({
+      where: { id },
+      data: {
+        firstName: firstName?.trim() ?? void 0,
+        lastName: lastName?.trim() ?? void 0,
+        email: nextEmail ?? void 0,
+        role: role ?? void 0,
+        status: status ?? void 0,
+        // Reinstating has to clear the tombstone, or sign-in keeps refusing.
+        deletedAt: status && status !== "DELETED" ? null : void 0
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        firstName: true,
+        lastName: true,
+        createdAt: true
+      }
+    });
+    await audit(req, "UPDATE_USER", "User", id);
+    res.status(200).json({ status: "success", data: { user } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (req.user?.id === id) {
+      return next(new AppError("Vous ne pouvez pas supprimer votre propre compte.", 400));
+    }
+    const target = await prisma_default.user.findUnique({ where: { id } });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+    if (target.role === "ADMIN") {
+      const admins = await prisma_default.user.count({
+        where: { role: "ADMIN", status: { not: "DELETED" } }
+      });
+      if (admins <= 1) {
+        return next(new AppError("Impossible de supprimer le dernier administrateur.", 400));
+      }
+    }
+    const user = await prisma_default.user.update({
+      where: { id },
+      data: { status: "DELETED", deletedAt: /* @__PURE__ */ new Date() },
+      select: { id: true, email: true, status: true, deletedAt: true }
+    });
+    await audit(req, "DELETE_USER", "User", id);
+    res.status(200).json({ status: "success", data: { user } });
+  } catch (err) {
+    next(err);
+  }
+};
+var getAllJobsAdmin = async (req, res, next) => {
+  try {
+    const { status, q } = req.query;
+    const jobs = await prisma_default.job.findMany({
+      where: {
+        status: status ? status : void 0,
+        title: q ? { contains: q, mode: "insensitive" } : void 0
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+      select: {
+        id: true,
+        title: true,
+        location: true,
+        wilaya: true,
+        status: true,
+        featured: true,
+        publishedAt: true,
+        createdAt: true,
+        company: { select: { id: true, name: true } },
+        // Surfaced in the list so a delete is never a surprise.
+        _count: { select: { applications: true } }
+      }
+    });
+    res.status(200).json({ status: "success", results: jobs.length, data: { jobs } });
+  } catch (err) {
+    next(err);
+  }
+};
+var JOB_STATUSES = ["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"];
+var updateJobAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, featured } = req.body;
+    if (status !== void 0 && !JOB_STATUSES.includes(status)) {
+      return next(new AppError(`status must be one of: ${JOB_STATUSES.join(", ")}`, 400));
+    }
+    const job = await prisma_default.job.findUnique({ where: { id } });
+    if (!job) return next(new AppError("Offre introuvable.", 404));
+    const updated = await prisma_default.job.update({
+      where: { id },
+      data: {
+        status: status ?? void 0,
+        featured: typeof featured === "boolean" ? featured : void 0,
+        // Publishing for the first time needs a date, or the offer shows no
+        // age wherever it is listed.
+        publishedAt: status === "PUBLISHED" && !job.publishedAt ? /* @__PURE__ */ new Date() : void 0
+      },
+      select: { id: true, title: true, status: true, featured: true, publishedAt: true }
+    });
+    await audit(req, "UPDATE_JOB", "Job", id);
+    res.status(200).json({ status: "success", data: { job: updated } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteJobAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const force = req.query.force === "true";
+    const job = await prisma_default.job.findUnique({
+      where: { id },
+      select: { id: true, title: true, _count: { select: { applications: true } } }
+    });
+    if (!job) return next(new AppError("Offre introuvable.", 404));
+    const applications = job._count.applications;
+    if (applications > 0 && !force) {
+      return res.status(409).json({
+        status: "error",
+        message: `Cette offre a ${applications} candidature(s), qui seront supprim\xE9es avec elle. Archivez-la, ou confirmez la suppression.`,
+        data: { applications }
+      });
+    }
+    await prisma_default.job.delete({ where: { id } });
+    await audit(req, "DELETE_JOB", "Job", id);
+    res.status(200).json({ status: "success", data: { id, applications } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router6 = Router6();
 router6.use(protect);
@@ -4707,6 +4897,11 @@ router6.patch("/companies/:id/plan", updateCompanyPlan);
 router6.patch("/companies/:id/postings", grantCompanyPostings);
 router6.get("/users", getAllUsers);
 router6.patch("/users/:id/status", updateUserStatus);
+router6.patch("/users/:id", updateUser);
+router6.delete("/users/:id", deleteUser);
+router6.get("/jobs", getAllJobsAdmin);
+router6.patch("/jobs/:id", updateJobAdmin);
+router6.delete("/jobs/:id", deleteJobAdmin);
 router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router6.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router6;

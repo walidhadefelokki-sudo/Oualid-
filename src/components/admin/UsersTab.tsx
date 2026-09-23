@@ -25,6 +25,13 @@ const ROLE_LABEL: Record<AdminRole, string> = {
   ADMIN: "Admin",
 };
 
+/** "" = no filter, "yes" = has it, "no" = does not. */
+type CvFilter = "" | "yes" | "no";
+
+/** True when the row should be dropped for this filter. */
+const matches = (filter: Exclude<CvFilter, "">, has: boolean | undefined) =>
+  filter === "yes" ? !has : Boolean(has);
+
 const STATUS_STYLE: Record<AdminAccountStatus, string> = {
   PENDING: "bg-amber-50 text-amber-600 border-amber-200",
   ACTIVE: "bg-emerald-50 text-emerald-600 border-emerald-200",
@@ -38,6 +45,9 @@ const UsersTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"" | AdminRole>("");
+  /** "" = no filter, "yes"/"no" = has it / does not. */
+  const [uploadFilter, setUploadFilter] = useState<CvFilter>("");
+  const [builtFilter, setBuiltFilter] = useState<CvFilter>("");
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -75,11 +85,35 @@ const UsersTab: React.FC = () => {
     }
   };
 
+  /* Filtered here rather than on the server: both flags are already on every
+     row, and "built one" is decided in JS server-side anyway (JSON emptiness
+     is not something Prisma can filter on), so a round trip would buy nothing
+     and cost a wait. */
+  const cvFiltered = uploadFilter !== "" || builtFilter !== "";
+
   const visible = users.filter((u) => {
-    if (!search.trim()) return true;
-    const haystack = `${u.email} ${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
-    return haystack.includes(search.trim().toLowerCase());
+    if (search.trim()) {
+      const haystack = `${u.email} ${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
+      if (!haystack.includes(search.trim().toLowerCase())) return false;
+    }
+
+    // A CV filter is a question about candidates. Recruiters and admins have
+    // no CV to have, so they drop out rather than answering "non".
+    if (cvFiltered && u.role !== "CANDIDATE") return false;
+
+    if (uploadFilter && matches(uploadFilter, u.candidateProfile?.hasUploadedCv)) return false;
+    if (builtFilter && matches(builtFilter, u.candidateProfile?.hasBuiltCv)) return false;
+
+    return true;
   });
+
+  // Counts for the whole loaded set, so the filters say what they would find.
+  const candidates = users.filter((u) => u.role === "CANDIDATE");
+  const withUpload = candidates.filter((u) => u.candidateProfile?.hasUploadedCv).length;
+  const withBuilt = candidates.filter((u) => u.candidateProfile?.hasBuiltCv).length;
+  const withNeither = candidates.filter(
+    (u) => !u.candidateProfile?.hasUploadedCv && !u.candidateProfile?.hasBuiltCv
+  ).length;
 
   if (error) {
     return (
@@ -115,6 +149,28 @@ const UsersTab: React.FC = () => {
           ))}
         </select>
 
+        <select
+          value={uploadFilter}
+          onChange={(e) => setUploadFilter(e.target.value as CvFilter)}
+          className="border border-primary/20 rounded-lg px-3 py-2 text-sm"
+          aria-label="Filtrer par CV téléversé"
+        >
+          <option value="">CV téléversé : tous</option>
+          <option value="yes">A téléversé un CV</option>
+          <option value="no">N’a pas téléversé de CV</option>
+        </select>
+
+        <select
+          value={builtFilter}
+          onChange={(e) => setBuiltFilter(e.target.value as CvFilter)}
+          className="border border-primary/20 rounded-lg px-3 py-2 text-sm"
+          aria-label="Filtrer par CV Maker"
+        >
+          <option value="">CV Maker : tous</option>
+          <option value="yes">A créé un CV</option>
+          <option value="no">N’a pas créé de CV</option>
+        </select>
+
         <button
           onClick={load}
           disabled={loading}
@@ -124,6 +180,53 @@ const UsersTab: React.FC = () => {
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
+
+      {/* Counts for the whole loaded set, so the filters say what they would
+          find before anyone clicks one. Hidden while a role filter has already
+          narrowed the list, where these totals would not mean what they say. */}
+      {!loading && !roleFilter && candidates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-5 text-[11px] font-semibold">
+          <span className="text-primary/50">{candidates.length} candidat(s) —</span>
+          <button
+            onClick={() => {
+              setUploadFilter("yes");
+              setBuiltFilter("");
+            }}
+            className="px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 hover:border-emerald-400"
+          >
+            {withUpload} avec CV téléversé
+          </button>
+          <button
+            onClick={() => {
+              setBuiltFilter("yes");
+              setUploadFilter("");
+            }}
+            className="px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50 text-primary hover:border-primary/40"
+          >
+            {withBuilt} avec CV Maker
+          </button>
+          <button
+            onClick={() => {
+              setUploadFilter("no");
+              setBuiltFilter("no");
+            }}
+            className="px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-400"
+          >
+            {withNeither} sans aucun CV
+          </button>
+          {(uploadFilter || builtFilter) && (
+            <button
+              onClick={() => {
+                setUploadFilter("");
+                setBuiltFilter("");
+              }}
+              className="px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-gray-400"
+            >
+              Réinitialiser
+            </button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>

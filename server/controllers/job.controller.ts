@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
-import { sendJobMatchEmail, sendJobPublishedEmail } from "../utils/email";
+import { sendJobMatchEmail, sendJobPublishedEmail, deliverEmail } from "../utils/email";
 import { notifyJobMatch } from "../services/notification.service";
 import { consumePosting } from "../services/postingQuota.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
@@ -253,15 +253,19 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       throw createErr;
     }
 
-    // Confirm to the recruiter that the offer is live. Not awaited: the job
-    // is already published, and a mail failure must not fail the request.
-    sendJobPublishedEmail(user.email, {
-      companyName: membership.company.name,
-      jobTitle: job.title,
-      city: job.location,
-      publishedAt: job.publishedAt ?? undefined,
-    }).catch((error) =>
-      console.error("Job published email failed:", error)
+    /* Confirm to the recruiter that the offer is live.
+     *
+     * Awaited through deliverEmail rather than fired off: on Vercel the
+     * function is frozen once the response is written, so an unawaited send
+     * never completes. The wait is bounded and failures are swallowed, so a
+     * mail problem still cannot fail a publish that already happened. */
+    await deliverEmail("Job published", () =>
+      sendJobPublishedEmail(user.email, {
+        companyName: membership.company.name,
+        jobTitle: job.title,
+        city: job.location,
+        publishedAt: job.publishedAt ?? undefined,
+      })
     );
 
     // Background: Notify matching candidates

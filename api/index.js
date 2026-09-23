@@ -603,6 +603,21 @@ var sendCorporateEnquiryAck = async (enquiry) => {
     { from: FROM_INFO, text }
   );
 };
+var deliverEmail = async (label, send, timeoutMs = 8e3) => {
+  let timer;
+  try {
+    await Promise.race([
+      send(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } catch (err) {
+    console.error(`${label} email failed:`, err instanceof Error ? err.message : err);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
 
 // server/middleware/tier.middleware.ts
 init_prisma();
@@ -1050,9 +1065,7 @@ var register = async (req, res, next) => {
       await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
     }
     const greeting = user.role === "RECRUITER" ? companyName || "My Company" : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
-    sendWelcomeEmail(email, greeting, user.role).catch(
-      (err) => console.error("Welcome email failed:", err)
-    );
+    await deliverEmail("Welcome", () => sendWelcomeEmail(email, greeting, user.role));
     const token = signToken(user.id, user.role);
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
     res.status(201).json({
@@ -1945,13 +1958,14 @@ var createJob = async (req, res, next) => {
       await posting.refund();
       throw createErr;
     }
-    sendJobPublishedEmail(user.email, {
-      companyName: membership.company.name,
-      jobTitle: job.title,
-      city: job.location,
-      publishedAt: job.publishedAt ?? void 0
-    }).catch(
-      (error) => console.error("Job published email failed:", error)
+    await deliverEmail(
+      "Job published",
+      () => sendJobPublishedEmail(user.email, {
+        companyName: membership.company.name,
+        jobTitle: job.title,
+        city: job.location,
+        publishedAt: job.publishedAt ?? void 0
+      })
     );
     (async () => {
       try {
@@ -4070,14 +4084,15 @@ var applyToJob = async (req, res, next) => {
         jobTitle: job.title
       });
     }
-    sendApplicationSentEmail(user.email, {
-      firstName: user.firstName,
-      jobTitle: job.title,
-      company: job.company?.name ?? "l'entreprise",
-      city: job.location,
-      appliedAt: application.appliedAt
-    }).catch(
-      (error) => console.error("Application confirmation email failed:", error)
+    await deliverEmail(
+      "Application confirmation",
+      () => sendApplicationSentEmail(user.email, {
+        firstName: user.firstName,
+        jobTitle: job.title,
+        company: job.company?.name ?? "l'entreprise",
+        city: job.location,
+        appliedAt: application.appliedAt
+      })
     );
     res.status(201).json({
       status: "success",

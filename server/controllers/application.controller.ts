@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import aiAnalysisService from "../services/aiAnalysis.service";
-import { sendApplicationSentEmail } from "../utils/email";
+import { sendApplicationSentEmail, deliverEmail } from "../utils/email";
 import {
   notifyApplicationStatus,
   notifyNewApplication,
@@ -84,17 +84,21 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
       });
     }
 
-    // Confirm to the candidate that their application went through.
-    // Not awaited: the application is already saved, and a mail failure must
-    // not turn a successful application into an error the candidate retries.
-    sendApplicationSentEmail(user.email, {
-      firstName: user.firstName,
-      jobTitle: job.title,
-      company: job.company?.name ?? "l'entreprise",
-      city: job.location,
-      appliedAt: application.appliedAt,
-    }).catch((error) =>
-      console.error("Application confirmation email failed:", error)
+    /* Confirm to the candidate that their application went through.
+     *
+     * Awaited through deliverEmail rather than fired off: on Vercel the
+     * function is frozen once the response is written, so an unawaited send
+     * never completes. The wait is bounded and failures are swallowed, so a
+     * mail problem still cannot turn a saved application into an error the
+     * candidate would retry. */
+    await deliverEmail("Application confirmation", () =>
+      sendApplicationSentEmail(user.email, {
+        firstName: user.firstName,
+        jobTitle: job.title,
+        company: job.company?.name ?? "l'entreprise",
+        city: job.location,
+        appliedAt: application.appliedAt,
+      })
     );
 
     res.status(201).json({

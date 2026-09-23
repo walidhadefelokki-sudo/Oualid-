@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
-import { sendWelcomeEmail } from "../utils/email";
+import { sendWelcomeEmail, deliverEmail } from "../utils/email";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import crypto from "crypto";
@@ -122,11 +122,18 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         ? companyName || "My Company"
         : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
 
-    // Deliberately not awaited: a slow or failing mail server must not hold up
-    // or fail account creation, which has already been committed.
-    sendWelcomeEmail(email, greeting, user.role).catch((err) =>
-      console.error("Welcome email failed:", err)
-    );
+    /* Awaited, with a ceiling.
+     *
+     * This used to be fired off unawaited so a slow mail server could not hold
+     * up account creation. Sound reasoning on a long-lived server, wrong on
+     * Vercel: the function is frozen as soon as the response is written, and a
+     * promise still in flight simply never finishes. That is why registration
+     * confirmations stopped arriving while the awaited contact and support
+     * mail kept working.
+     *
+     * deliverEmail bounds the wait and swallows failures, so a mail problem
+     * still cannot fail a signup that is already committed. */
+    await deliverEmail("Welcome", () => sendWelcomeEmail(email, greeting, user.role));
 
     const token = signToken(user.id, user.role);
 

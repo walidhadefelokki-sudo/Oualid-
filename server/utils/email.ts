@@ -783,3 +783,42 @@ export const sendCorporateEnquiryAck = async (enquiry: CorporateEnquiry) => {
     { from: FROM_INFO, text }
   );
 };
+
+/**
+ * Waits for a send, but not forever.
+ *
+ * These messages used to be fired off without being awaited, so account
+ * creation would not wait on a slow mail server. That reasoning holds on a
+ * long-lived server and fails on Vercel: the function is frozen once the
+ * response is written, and a promise still in flight is simply never finished.
+ * The awaited sends here — contact, support — arrived; the un-awaited ones did
+ * not, which is why registration confirmations stopped.
+ *
+ * So the send is awaited, with a ceiling. A mail server that hangs delays the
+ * response by at most `timeoutMs` instead of holding it open, and a failure is
+ * logged rather than thrown: the account is already committed, and refusing to
+ * return it because an email did not go out would be worse than the missing
+ * email.
+ */
+export const deliverEmail = async (
+  label: string,
+  send: () => Promise<unknown>,
+  timeoutMs = 8000
+): Promise<void> => {
+  let timer: NodeJS.Timeout | undefined;
+
+  try {
+    await Promise.race([
+      send(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    console.error(`${label} email failed:`, err instanceof Error ? err.message : err);
+  } finally {
+    // Without this the pending timer keeps the function alive to its own
+    // deadline even when the send finished immediately.
+    if (timer) clearTimeout(timer);
+  }
+};

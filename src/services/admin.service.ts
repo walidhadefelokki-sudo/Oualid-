@@ -12,6 +12,16 @@ export interface AdminUser {
   lastName?: string | null;
   createdAt: string;
   recruiterProfile?: { id: string; verified: boolean } | null;
+  /**
+   * Candidates only. The server reduces the CV document to a flag rather than
+   * sending it — "built one" means the CV has content, not merely that the
+   * builder was opened once.
+   */
+  candidateProfile?: {
+    id: string;
+    hasUploadedCv: boolean;
+    hasBuiltCv: boolean;
+  } | null;
 }
 
 /** Only what an administrator may change. */

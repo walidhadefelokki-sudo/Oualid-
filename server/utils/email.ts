@@ -208,6 +208,23 @@ const button = (href: string, label: string) => `
   </tr>
 </table>`;
 
+/**
+ * A second call to action, when a message has two.
+ *
+ * Outlined rather than solid so the two do not compete: the first button is
+ * the thing we want done, this is the alternative for someone it does not fit.
+ * Table-based and inline-styled like the rest, because Outlook ignores most of
+ * anything else.
+ */
+const secondaryButton = (href: string, label: string) => `
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;">
+  <tr>
+    <td style="border:1.5px solid ${BRAND.navy};border-radius:8px;">
+      <a href="${href}" style="display:inline-block;padding:12px 26px;color:${BRAND.navy};font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.3px;">${label}</a>
+    </td>
+  </tr>
+</table>`;
+
 
 /**
  * Escapes text before it goes into an email body.
@@ -363,9 +380,15 @@ export const sendCandidateWelcomeEmail = async (email: string, firstName?: strin
       ['&#9889;', 'Postulez simplement et rapidement'],
     ])}
 
-    ${paragraph(`Votre prochaine opportunit&eacute; peut commencer ici.`)}
+    ${paragraph(
+      `Une premi&egrave;re &eacute;tape&nbsp;: compl&eacute;tez votre profil et ajoutez votre CV. Les recruteurs ne voient que les candidats qui en ont un.`
+    )}
 
-    ${button(APP_URL, 'Explorer les offres')}
+    ${button(`${APP_URL}/dashboard?tab=profile`, 'Compl&eacute;tez votre profil et t&eacute;l&eacute;versez votre CV')}
+
+    ${paragraph(`Vous n'avez pas encore de CV&nbsp;? Cr&eacute;ez-en un gratuitement en quelques minutes.`)}
+
+    ${secondaryButton(`${APP_URL}/dashboard?tab=cv-maker`, 'Cr&eacute;er mon CV avec CV Maker')}
 
     ${paragraph(`&Agrave; bient&ocirc;t sur Dar L'Emploi,`)}`;
 
@@ -380,8 +403,11 @@ export const sendCandidateWelcomeEmail = async (email: string, firstName?: strin
     '- Trouvez celles qui correspondent à votre profil',
     '- Postulez simplement et rapidement',
     '',
-    'Votre prochaine opportunité peut commencer ici.',
-    APP_URL,
+    'Une première étape : complétez votre profil et ajoutez votre CV. Les recruteurs ne voient que les candidats qui en ont un.',
+    `${APP_URL}/dashboard?tab=profile`,
+    '',
+    "Vous n'avez pas encore de CV ? Créez-en un gratuitement en quelques minutes :",
+    `${APP_URL}/dashboard?tab=cv-maker`,
     '',
     "À bientôt sur Dar L'Emploi,",
   ].join('\n');
@@ -413,7 +439,10 @@ export const sendRecruiterWelcomeEmail = async (email: string, companyName?: str
 
     ${paragraph(`Votre prochain collaborateur est peut-&ecirc;tre d&eacute;j&agrave; sur Dar L'Emploi.`)}
 
-    ${button(APP_URL, 'Publier une offre')}
+    ${button(
+      `${APP_URL}/dashboard?tab=post-job`,
+      'Publier votre premi&egrave;re offre gratuitement'
+    )}
 
     ${paragraph(`Merci de votre confiance.`)}`;
 
@@ -429,7 +458,9 @@ export const sendRecruiterWelcomeEmail = async (email: string, companyName?: str
     '- Gérez vos recrutements simplement depuis votre espace entreprise',
     '',
     "Votre prochain collaborateur est peut-être déjà sur Dar L'Emploi.",
-    APP_URL,
+    '',
+    'Publier votre première offre gratuitement :',
+    `${APP_URL}/dashboard?tab=post-job`,
     '',
     'Merci de votre confiance.',
   ].join('\n');

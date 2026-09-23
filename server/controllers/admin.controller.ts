@@ -148,11 +148,44 @@ export const getAllUsers = async (req: Request, res: Response, next: NextFunctio
         lastName: true,
         createdAt: true,
         recruiterProfile: { select: { id: true, verified: true } },
+        candidateProfile: {
+          select: {
+            id: true,
+            // Only whether there is one — see the mapping below.
+            resumeId: true,
+            cvBuilderData: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    res.status(200).json({ status: "success", results: users.length, data: { users } });
+    /* cvBuilderData is the whole CV document, and it is not the admin list's
+     * business to ship it. It is reduced to a flag here, and "built one" means
+     * the CV actually has something in it — opening the builder and saving
+     * nothing leaves an empty object behind, which should not read as a CV. */
+    const shaped = users.map(({ candidateProfile, ...user }) => {
+      const data = candidateProfile?.cvBuilderData as Record<string, unknown> | null | undefined;
+      const builderFilled =
+        !!data &&
+        typeof data === "object" &&
+        Object.values(data).some((v) =>
+          Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""
+        );
+
+      return {
+        ...user,
+        candidateProfile: candidateProfile
+          ? {
+              id: candidateProfile.id,
+              hasUploadedCv: Boolean(candidateProfile.resumeId),
+              hasBuiltCv: builderFilled,
+            }
+          : null,
+      };
+    });
+
+    res.status(200).json({ status: "success", results: shaped.length, data: { users: shaped } });
   } catch (err) {
     next(err);
   }

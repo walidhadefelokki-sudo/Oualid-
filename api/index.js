@@ -234,6 +234,14 @@ var button = (href, label) => `
     </td>
   </tr>
 </table>`;
+var secondaryButton = (href, label) => `
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;">
+  <tr>
+    <td style="border:1.5px solid ${BRAND.navy};border-radius:8px;">
+      <a href="${href}" style="display:inline-block;padding:12px 26px;color:${BRAND.navy};font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.3px;">${label}</a>
+    </td>
+  </tr>
+</table>`;
 var escapeForEmail = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html, options = {}) => {
@@ -313,9 +321,15 @@ var sendCandidateWelcomeEmail = async (email, firstName) => {
     ["&#9889;", "Postulez simplement et rapidement"]
   ])}
 
-    ${paragraph(`Votre prochaine opportunit&eacute; peut commencer ici.`)}
+    ${paragraph(
+    `Une premi&egrave;re &eacute;tape&nbsp;: compl&eacute;tez votre profil et ajoutez votre CV. Les recruteurs ne voient que les candidats qui en ont un.`
+  )}
 
-    ${button(APP_URL, "Explorer les offres")}
+    ${button(`${APP_URL}/dashboard?tab=profile`, "Compl&eacute;tez votre profil et t&eacute;l&eacute;versez votre CV")}
+
+    ${paragraph(`Vous n'avez pas encore de CV&nbsp;? Cr&eacute;ez-en un gratuitement en quelques minutes.`)}
+
+    ${secondaryButton(`${APP_URL}/dashboard?tab=cv-maker`, "Cr&eacute;er mon CV avec CV Maker")}
 
     ${paragraph(`&Agrave; bient&ocirc;t sur Dar L'Emploi,`)}`;
   const text = [
@@ -329,8 +343,11 @@ var sendCandidateWelcomeEmail = async (email, firstName) => {
     "- Trouvez celles qui correspondent \xE0 votre profil",
     "- Postulez simplement et rapidement",
     "",
-    "Votre prochaine opportunit\xE9 peut commencer ici.",
-    APP_URL,
+    "Une premi\xE8re \xE9tape : compl\xE9tez votre profil et ajoutez votre CV. Les recruteurs ne voient que les candidats qui en ont un.",
+    `${APP_URL}/dashboard?tab=profile`,
+    "",
+    "Vous n'avez pas encore de CV ? Cr\xE9ez-en un gratuitement en quelques minutes :",
+    `${APP_URL}/dashboard?tab=cv-maker`,
     "",
     "\xC0 bient\xF4t sur Dar L'Emploi,"
   ].join("\n");
@@ -358,7 +375,10 @@ var sendRecruiterWelcomeEmail = async (email, companyName) => {
 
     ${paragraph(`Votre prochain collaborateur est peut-&ecirc;tre d&eacute;j&agrave; sur Dar L'Emploi.`)}
 
-    ${button(APP_URL, "Publier une offre")}
+    ${button(
+    `${APP_URL}/dashboard?tab=post-job`,
+    "Publier votre premi&egrave;re offre gratuitement"
+  )}
 
     ${paragraph(`Merci de votre confiance.`)}`;
   const text = [
@@ -373,7 +393,9 @@ var sendRecruiterWelcomeEmail = async (email, companyName) => {
     "- G\xE9rez vos recrutements simplement depuis votre espace entreprise",
     "",
     "Votre prochain collaborateur est peut-\xEAtre d\xE9j\xE0 sur Dar L'Emploi.",
-    APP_URL,
+    "",
+    "Publier votre premi\xE8re offre gratuitement :",
+    `${APP_URL}/dashboard?tab=post-job`,
     "",
     "Merci de votre confiance."
   ].join("\n");
@@ -4543,11 +4565,33 @@ var getAllUsers = async (req, res, next) => {
         firstName: true,
         lastName: true,
         createdAt: true,
-        recruiterProfile: { select: { id: true, verified: true } }
+        recruiterProfile: { select: { id: true, verified: true } },
+        candidateProfile: {
+          select: {
+            id: true,
+            // Only whether there is one — see the mapping below.
+            resumeId: true,
+            cvBuilderData: true
+          }
+        }
       },
       orderBy: { createdAt: "desc" }
     });
-    res.status(200).json({ status: "success", results: users.length, data: { users } });
+    const shaped = users.map(({ candidateProfile, ...user }) => {
+      const data = candidateProfile?.cvBuilderData;
+      const builderFilled = !!data && typeof data === "object" && Object.values(data).some(
+        (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+      );
+      return {
+        ...user,
+        candidateProfile: candidateProfile ? {
+          id: candidateProfile.id,
+          hasUploadedCv: Boolean(candidateProfile.resumeId),
+          hasBuiltCv: builderFilled
+        } : null
+      };
+    });
+    res.status(200).json({ status: "success", results: shaped.length, data: { users: shaped } });
   } catch (err) {
     next(err);
   }

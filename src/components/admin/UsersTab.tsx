@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { FileCheck2, FileText, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
 import adminService, {
   AdminAccountStatus,
   AdminRole,
@@ -131,13 +131,14 @@ const UsersTab: React.FC = () => {
         <div className="bg-white rounded-xl p-8 text-center text-primary/50">Aucun compte.</div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-primary/5 text-left text-primary/60 uppercase text-xs">
               <tr>
                 <th className="px-4 py-3">Nom</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Rôle</th>
                 <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">CV</th>
                 <th className="px-4 py-3">Inscrit le</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -161,6 +162,9 @@ const UsersTab: React.FC = () => {
                       >
                         {u.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <CvState user={u} />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {new Date(u.createdAt).toLocaleDateString("fr-FR")}
@@ -201,6 +205,53 @@ const UsersTab: React.FC = () => {
             setEditing(null);
           }}
         />
+      )}
+    </div>
+  );
+};
+
+/**
+ * Whether a candidate has a CV, and which kind.
+ *
+ * The two are independent: a candidate can upload a PDF, build one in the CV
+ * maker, do both, or neither. Recruiters only see a CV when one of the two
+ * exists, so "aucun" is the number worth chasing.
+ *
+ * Nothing is shown for recruiters and admins — they have no CV to have.
+ */
+const CvState: React.FC<{ user: AdminUser }> = ({ user }) => {
+  if (user.role !== "CANDIDATE") {
+    return <Minus size={14} className="text-primary/20" />;
+  }
+
+  const uploaded = user.candidateProfile?.hasUploadedCv ?? false;
+  const built = user.candidateProfile?.hasBuiltCv ?? false;
+
+  if (!uploaded && !built) {
+    return (
+      <span className="px-2.5 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-400 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+        Aucun CV
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {uploaded && (
+        <span
+          title="A téléversé un CV"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest whitespace-nowrap"
+        >
+          <FileCheck2 size={12} /> Téléversé
+        </span>
+      )}
+      {built && (
+        <span
+          title="A créé un CV avec le CV Maker"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50 text-primary text-[10px] font-black uppercase tracking-widest whitespace-nowrap"
+        >
+          <FileText size={12} /> CV Maker
+        </span>
       )}
     </div>
   );

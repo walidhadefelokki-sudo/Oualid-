@@ -882,7 +882,43 @@ export default function Dashboard({
     }
   };
 
-  const [activeTab, setActiveTab] = useState(user?.role === 'employer' ? 'employer-dashboard' : 'jobs');
+  /**
+   * Opens the tab named in ?tab=, so a link can point at one.
+   *
+   * The welcome emails send people to a specific thing — complete your
+   * profile, build a CV, publish your first offer — and without this every one
+   * of those buttons landed on the default page and left the reader to find it.
+   *
+   * Only these names are honoured, and only for the role that has them: the
+   * value comes off a URL, and setting activeTab to anything unrecognised
+   * renders a blank panel.
+   */
+  const tabFromUrl = (() => {
+    if (typeof window === 'undefined') return null;
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (!wanted) return null;
+
+    const allowed =
+      user?.role === 'employer'
+        ? ['employer-dashboard', 'post-job', 'manage-jobs', 'candidates', 'subscription', 'profile']
+        : ['jobs', 'applications', 'saved', 'cv-maker', 'profile', 'notifications'];
+
+    return allowed.includes(wanted) ? wanted : null;
+  })();
+
+  const [activeTab, setActiveTab] = useState(
+    tabFromUrl ?? (user?.role === 'employer' ? 'employer-dashboard' : 'jobs')
+  );
+
+  // Drop ?tab= once it has been acted on, so a refresh does not spring back to
+  // it after the reader has navigated somewhere else.
+  useEffect(() => {
+    if (!tabFromUrl) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tab');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Lightweight in-app toast, used instead of window.alert() for outcomes the
   // user should see without a blocking popup (e.g. publishing a job offer).

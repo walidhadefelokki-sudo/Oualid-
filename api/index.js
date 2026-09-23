@@ -245,21 +245,38 @@ var secondaryButton = (href, label) => `
 var escapeForEmail = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 var paragraph = (text) => `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.65;">${text}</p>`;
 var sendEmail = async (to, subject, html, options = {}) => {
-  const from = `"${FROM_NAME}" <${options.from ?? FROM_ADDRESS}>`;
+  const requested = options.from ?? FROM_ADDRESS;
+  const from = `"${FROM_NAME}" <${requested}>`;
   if (smtpHost) {
+    const attempt = async (sender) => transporter.sendMail({
+      from: sender,
+      to,
+      subject,
+      html,
+      ...options.text ? { text: options.text } : {},
+      ...options.replyTo ? { replyTo: options.replyTo } : {}
+    });
     try {
-      const info = await transporter.sendMail({
-        from,
-        to,
-        subject,
-        html,
-        ...options.text ? { text: options.text } : {},
-        ...options.replyTo ? { replyTo: options.replyTo } : {}
-      });
+      const info = await attempt(from);
       console.log(`Mail to ${to} sent via ${smtpHost}: ${info.messageId}`);
       return true;
     } catch (error) {
-      console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      const detail = error instanceof Error ? error.message : String(error);
+      const senderRejected = /Verification failed for|No Such User Here|Sender address rejected|\b550\b/i.test(detail);
+      if (senderRejected && requested !== FROM_ADDRESS && FROM_ADDRESS) {
+        console.warn(
+          `Sender ${requested} was rejected by ${smtpHost} \u2014 it is not a mailbox on this domain. Retrying as ${FROM_ADDRESS}. Fix EMAIL_FROM_REGISTER / EMAIL_FROM_INFO.`
+        );
+        try {
+          const info = await attempt(`"${FROM_NAME}" <${FROM_ADDRESS}>`);
+          console.log(`Mail to ${to} sent via ${smtpHost} as ${FROM_ADDRESS}: ${info.messageId}`);
+          return true;
+        } catch (retryError) {
+          console.error(`Retry as ${FROM_ADDRESS} also failed:`, retryError);
+        }
+      } else {
+        console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      }
       if (!resend) return false;
       console.warn("Falling back to Resend.");
     }

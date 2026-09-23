@@ -277,25 +277,58 @@ export const sendEmail = async (
   html: string,
   options: SendEmailOptions = {}
 ): Promise<boolean> => {
-  const from = `"${FROM_NAME}" <${options.from ?? FROM_ADDRESS}>`;
+  const requested = options.from ?? FROM_ADDRESS;
+  const from = `"${FROM_NAME}" <${requested}>`;
 
   // --- 1. The domain's own mail server -------------------------------------
   if (smtpHost) {
-    try {
-      const info = await transporter.sendMail({
-        from,
+    /* The server verifies the sender against real mailboxes and answers
+     * "550 Verification failed" for one that does not exist, refusing the
+     * whole message. Only some mail overrides the sender — the welcome emails
+     * use EMAIL_FROM_REGISTER — so a wrong value there breaks exactly those
+     * and leaves everything sent from EMAIL_FROM working, which reads as
+     * "registration email is broken" rather than "a sender address is wrong".
+     *
+     * Rather than fail, fall back to the address we authenticate as, which is
+     * a mailbox by definition. The warning names the offender, so the config
+     * still gets fixed instead of quietly limping. */
+    const attempt = async (sender: string) =>
+      transporter.sendMail({
+        from: sender,
         to,
         subject,
         html,
         ...(options.text ? { text: options.text } : {}),
         ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       });
+
+    try {
+      const info = await attempt(from);
       console.log(`Mail to ${to} sent via ${smtpHost}: ${info.messageId}`);
       return true;
     } catch (error) {
-      // Loud, then fall through. Mail silently never arriving is how the
-      // broken configuration went unnoticed for weeks.
-      console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      const detail = error instanceof Error ? error.message : String(error);
+      const senderRejected =
+        /Verification failed for|No Such User Here|Sender address rejected|\b550\b/i.test(detail);
+
+      if (senderRejected && requested !== FROM_ADDRESS && FROM_ADDRESS) {
+        console.warn(
+          `Sender ${requested} was rejected by ${smtpHost} — it is not a mailbox on this domain. ` +
+            `Retrying as ${FROM_ADDRESS}. Fix EMAIL_FROM_REGISTER / EMAIL_FROM_INFO.`
+        );
+        try {
+          const info = await attempt(`"${FROM_NAME}" <${FROM_ADDRESS}>`);
+          console.log(`Mail to ${to} sent via ${smtpHost} as ${FROM_ADDRESS}: ${info.messageId}`);
+          return true;
+        } catch (retryError) {
+          console.error(`Retry as ${FROM_ADDRESS} also failed:`, retryError);
+        }
+      } else {
+        // Loud, then fall through. Mail silently never arriving is how the
+        // broken configuration went unnoticed for weeks.
+        console.error(`SMTP send to ${to} failed via ${smtpHost}:`, error);
+      }
+
       if (!resend) return false;
       console.warn('Falling back to Resend.');
     }

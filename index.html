@@ -4,9 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="src/assets/favicon.ico" />
-    <link rel="apple-touch-icon" href="src/assets/favicon.ico" />
+    <!--
+      Favicons. Two different files on purpose.
+
+      favicon.ico has a transparent background, which is what a browser tab
+      wants: it sits on whatever colour the tab happens to be. The white disc
+      behind the logo in a Google result is Google's own chip showing through
+      that transparency, not part of the mark.
+
+      apple-touch-icon points at the version with the navy ground baked in.
+      Google lists apple-touch-icon among the icons it will use, and it is the
+      only one of the two it reads that a browser tab does not — so the search
+      result can carry the full logo while the tab keeps the transparent one.
+      It is also what iOS uses for a home-screen shortcut, where transparency
+      is composited against black and looks worse than the navy.
+    -->
+    <link rel="icon" type="image/x-icon" sizes="any" href="src/assets/favicon.ico" />
+    <link rel="apple-touch-icon" href="src/assets/favicon.jpg" />
 
     <!-- Optimisation SEO -->
     <title>

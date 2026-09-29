@@ -146,6 +146,31 @@ export const adminService = {
     return data.data.user;
   },
 
+  /** Everything held on one account, assembled server-side. */
+  getUserDetail: async (id: string): Promise<AdminUserDetail> => {
+    const { data } = await api.get(`/admin/users/${id}`);
+    return data.data.user;
+  },
+
+  getSchedules: async (params?: { from?: string; to?: string }): Promise<ScheduleEvent[]> => {
+    const { data } = await api.get("/admin/schedules", { params });
+    return data.data.events;
+  },
+
+  createSchedule: async (input: ScheduleInput): Promise<ScheduleEvent> => {
+    const { data } = await api.post("/admin/schedules", input);
+    return data.data.event;
+  },
+
+  updateSchedule: async (id: string, input: Partial<ScheduleInput>): Promise<ScheduleEvent> => {
+    const { data } = await api.patch(`/admin/schedules/${id}`, input);
+    return data.data.event;
+  },
+
+  deleteSchedule: async (id: string) => {
+    await api.delete(`/admin/schedules/${id}`);
+  },
+
   getJobs: async (params?: { status?: string; q?: string }): Promise<AdminJob[]> => {
     const { data } = await api.get("/admin/jobs", { params });
     return data.data.jobs;
@@ -186,3 +211,106 @@ export const adminService = {
 };
 
 export default adminService;
+
+/* ============================================================ schedules === */
+
+export type ScheduleType = "MEETING" | "INTERVIEW" | "CALL" | "DEMO" | "DEADLINE" | "OTHER";
+export type ScheduleStatus = "PLANNED" | "CONFIRMED" | "DONE" | "CANCELLED";
+
+export interface SchedulePerson {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  role?: string;
+}
+
+/** Either a platform account, or a name and address typed in. */
+export interface ScheduleGuest {
+  id?: string;
+  userId?: string | null;
+  name?: string | null;
+  email?: string | null;
+  user?: SchedulePerson | null;
+}
+
+export interface ScheduleEvent {
+  id: string;
+  title: string;
+  type: ScheduleType;
+  startsAt: string;
+  endsAt: string;
+  allDay: boolean;
+  location?: string | null;
+  notes?: string | null;
+  status: ScheduleStatus;
+  createdAt: string;
+  host?: SchedulePerson | null;
+  guests: ScheduleGuest[];
+}
+
+export interface ScheduleInput {
+  title: string;
+  type?: ScheduleType;
+  status?: ScheduleStatus;
+  startsAt: string;
+  endsAt: string;
+  allDay?: boolean;
+  location?: string | null;
+  notes?: string | null;
+  hostId?: string | null;
+  guests?: Array<{ userId?: string | null; name?: string | null; email?: string | null }>;
+}
+
+/* ========================================================= user detail === */
+
+export interface AdminUserDetail extends AdminUser {
+  phone?: string | null;
+  updatedAt: string;
+  deletedAt?: string | null;
+  avatar?: { url: string } | null;
+  candidateProfile?:
+    | (AdminUser["candidateProfile"] & {
+        headline?: string | null;
+        bio?: string | null;
+        city?: string | null;
+        wilaya?: string | null;
+        skills: string[];
+        yearsExperience?: number | null;
+        currentJobTitle?: string | null;
+        desiredSalary?: number | null;
+        availableImmediately: boolean;
+        linkedinUrl?: string | null;
+        githubUrl?: string | null;
+        portfolioUrl?: string | null;
+        resume?: { id: string; url: string; fileName?: string | null; createdAt: string } | null;
+        _count: { applications: number };
+      })
+    | null;
+  recruiterProfile?:
+    | (AdminUser["recruiterProfile"] & {
+        companies: Array<{
+          role: string;
+          company: {
+            id: string;
+            name: string;
+            plan: string;
+            postingCredits: number;
+            verified: boolean;
+            _count: { jobs: number };
+          };
+        }>;
+      })
+    | null;
+  orders: Array<{
+    id: string;
+    packId: string;
+    jobs: number;
+    amount: number;
+    currency: string;
+    status: string;
+    invoiceNumber?: string | null;
+    paidAt?: string | null;
+    createdAt: string;
+  }>;
+}

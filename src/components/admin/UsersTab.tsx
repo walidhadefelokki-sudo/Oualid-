@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { FileCheck2, FileText, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Eye, FileCheck2, FileText, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
+import UserDetailModal from "./UserDetailModal";
 import adminService, {
   AdminAccountStatus,
   AdminRole,
@@ -49,6 +50,7 @@ const UsersTab: React.FC = () => {
   const [uploadFilter, setUploadFilter] = useState<CvFilter>("");
   const [builtFilter, setBuiltFilter] = useState<CvFilter>("");
   const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = () => {
@@ -275,6 +277,13 @@ const UsersTab: React.FC = () => {
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button
+                          onClick={() => setViewingId(u.id)}
+                          className="p-2 rounded-lg border border-primary/20 text-primary/70 hover:text-primary"
+                          aria-label="Voir les données"
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
                           onClick={() => setEditing(u)}
                           className="p-2 rounded-lg border border-primary/20 text-primary/70 hover:text-primary"
                           aria-label="Modifier"
@@ -297,6 +306,10 @@ const UsersTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+      )}
+
+      {viewingId && (
+        <UserDetailModal userId={viewingId} onClose={() => setViewingId(null)} />
       )}
 
       {editing && (

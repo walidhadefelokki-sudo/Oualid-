@@ -4961,6 +4961,264 @@ var deleteJobAdmin = async (req, res, next) => {
     next(err);
   }
 };
+var getUserDetail = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma_default.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+        avatar: { select: { url: true } },
+        candidateProfile: {
+          select: {
+            id: true,
+            headline: true,
+            bio: true,
+            city: true,
+            wilaya: true,
+            skills: true,
+            yearsExperience: true,
+            currentJobTitle: true,
+            desiredSalary: true,
+            availableImmediately: true,
+            linkedinUrl: true,
+            githubUrl: true,
+            portfolioUrl: true,
+            resume: { select: { id: true, url: true, fileName: true, createdAt: true } },
+            cvBuilderData: true,
+            _count: { select: { applications: true } }
+          }
+        },
+        recruiterProfile: {
+          select: {
+            id: true,
+            verified: true,
+            companies: {
+              select: {
+                role: true,
+                company: {
+                  select: {
+                    id: true,
+                    name: true,
+                    plan: true,
+                    postingCredits: true,
+                    verified: true,
+                    _count: { select: { jobs: true } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        _count: { select: { notifications: true } }
+      }
+    });
+    if (!user) return next(new AppError("Compte introuvable.", 404));
+    const { candidateProfile, ...rest } = user;
+    const data = candidateProfile?.cvBuilderData;
+    const hasBuiltCv = !!data && typeof data === "object" && Object.values(data).some(
+      (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+    );
+    const orders = await prisma_default.packOrder.findMany({
+      where: { buyerId: id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        packId: true,
+        jobs: true,
+        amount: true,
+        currency: true,
+        status: true,
+        invoiceNumber: true,
+        paidAt: true,
+        createdAt: true
+      }
+    });
+    res.status(200).json({
+      status: "success",
+      data: {
+        user: {
+          ...rest,
+          candidateProfile: candidateProfile ? {
+            ...candidateProfile,
+            cvBuilderData: void 0,
+            hasUploadedCv: Boolean(candidateProfile.resume),
+            hasBuiltCv
+          } : null,
+          orders
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/controllers/schedule.controller.ts
+init_prisma();
+var TYPES = ["MEETING", "INTERVIEW", "CALL", "DEMO", "DEADLINE", "OTHER"];
+var STATUSES2 = ["PLANNED", "CONFIRMED", "DONE", "CANCELLED"];
+var guestSelect = {
+  id: true,
+  name: true,
+  email: true,
+  user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } }
+};
+var eventSelect = {
+  id: true,
+  title: true,
+  type: true,
+  startsAt: true,
+  endsAt: true,
+  allDay: true,
+  location: true,
+  notes: true,
+  status: true,
+  createdAt: true,
+  host: { select: { id: true, email: true, firstName: true, lastName: true, role: true } },
+  guests: { select: guestSelect }
+};
+var toGuestRows = (guests) => {
+  if (!Array.isArray(guests)) return [];
+  return guests.map((g) => ({
+    userId: g.userId?.trim() || null,
+    name: g.name?.trim() || null,
+    email: g.email?.trim().toLowerCase() || null
+  })).filter((g) => g.userId || g.name || g.email).slice(0, 50);
+};
+var readBody = (body) => {
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const type = body.type;
+  const status = body.status;
+  if (type !== void 0 && !TYPES.includes(type)) {
+    throw new AppError(`type must be one of: ${TYPES.join(", ")}`, 400);
+  }
+  if (status !== void 0 && !STATUSES2.includes(status)) {
+    throw new AppError(`status must be one of: ${STATUSES2.join(", ")}`, 400);
+  }
+  const startsAt = body.startsAt ? new Date(body.startsAt) : null;
+  const endsAt = body.endsAt ? new Date(body.endsAt) : null;
+  if (startsAt && Number.isNaN(startsAt.getTime())) {
+    throw new AppError("Date de d\xE9but invalide.", 400);
+  }
+  if (endsAt && Number.isNaN(endsAt.getTime())) {
+    throw new AppError("Date de fin invalide.", 400);
+  }
+  if (startsAt && endsAt && endsAt < startsAt) {
+    throw new AppError("La fin ne peut pas pr\xE9c\xE9der le d\xE9but.", 400);
+  }
+  return { title, type, status, startsAt, endsAt };
+};
+var listSchedules = async (req, res, next) => {
+  try {
+    const { from, to, type, status } = req.query;
+    const start = from ? new Date(from) : null;
+    const end = to ? new Date(to) : null;
+    const events = await prisma_default.scheduleEvent.findMany({
+      where: {
+        type: type ? type : void 0,
+        status: status ? status : void 0,
+        // Overlap, not containment: a meeting that begins in the previous
+        // month and runs into this one still belongs on this month's grid.
+        ...start && end ? { startsAt: { lte: end }, endsAt: { gte: start } } : {}
+      },
+      orderBy: { startsAt: "asc" },
+      take: 500,
+      select: eventSelect
+    });
+    res.status(200).json({ status: "success", results: events.length, data: { events } });
+  } catch (err) {
+    next(err);
+  }
+};
+var createSchedule = async (req, res, next) => {
+  try {
+    const { title, type, status, startsAt, endsAt } = readBody(req.body ?? {});
+    if (!title) return next(new AppError("Le titre est requis.", 400));
+    if (!startsAt || !endsAt) {
+      return next(new AppError("Les dates de d\xE9but et de fin sont requises.", 400));
+    }
+    const event = await prisma_default.scheduleEvent.create({
+      data: {
+        title,
+        type: type ?? void 0,
+        status: status ?? void 0,
+        startsAt,
+        endsAt,
+        allDay: Boolean(req.body?.allDay),
+        location: req.body?.location?.trim() || null,
+        notes: req.body?.notes?.trim() || null,
+        hostId: req.body?.hostId?.trim() || req.user?.id || null,
+        createdById: req.user?.id ?? null,
+        guests: { create: toGuestRows(req.body?.guests) }
+      },
+      select: eventSelect
+    });
+    res.status(201).json({ status: "success", data: { event } });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateSchedule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma_default.scheduleEvent.findUnique({
+      where: { id },
+      select: { id: true, startsAt: true, endsAt: true }
+    });
+    if (!existing) return next(new AppError("\xC9v\xE9nement introuvable.", 404));
+    const body = req.body ?? {};
+    const { title, type, status, startsAt, endsAt } = readBody(body);
+    const nextStart = startsAt ?? existing.startsAt;
+    const nextEnd = endsAt ?? existing.endsAt;
+    if (nextEnd < nextStart) {
+      return next(new AppError("La fin ne peut pas pr\xE9c\xE9der le d\xE9but.", 400));
+    }
+    const event = await prisma_default.scheduleEvent.update({
+      where: { id },
+      data: {
+        title: title || void 0,
+        type: type ?? void 0,
+        status: status ?? void 0,
+        startsAt: startsAt ?? void 0,
+        endsAt: endsAt ?? void 0,
+        allDay: typeof body.allDay === "boolean" ? body.allDay : void 0,
+        location: body.location === void 0 ? void 0 : body.location?.trim() || null,
+        notes: body.notes === void 0 ? void 0 : body.notes?.trim() || null,
+        hostId: body.hostId === void 0 ? void 0 : body.hostId || null,
+        // Guests are replaced wholesale when sent: the form edits the list as
+        // a whole, and diffing it here would only invent a second source of
+        // truth for what it already holds.
+        ...body.guests !== void 0 ? { guests: { deleteMany: {}, create: toGuestRows(body.guests) } } : {}
+      },
+      select: eventSelect
+    });
+    res.status(200).json({ status: "success", data: { event } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteSchedule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma_default.scheduleEvent.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return next(new AppError("\xC9v\xE9nement introuvable.", 404));
+    await prisma_default.scheduleEvent.delete({ where: { id } });
+    res.status(200).json({ status: "success", data: { id } });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/admin.routes.ts
 var router6 = Router6();
@@ -4973,11 +5231,16 @@ router6.patch("/companies/:id/plan", updateCompanyPlan);
 router6.patch("/companies/:id/postings", grantCompanyPostings);
 router6.get("/users", getAllUsers);
 router6.patch("/users/:id/status", updateUserStatus);
+router6.get("/users/:id", getUserDetail);
 router6.patch("/users/:id", updateUser);
 router6.delete("/users/:id", deleteUser);
 router6.get("/jobs", getAllJobsAdmin);
 router6.patch("/jobs/:id", updateJobAdmin);
 router6.delete("/jobs/:id", deleteJobAdmin);
+router6.get("/schedules", listSchedules);
+router6.post("/schedules", createSchedule);
+router6.patch("/schedules/:id", updateSchedule);
+router6.delete("/schedules/:id", deleteSchedule);
 router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router6.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router6;

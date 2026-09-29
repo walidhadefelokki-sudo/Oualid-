@@ -264,3 +264,128 @@ export const deleteJobAdmin = async (req: Request, res: Response, next: NextFunc
     next(err);
   }
 };
+
+/**
+ * Everything the admin holds on one account.
+ *
+ * Assembled rather than returned raw: a User row carries the bcrypt hash, and
+ * the profiles carry a whole CV document. Neither belongs in an admin panel,
+ * so this selects what is useful — who they are, what they have done, and what
+ * is attached to them — and summarises the rest.
+ */
+export const getUserDetail = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+        avatar: { select: { url: true } },
+        candidateProfile: {
+          select: {
+            id: true,
+            headline: true,
+            bio: true,
+            city: true,
+            wilaya: true,
+            skills: true,
+            yearsExperience: true,
+            currentJobTitle: true,
+            desiredSalary: true,
+            availableImmediately: true,
+            linkedinUrl: true,
+            githubUrl: true,
+            portfolioUrl: true,
+            resume: { select: { id: true, url: true, fileName: true, createdAt: true } },
+            cvBuilderData: true,
+            _count: { select: { applications: true } },
+          },
+        },
+        recruiterProfile: {
+          select: {
+            id: true,
+            verified: true,
+            companies: {
+              select: {
+                role: true,
+                company: {
+                  select: {
+                    id: true,
+                    name: true,
+                    plan: true,
+                    postingCredits: true,
+                    verified: true,
+                    _count: { select: { jobs: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        _count: { select: { notifications: true } },
+      },
+    });
+
+    if (!user) return next(new AppError("Compte introuvable.", 404));
+
+    const { candidateProfile, ...rest } = user;
+
+    // The CV document is reduced to a flag, as in the list: it is large, and
+    // whether one exists is the only part an administrator acts on.
+    const data = candidateProfile?.cvBuilderData as Record<string, unknown> | null | undefined;
+    const hasBuiltCv =
+      !!data &&
+      typeof data === "object" &&
+      Object.values(data).some((v) =>
+        Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""
+      );
+
+    // A recruiter's own purchases, which explain the company's balance.
+    const orders = await prisma.packOrder.findMany({
+      where: { buyerId: id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        packId: true,
+        jobs: true,
+        amount: true,
+        currency: true,
+        status: true,
+        invoiceNumber: true,
+        paidAt: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        user: {
+          ...rest,
+          candidateProfile: candidateProfile
+            ? {
+                ...candidateProfile,
+                cvBuilderData: undefined,
+                hasUploadedCv: Boolean(candidateProfile.resume),
+                hasBuiltCv,
+              }
+            : null,
+          orders,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

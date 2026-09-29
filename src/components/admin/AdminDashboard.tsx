@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
+import SchedulesTab from "./SchedulesTab";
 import adminService, {
   AdminStats,
   Company,
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "users" | "jobs" | "crm" | "preselection";
+type Tab = "overview" | "plans" | "users" | "jobs" | "schedules" | "crm" | "preselection";
 
 interface AdminDashboardProps {
   onGoHome: () => void;
@@ -41,6 +42,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => go("plans")} />
         <SidebarItem icon={<Users size={18} />} label="Comptes" active={tab === "users"} onClick={() => go("users")} />
         <SidebarItem icon={<Briefcase size={18} />} label="Offres" active={tab === "jobs"} onClick={() => go("jobs")} />
+        <SidebarItem icon={<CalendarDays size={18} />} label="Agenda" active={tab === "schedules"} onClick={() => go("schedules")} />
         <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => go("crm")} />
         <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => go("preselection")} />
       </nav>
@@ -95,6 +97,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
           {tab === "plans" && <PlansTab />}
           {tab === "users" && <UsersTab />}
           {tab === "jobs" && <JobsTab />}
+          {tab === "schedules" && <SchedulesTab />}
           {tab === "crm" && <CrmTab />}
           {tab === "preselection" && <PreselectionTab />}
         </main>

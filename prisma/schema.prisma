@@ -806,7 +806,10 @@ model User {
   crmNotesAbout   CrmNote[]       @relation("CrmNoteSubject")
   deviceTokens    DeviceToken[]
 
-  packOrders PackOrder[] @relation("PackOrderBuyer")
+  packOrders       PackOrder[]     @relation("PackOrderBuyer")
+  schedulesHosted  ScheduleEvent[] @relation("ScheduleHost")
+  schedulesCreated ScheduleEvent[] @relation("ScheduleCreator")
+  scheduleGuest    ScheduleGuest[] @relation("ScheduleGuest")
 
   @@index([email])
   @@index([role])
@@ -1170,4 +1173,84 @@ enum PackOrderStatus {
   PAID
   FAILED
   CANCELED
+}
+
+/// A dated entry on the super admin's calendar.
+///
+/// Distinct from Interview, which hangs off an Application and belongs to the
+/// recruiter hiring for it. This is the platform team's own diary: partner
+/// meetings, demos, calls, deadlines — things with no application behind them.
+model ScheduleEvent {
+  id String @id @default(uuid())
+
+  title String
+  type  ScheduleType @default(MEETING)
+
+  startsAt DateTime
+  endsAt   DateTime
+  /// Times are ignored when true; the entry covers whole days.
+  allDay   Boolean  @default(false)
+
+  /// A room, an address, or a meeting link — whatever fits the type.
+  location String?
+  notes    String?
+
+  status ScheduleStatus @default(PLANNED)
+
+  /// Who runs it. SetNull rather than Cascade: losing the host should not
+  /// erase the meeting from everyone else's calendar.
+  hostId String?
+  host   User?   @relation("ScheduleHost", fields: [hostId], references: [id], onDelete: SetNull)
+
+  /// Who put it in the diary, kept for the audit trail.
+  createdById String?
+  createdBy   User?   @relation("ScheduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  guests ScheduleGuest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startsAt])
+  @@index([hostId])
+}
+
+/// One attendee of a ScheduleEvent.
+///
+/// A guest is either a platform account or a name and address typed in — a
+/// client or partner who has never signed up is still someone to invite, and
+/// requiring an account would make half the diary impossible to record.
+model ScheduleGuest {
+  id String @id @default(uuid())
+
+  eventId String
+  event   ScheduleEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation("ScheduleGuest", fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Used when there is no account behind the guest.
+  name  String?
+  email String?
+
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+  @@index([userId])
+}
+
+enum ScheduleType {
+  MEETING
+  INTERVIEW
+  CALL
+  DEMO
+  DEADLINE
+  OTHER
+}
+
+enum ScheduleStatus {
+  PLANNED
+  CONFIRMED
+  DONE
+  CANCELLED
 }

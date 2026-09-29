@@ -4350,7 +4350,7 @@ var sendContactMessage = async (req, res) => {
 };
 var sendCorporateEnquiry = async (req, res) => {
   try {
-    const { companyName, contactName, email, phone, teamSize, message } = req.body;
+    const { companyName, contactName, email, phone: phone2, teamSize, message } = req.body;
     if (!companyName?.trim() || !contactName?.trim() || !email?.trim()) {
       return res.status(400).json({ message: "L'entreprise, le contact et l'email sont requis." });
     }
@@ -4364,7 +4364,7 @@ var sendCorporateEnquiry = async (req, res) => {
       companyName: companyName.trim(),
       contactName: contactName.trim(),
       email: email.trim(),
-      phone: phone?.trim() || null,
+      phone: phone2?.trim() || null,
       teamSize: teamSize?.trim() || null,
       message: message?.trim() || null
     };
@@ -4782,6 +4782,76 @@ var grantCompanyPostings = async (req, res, next) => {
 
 // server/controllers/adminManage.controller.ts
 init_prisma();
+
+// server/services/profileFromCv.service.ts
+var clean = (v) => {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t ? t : null;
+};
+var SEP = "[\\s.-]?";
+var phone = (prefix, lead, rest) => new RegExp(`${prefix}${SEP}${lead}(?:${SEP}\\d){${rest}}(?!\\d)`);
+var PHONE_PATTERNS = [
+  // +213 / 00213, then 9 digits — the national leading 0 is dropped.
+  phone("(?:\\+213|00213)", "[5-7]", 8),
+  // 0 + mobile prefix + 8 digits.
+  phone("(?<!\\d)0", "[5-7]", 8),
+  // 0 + landline area code + 7 digits.
+  phone("(?<!\\d)0", "[1-4]", 7)
+];
+var EMAIL_PATTERN2 = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/;
+var tidyPhone = (raw) => raw.replace(/[\s.-]/g, "");
+var findPhone = (text) => {
+  for (const pattern of PHONE_PATTERNS) {
+    const m = text.match(pattern);
+    if (m) return tidyPhone(m[0]);
+  }
+  return null;
+};
+var findEmail = (text) => {
+  const m = text.match(EMAIL_PATTERN2);
+  return m ? m[0].toLowerCase() : null;
+};
+var fromCvBuilder = (data) => {
+  if (!data || typeof data !== "object") return null;
+  const d = data;
+  const skills = Array.isArray(d.skills) ? d.skills.map((s) => typeof s === "string" ? s : s?.name).filter((s) => Boolean(s)) : [];
+  const derived = {
+    source: "cv-maker",
+    fullName: clean(d.name),
+    phone: clean(d.phone),
+    email: clean(d.email),
+    address: clean(d.address),
+    title: clean(d.title),
+    summary: clean(d.summary),
+    skills,
+    linkedin: clean(d.linkedin),
+    portfolio: clean(d.portfolio)
+  };
+  const hasAnything = derived.fullName || derived.phone || derived.email || derived.address || skills.length;
+  return hasAnything ? derived : null;
+};
+var fromUploadedCv = async (asset) => {
+  let text;
+  try {
+    text = await cvExtraction_service_default.extractTextFromAsset(asset);
+  } catch {
+    return null;
+  }
+  if (!text?.trim()) return null;
+  const phone2 = findPhone(text);
+  const email = findEmail(text);
+  const firstLine = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 2 && l.length < 60 && !/\d/.test(l) && !l.includes("@"));
+  if (!phone2 && !email && !firstLine) return null;
+  return {
+    source: "uploaded-cv",
+    fullName: firstLine ?? null,
+    phone: phone2,
+    email
+  };
+};
+
+// server/controllers/adminManage.controller.ts
 var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
   data: {
     userId: req.user?.id,
@@ -4993,7 +5063,20 @@ var getUserDetail = async (req, res, next) => {
             linkedinUrl: true,
             githubUrl: true,
             portfolioUrl: true,
-            resume: { select: { id: true, url: true, fileName: true, createdAt: true } },
+            // provider/publicId/extension are here for the extractor, which
+            // reads a privately stored CV through the service-role client
+            // rather than an HTTP GET that would 401.
+            resume: {
+              select: {
+                id: true,
+                url: true,
+                fileName: true,
+                createdAt: true,
+                provider: true,
+                publicId: true,
+                extension: true
+              }
+            },
             cvBuilderData: true,
             _count: { select: { applications: true } }
           }
@@ -5028,6 +5111,21 @@ var getUserDetail = async (req, res, next) => {
     const hasBuiltCv = !!data && typeof data === "object" && Object.values(data).some(
       (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
     );
+    let cvDerived = null;
+    if (candidateProfile) {
+      cvDerived = fromCvBuilder(candidateProfile.cvBuilderData);
+      if (!cvDerived?.phone && candidateProfile.resume) {
+        const fromFile = await fromUploadedCv(candidateProfile.resume);
+        if (fromFile) {
+          cvDerived = cvDerived ? {
+            ...cvDerived,
+            phone: cvDerived.phone ?? fromFile.phone,
+            email: cvDerived.email ?? fromFile.email,
+            fullName: cvDerived.fullName ?? fromFile.fullName
+          } : fromFile;
+        }
+      }
+    }
     const orders = await prisma_default.packOrder.findMany({
       where: { buyerId: id },
       orderBy: { createdAt: "desc" },
@@ -5055,6 +5153,8 @@ var getUserDetail = async (req, res, next) => {
             hasUploadedCv: Boolean(candidateProfile.resume),
             hasBuiltCv
           } : null,
+          /** Read from the CV, never written to the profile. */
+          cvDerived,
           orders
         }
       }
@@ -5299,7 +5399,7 @@ var listLeads = async (req, res, next) => {
 };
 var createLead = async (req, res, next) => {
   try {
-    const { companyName, contactName, email, phone, status, source, notes, nextActionAt } = req.body;
+    const { companyName, contactName, email, phone: phone2, status, source, notes, nextActionAt } = req.body;
     if (!companyName?.trim()) {
       return next(new AppError("A company name is required.", 400));
     }
@@ -5308,7 +5408,7 @@ var createLead = async (req, res, next) => {
         companyName: companyName.trim(),
         contactName: contactName?.trim() || null,
         email: email?.trim() || null,
-        phone: phone?.trim() || null,
+        phone: phone2?.trim() || null,
         status: LEAD_STATUSES.includes(status) ? status : void 0,
         source: LEAD_SOURCES.includes(source) ? source : void 0,
         notes: notes?.trim() || null,
@@ -8062,7 +8162,7 @@ var updateMyProfile = async (req, res, next) => {
     const {
       firstName,
       lastName,
-      phone,
+      phone: phone2,
       headline,
       bio,
       city,
@@ -8081,7 +8181,7 @@ var updateMyProfile = async (req, res, next) => {
     if (firstName !== void 0) userData.firstName = firstName;
     if (lastName !== void 0) userData.lastName = lastName;
     const profileFieldData = {};
-    if (phone !== void 0) profileFieldData.phone = phone;
+    if (phone2 !== void 0) profileFieldData.phone = phone2;
     if (headline !== void 0) profileFieldData.headline = headline;
     if (bio !== void 0) profileFieldData.bio = bio;
     if (city !== void 0) profileFieldData.city = city;

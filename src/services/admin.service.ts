@@ -264,6 +264,27 @@ export interface ScheduleInput {
 
 /* ========================================================= user detail === */
 
+/**
+ * Contact details read out of the candidate's CV.
+ *
+ * Shown beside a profile field the candidate left empty — almost every account
+ * with a CV has no phone number on the profile while the CV carries a real one.
+ * Labelled with its source, and never written back to the profile: a number
+ * typed into a CV is evidence, not a verified contact detail.
+ */
+export interface CvDerived {
+  source: "cv-maker" | "uploaded-cv";
+  fullName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  skills?: string[];
+  linkedin?: string | null;
+  portfolio?: string | null;
+}
+
 export interface AdminUserDetail extends AdminUser {
   phone?: string | null;
   updatedAt: string;
@@ -302,6 +323,7 @@ export interface AdminUserDetail extends AdminUser {
         }>;
       })
     | null;
+  cvDerived?: CvDerived | null;
   orders: Array<{
     id: string;
     packId: string;

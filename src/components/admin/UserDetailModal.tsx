@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FileCheck2, FileText, Loader2, X } from "lucide-react";
-import adminService, { AdminUserDetail } from "../../services/admin.service";
+import adminService, { AdminUserDetail, CvDerived } from "../../services/admin.service";
 
 /**
  * Everything the platform holds on one account, in one panel.
@@ -25,6 +25,31 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
     <div className="rounded-xl border border-primary/10 bg-white px-4">{children}</div>
   </section>
 );
+
+const cvOrigin = (source: CvDerived["source"]) =>
+  source === "cv-maker" ? "depuis le CV Maker" : "depuis le CV téléversé";
+
+/**
+ * A value the profile does not have, recovered from the CV.
+ *
+ * Always carries where it came from, so it is never mistaken for something
+ * the candidate entered as a contact detail. Falls back to "—" so an empty
+ * profile field with no CV behind it looks exactly as it did before.
+ */
+const FromCv: React.FC<{ value?: string | null; source: CvDerived["source"] }> = ({
+  value,
+  source,
+}) =>
+  value ? (
+    <span className="inline-flex flex-wrap items-baseline gap-1.5">
+      <span className="text-primary/80">{value}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+        {cvOrigin(source)}
+      </span>
+    </span>
+  ) : (
+    <span className="text-primary/40">—</span>
+  );
 
 const money = (amount: number, currency: string) =>
   `${amount.toLocaleString("fr-FR")} ${currency.toUpperCase()}`;
@@ -56,6 +81,33 @@ const UserDetailModal: React.FC<{ userId: string; onClose: () => void }> = ({
 
   const candidate = user?.candidateProfile;
   const company = user?.recruiterProfile?.companies?.[0];
+  const cv = user?.cvDerived;
+
+  /**
+   * What the CV holds that the account does not.
+   *
+   * Only the differences are listed. Repeating an email or a name the profile
+   * already carries would pad the panel without telling the admin anything,
+   * and the point of this section is to surface what would otherwise be lost.
+   */
+  const cvExtras = !cv
+    ? []
+    : [
+        { label: "Nom sur le CV", value: cv.fullName, skip: !cv.fullName || cv.fullName === name },
+        {
+          label: "E-mail",
+          value: cv.email,
+          skip: !cv.email || cv.email.toLowerCase() === user?.email?.toLowerCase(),
+        },
+        { label: "Adresse", value: cv.address, skip: !cv.address || Boolean(candidate?.city) },
+        { label: "LinkedIn", value: cv.linkedin, skip: !cv.linkedin || Boolean(candidate?.linkedinUrl) },
+        {
+          label: "Portfolio",
+          value: cv.portfolio,
+          skip: !cv.portfolio || Boolean(candidate?.portfolioUrl),
+        },
+        { label: "Profil", value: cv.summary, skip: !cv.summary },
+      ].filter((e): e is { label: string; value: string; skip: boolean } => !e.skip && Boolean(e.value));
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
@@ -85,7 +137,9 @@ const UserDetailModal: React.FC<{ userId: string; onClose: () => void }> = ({
               <Section title="Compte">
                 <Row label="Rôle">{user.role}</Row>
                 <Row label="Statut">{user.status}</Row>
-                <Row label="Téléphone">{user.phone || "—"}</Row>
+                <Row label="Téléphone">
+                  {user.phone || (cv ? <FromCv value={cv.phone} source={cv.source} /> : "—")}
+                </Row>
                 <Row label="Inscrit le">{date(user.createdAt)}</Row>
                 <Row label="Modifié le">{date(user.updatedAt)}</Row>
                 {user.deletedAt && <Row label="Supprimé le">{date(user.deletedAt)}</Row>}
@@ -97,7 +151,10 @@ const UserDetailModal: React.FC<{ userId: string; onClose: () => void }> = ({
               {candidate && (
                 <>
                   <Section title="Profil candidat">
-                    <Row label="Métier">{candidate.currentJobTitle || "—"}</Row>
+                    <Row label="Métier">
+                      {candidate.currentJobTitle ||
+                        (cv ? <FromCv value={cv.title} source={cv.source} /> : "—")}
+                    </Row>
                     <Row label="Titre">{candidate.headline || "—"}</Row>
                     <Row label="Wilaya">{candidate.wilaya || "—"}</Row>
                     <Row label="Ville">{candidate.city || "—"}</Row>
@@ -105,7 +162,13 @@ const UserDetailModal: React.FC<{ userId: string; onClose: () => void }> = ({
                       {candidate.yearsExperience != null ? `${candidate.yearsExperience} an(s)` : "—"}
                     </Row>
                     <Row label="Compétences">
-                      {candidate.skills?.length ? candidate.skills.join(", ") : "—"}
+                      {candidate.skills?.length ? (
+                        candidate.skills.join(", ")
+                      ) : cv?.skills?.length ? (
+                        <FromCv value={cv.skills.join(", ")} source={cv.source} />
+                      ) : (
+                        "—"
+                      )}
                     </Row>
                     <Row label="Disponible">{candidate.availableImmediately ? "Oui" : "Non"}</Row>
                     <Row label="Candidatures">{candidate._count?.applications ?? 0}</Row>
@@ -158,6 +221,16 @@ const UserDetailModal: React.FC<{ userId: string; onClose: () => void }> = ({
                         "—"}
                     </Row>
                   </Section>
+
+                  {cvExtras.length > 0 && (
+                    <Section title={`Lu dans le CV · ${cvOrigin(cv!.source)}`}>
+                      {cvExtras.map(({ label, value }) => (
+                        <Row key={label} label={label}>
+                          <span className="text-primary/80">{value}</span>
+                        </Row>
+                      ))}
+                    </Section>
+                  )}
                 </>
               )}
 

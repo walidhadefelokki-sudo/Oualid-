@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
+import {
+  CvDerived,
+  fromCvBuilder,
+  fromUploadedCv,
+} from "../services/profileFromCv.service";
 
 /**
  * Super-admin management of accounts and offers.
@@ -306,7 +311,20 @@ export const getUserDetail = async (req: Request, res: Response, next: NextFunct
             linkedinUrl: true,
             githubUrl: true,
             portfolioUrl: true,
-            resume: { select: { id: true, url: true, fileName: true, createdAt: true } },
+            // provider/publicId/extension are here for the extractor, which
+            // reads a privately stored CV through the service-role client
+            // rather than an HTTP GET that would 401.
+            resume: {
+              select: {
+                id: true,
+                url: true,
+                fileName: true,
+                createdAt: true,
+                provider: true,
+                publicId: true,
+                extension: true,
+              },
+            },
             cvBuilderData: true,
             _count: { select: { applications: true } },
           },
@@ -350,6 +368,41 @@ export const getUserDetail = async (req: Request, res: Response, next: NextFunct
         Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""
       );
 
+    /* What the CV knows that the profile does not.
+     *
+     * Almost nobody fills the profile in — every candidate here with a CV
+     * Maker document has User.phone null, while the CV carries a real number,
+     * so the panel showed "—" for all of them.
+     *
+     * The CV Maker document is preferred: those are fields the candidate
+     * typed, not text guessed at. An uploaded file is parsed only when there
+     * is no document to read, because it means fetching and parsing a PDF on
+     * a page load.
+     *
+     * Nothing is written back. It is returned separately, labelled with where
+     * it came from, and the panel shows it beside the empty field — a number
+     * on a CV is evidence, not a verified contact detail. */
+    let cvDerived: CvDerived | null = null;
+    if (candidateProfile) {
+      cvDerived = fromCvBuilder(candidateProfile.cvBuilderData);
+
+      if (!cvDerived?.phone && candidateProfile.resume) {
+        const fromFile = await fromUploadedCv(candidateProfile.resume);
+        // Keep whichever fields the builder already supplied; the file only
+        // fills the gaps it left.
+        if (fromFile) {
+          cvDerived = cvDerived
+            ? {
+                ...cvDerived,
+                phone: cvDerived.phone ?? fromFile.phone,
+                email: cvDerived.email ?? fromFile.email,
+                fullName: cvDerived.fullName ?? fromFile.fullName,
+              }
+            : fromFile;
+        }
+      }
+    }
+
     // A recruiter's own purchases, which explain the company's balance.
     const orders = await prisma.packOrder.findMany({
       where: { buyerId: id },
@@ -381,6 +434,8 @@ export const getUserDetail = async (req: Request, res: Response, next: NextFunct
                 hasBuiltCv,
               }
             : null,
+          /** Read from the CV, never written to the profile. */
+          cvDerived,
           orders,
         },
       },

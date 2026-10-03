@@ -1478,7 +1478,7 @@ export default function App() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
                 whileHover={{ y: -10 }}
-                className="bg-white p-12 rounded-[3.5rem] border border-gray-100 hover:shadow-[0_40px_80px_-15px_rgba(0,0,0,0.08)] transition-all duration-500 group"
+                className="bg-white p-12 rounded-[3.5rem] border-2 border-[#173E7D]/20 hover:border-[#173E7D]/50 hover:shadow-[0_40px_80px_-15px_rgba(23,62,125,0.18)] transition-all duration-500 group"
               >
                 <div className={`w-20 h-20 ${feature.color} rounded-3xl flex items-center justify-center mb-10 group-hover:scale-110 transition-transform duration-500 shadow-sm`}>
                   {feature.icon}

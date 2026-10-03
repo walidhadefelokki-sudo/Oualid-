@@ -1507,7 +1507,7 @@ export default function App() {
               { 
                 step: "01", 
                 title: language === 'fr' ? "Créez votre profil" : "أنشئ ملفك الشخصي", 
-                desc: language === 'fr' ? "Inscrivez-vous et complétez votre profil avec vos expériences et compétences." : "سجل وأكمل ملفك الشخصي بخبراتك ومهاراتك.",
+                desc: language === 'fr' ? "Inscrivez-vous et complétez votre profil en téléversant votre CV, et si vous n'avez pas de CV, créez-en un avec CV Maker." : "سجل وأكمل ملفك الشخصي برفع سيرتك الذاتية، وإن لم تكن لديك سيرة ذاتية فأنشئ واحدة عبر CV Maker.",
                 image: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800",
                 color: "bg-blue-600"
               },
@@ -1521,7 +1521,7 @@ export default function App() {
               { 
                 step: "03", 
                 title: language === 'fr' ? "Postulez & Réussissez" : "قدم وانجح", 
-                desc: language === 'fr' ? "Envoyez vos candidatures en un clic et suivez votre progression en temps réel." : "أرسل ترشيحاتك بنقرة واحدة وتابع تقدمك في الوقت الفعلي.",
+                desc: language === 'fr' ? "Postulez en un seul clic." : "قدّم بنقرة واحدة.",
                 image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=800",
                 color: "bg-emerald-600"
               }

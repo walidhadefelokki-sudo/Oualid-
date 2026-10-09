@@ -58,7 +58,35 @@ const alreadySent = (): Set<string> => {
   );
 };
 
+/**
+ * Sends both templates to one address and stops.
+ *
+ * Separate from --only, which filters the day's recipients and so can only
+ * reach someone already in it. Checking how the mail renders should not
+ * require being one of the people it is addressed to.
+ */
+const sendProof = async (address: string) => {
+  console.log(`Envoi d'essai vers ${address}`);
+  console.log(`Expéditeur : ${process.env.EMAIL_FROM_INFO ?? '(EMAIL_FROM_INFO non défini)'}`);
+  console.log(`Liens vers : ${process.env.APP_URL ?? '(APP_URL non défini)'}\n`);
+
+  const candidate = await sendCandidateProfileReminderEmail(address, 'Saloh');
+  console.log(`  candidat  (FR + AR) : ${candidate ? 'accepté par le serveur' : 'refusé'}`);
+
+  await new Promise((r) => setTimeout(r, GAP_MS));
+
+  const recruiter = await sendRecruiterProfileReminderEmail(address, 'Dar L\'Emploi');
+  console.log(`  recruteur (FR)      : ${recruiter ? 'accepté par le serveur' : 'refusé'}`);
+};
+
 const main = async () => {
+  const proofTo = arg('to');
+  if (proofTo) {
+    await sendProof(proofTo);
+    await prisma.$disconnect();
+    return;
+  }
+
   if (!DAY || !/^\d{4}-\d{2}-\d{2}$/.test(DAY)) {
     throw new Error('Pass the registration day, e.g. --day=2026-10-08');
   }

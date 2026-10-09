@@ -11,3 +11,4 @@ check-db.mjs
 # The Vercel function is the generated api/index.js (npm run build:api).
 # A stray api/index.ts here is a second entry point for the same route.
 api/index.ts
+scripts/campaign-*.log

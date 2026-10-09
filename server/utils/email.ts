@@ -506,6 +506,205 @@ export const sendRecruiterWelcomeEmail = async (email: string, companyName?: str
   );
 };
 
+/* -------------------------------------------------------------------------
+ * Follow-up campaign
+ *
+ * Sent to accounts that registered but never finished setting themselves up.
+ * Unlike the welcome mail this goes out from info@, because it is a nudge
+ * rather than a transactional receipt, and a reply belongs in the inbox a
+ * human reads.
+ * --------------------------------------------------------------------- */
+
+/** A hairline between the French and Arabic halves of a bilingual message. */
+const divider = () =>
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+    <tr><td style="border-top:1px solid ${BRAND.rule};font-size:0;line-height:0;">&nbsp;</td></tr>
+  </table>`;
+
+/**
+ * Right-to-left variants of the text and button helpers.
+ *
+ * `dir` has to sit on the elements themselves: several webmail clients drop a
+ * wrapper's direction, and the buttons have to be right-aligned separately
+ * because `dir` alone does not move a table that has its own alignment.
+ */
+const rtlParagraph = (text: string) =>
+  `<p dir="rtl" style="margin:0 0 14px;color:${BRAND.ink};font-size:15px;line-height:1.8;text-align:right;direction:rtl;">${text}</p>`;
+
+const rtlButton = (href: string, label: string) => `
+<table role="presentation" dir="rtl" cellpadding="0" cellspacing="0" align="right" style="margin:20px 0;">
+  <tr>
+    <td style="background:${BRAND.navy};border-radius:8px;">
+      <a href="${href}" style="display:inline-block;padding:14px 28px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
+    </td>
+  </tr>
+</table>
+<div style="clear:both;font-size:0;line-height:0;">&nbsp;</div>`;
+
+const rtlSecondaryButton = (href: string, label: string) => `
+<table role="presentation" dir="rtl" cellpadding="0" cellspacing="0" align="right" style="margin:0 0 20px 0;">
+  <tr>
+    <td style="border:1.5px solid ${BRAND.navy};border-radius:8px;">
+      <a href="${href}" style="display:inline-block;padding:12px 26px;color:${BRAND.navy};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
+    </td>
+  </tr>
+</table>
+<div style="clear:both;font-size:0;line-height:0;">&nbsp;</div>`;
+
+/** The sign-off, above the address block the layout already carries. */
+const signature = () => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 0;border-top:1px solid ${BRAND.rule};">
+    <tr>
+      <td style="padding-top:18px;">
+        <p style="margin:0;color:${BRAND.navy};font-size:15px;font-weight:700;">L'&eacute;quipe Dar L'Emploi</p>
+        <p style="margin:4px 0 0;color:${BRAND.muted};font-size:13px;line-height:1.6;">
+          <a href="${APP_URL}" style="color:${BRAND.navy};text-decoration:none;">www.darlemploi.dz</a>
+          &nbsp;&middot;&nbsp;
+          <a href="mailto:info@darlemploi.dz" style="color:${BRAND.muted};text-decoration:none;">info@darlemploi.dz</a>
+        </p>
+      </td>
+    </tr>
+  </table>`;
+
+/**
+ * Candidate nudge: finish the profile, upload a CV, or build one.
+ *
+ * Bilingual in one message rather than two sends, French first then Arabic.
+ * Each half carries its own pair of buttons: the links are identical, but a
+ * reader who skips the half they do not speak still has something to click.
+ */
+export const sendCandidateProfileReminderEmail = async (
+  email: string,
+  firstName?: string | null
+) => {
+  const name = firstName?.trim() ? escapeForEmail(firstName.trim()) : '';
+  const helloFr = name ? `Bonjour <strong>${name}</strong>,` : 'Bonjour,';
+  const helloAr = name ? `مرحبًا <strong>${name}</strong>،` : 'مرحبًا،';
+
+  const profileUrl = `${APP_URL}/dashboard?tab=profile`;
+  const cvMakerUrl = `${APP_URL}/dashboard?tab=cv-maker`;
+
+  const body = `
+    ${paragraph(helloFr)}
+    ${paragraph(
+      `Merci d'avoir rejoint <strong>Dar L'Emploi</strong>. Il vous reste une &eacute;tape pour que les recruteurs puissent vous trouver&nbsp;: compl&eacute;ter votre profil et y ajouter votre CV.`
+    )}
+    ${paragraph(
+      `Les recruteurs consultent en priorit&eacute; les profils complets accompagn&eacute;s d'un CV. Vous n'en avez pas encore&nbsp;? Cr&eacute;ez-en un gratuitement en quelques minutes avec <strong>CV Maker</strong>.`
+    )}
+
+    ${button(profileUrl, 'Compl&eacute;ter mon profil et t&eacute;l&eacute;verser mon CV')}
+    ${secondaryButton(cvMakerUrl, 'Cr&eacute;er mon CV avec CV Maker')}
+
+    ${divider()}
+
+    ${rtlParagraph(helloAr)}
+    ${rtlParagraph(
+      `شكرًا لانضمامك إلى <strong>دار التشغيل</strong>. تبقّت خطوة واحدة حتى يتمكّن أصحاب العمل من العثور عليك: أكمل ملفك الشخصي وأضف سيرتك الذاتية.`
+    )}
+    ${rtlParagraph(
+      `يطّلع أصحاب العمل أولًا على الملفات المكتملة المرفقة بسيرة ذاتية. ليست لديك سيرة ذاتية بعد؟ أنشئ واحدة مجانًا في دقائق عبر <strong>CV Maker</strong>.`
+    )}
+
+    ${rtlButton(profileUrl, 'أكمل ملفي الشخصي وأرفع سيرتي الذاتية')}
+    ${rtlSecondaryButton(cvMakerUrl, 'أنشئ سيرتي الذاتية عبر CV Maker')}
+
+    ${signature()}`;
+
+  const text = [
+    name ? `Bonjour ${name},` : 'Bonjour,',
+    '',
+    "Merci d'avoir rejoint Dar L'Emploi. Il vous reste une étape pour que les recruteurs puissent vous trouver : compléter votre profil et y ajouter votre CV.",
+    '',
+    `Compléter mon profil et téléverser mon CV : ${profileUrl}`,
+    `Créer mon CV avec CV Maker : ${cvMakerUrl}`,
+    '',
+    '— — —',
+    '',
+    name ? `مرحبًا ${name}،` : 'مرحبًا،',
+    '',
+    'شكرًا لانضمامك إلى دار التشغيل. تبقّت خطوة واحدة حتى يتمكّن أصحاب العمل من العثور عليك: أكمل ملفك الشخصي وأضف سيرتك الذاتية.',
+    '',
+    `أكمل ملفي الشخصي وأرفع سيرتي الذاتية: ${profileUrl}`,
+    `أنشئ سيرتي الذاتية عبر CV Maker: ${cvMakerUrl}`,
+    '',
+    "L'équipe Dar L'Emploi",
+    'www.darlemploi.dz · info@darlemploi.dz',
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Complétez votre profil et votre CV | أكمل ملفك الشخصي وسيرتك الذاتية",
+    layout("Compl&eacute;tez votre profil", body),
+    { from: FROM_INFO, text, replyTo: 'info@darlemploi.dz' }
+  );
+};
+
+/**
+ * Recruiter nudge: finish the company profile, publish the free first offer.
+ *
+ * French only, by request — the recruiter side of the product is French
+ * throughout, so an Arabic half would be the only Arabic they ever see.
+ */
+export const sendRecruiterProfileReminderEmail = async (
+  email: string,
+  companyName?: string | null
+) => {
+  const raw = companyName?.trim();
+  // The company defaults to the signup email when nothing was entered, which
+  // would address the recruiter by their own address.
+  const usable = raw && raw.toLowerCase() !== email.toLowerCase() && !raw.includes('@') ? raw : '';
+  const hello = usable ? `Bonjour <strong>${escapeForEmail(usable)}</strong>,` : 'Bonjour,';
+
+  // ?tab=profile, not ?tab=company: the dashboard only honours a fixed list of
+  // tab names for each role, and an unrecognised one silently lands the reader
+  // on the dashboard home instead of the page the button promised.
+  const profileUrl = `${APP_URL}/dashboard?tab=profile`;
+  const postJobUrl = `${APP_URL}/dashboard?tab=post-job`;
+
+  const body = `
+    ${paragraph(hello)}
+    ${paragraph(
+      `Merci d'avoir cr&eacute;&eacute; votre compte entreprise sur <strong>Dar L'Emploi</strong>. Deux &eacute;tapes vous s&eacute;parent de vos premi&egrave;res candidatures.`
+    )}
+
+    ${iconList([
+      ['&#127970;', 'Compl&eacute;tez le profil de votre entreprise &mdash; les candidats consultent votre page avant de postuler'],
+      ['&#128640;', 'Publiez votre premi&egrave;re offre, <strong>offerte</strong>'],
+    ])}
+
+    ${paragraph(
+      `Votre prochain collaborateur est peut-&ecirc;tre d&eacute;j&agrave; inscrit&nbsp;: des centaines de candidats nous ont rejoints cette semaine.`
+    )}
+
+    ${button(postJobUrl, 'Publier ma premi&egrave;re offre gratuitement')}
+    ${secondaryButton(profileUrl, 'Compl&eacute;ter le profil de mon entreprise')}
+
+    ${signature()}`;
+
+  const text = [
+    usable ? `Bonjour ${usable},` : 'Bonjour,',
+    '',
+    "Merci d'avoir créé votre compte entreprise sur Dar L'Emploi. Deux étapes vous séparent de vos premières candidatures.",
+    '',
+    '- Complétez le profil de votre entreprise — les candidats consultent votre page avant de postuler',
+    '- Publiez votre première offre, offerte',
+    '',
+    `Publier ma première offre gratuitement : ${postJobUrl}`,
+    `Compléter le profil de mon entreprise : ${profileUrl}`,
+    '',
+    "L'équipe Dar L'Emploi",
+    'www.darlemploi.dz · info@darlemploi.dz',
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Votre première offre est gratuite — complétez votre espace entreprise",
+    layout("Publiez votre premi&egrave;re offre", body),
+    { from: FROM_INFO, text, replyTo: 'info@darlemploi.dz' }
+  );
+};
+
 /**
  * Routes a new account to the right welcome email.
  *

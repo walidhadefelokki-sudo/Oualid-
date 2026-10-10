@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as adminController from "../controllers/admin.controller";
 import * as adminManage from "../controllers/adminManage.controller";
 import * as schedule from "../controllers/schedule.controller";
+import * as adminEmail from "../controllers/adminEmail.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 
@@ -39,6 +40,11 @@ router.get("/schedules", schedule.listSchedules);
 router.post("/schedules", schedule.createSchedule);
 router.patch("/schedules/:id", schedule.updateSchedule);
 router.delete("/schedules/:id", schedule.deleteSchedule);
+
+// Mail to selected accounts, composed in the dashboard. One batch per
+// request: the function is killed at 60s and the send is the slow part.
+router.post("/emails/send", adminEmail.sendBroadcast);
+router.post("/emails/preview", adminEmail.sendBroadcastPreview);
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", adminController.getCorporatePendingPreselections);

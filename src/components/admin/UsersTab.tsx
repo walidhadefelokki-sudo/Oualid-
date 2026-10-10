@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Eye, FileCheck2, FileText, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Eye, FileCheck2, FileText, Mail, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
 import UserDetailModal from "./UserDetailModal";
+import SendEmailModal from "./SendEmailModal";
 import adminService, {
   AdminAccountStatus,
   AdminRole,
@@ -52,6 +53,8 @@ const UsersTab: React.FC = () => {
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [composing, setComposing] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -108,6 +111,30 @@ const UsersTab: React.FC = () => {
 
     return true;
   });
+
+  /* Only accounts that can actually be written to. A deleted one is kept in
+   * the table so it can be restored, but it is not a mailing address. */
+  const mailable = visible.filter((u) => u.status !== "DELETED");
+  const chosen = users.filter((u) => selected.has(u.id));
+  const allShownSelected = mailable.length > 0 && mailable.every((u) => selected.has(u.id));
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  /* Selects what the filters are currently showing, which is the point of the
+   * filters: narrow to "candidats sans CV", then take all of them. Clearing
+   * only drops the shown ones, so a selection made under another filter
+   * survives. */
+  const toggleAllShown = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const u of mailable) allShownSelected ? next.delete(u.id) : next.add(u.id);
+      return next;
+    });
 
   // Counts for the whole loaded set, so the filters say what they would find.
   const candidates = users.filter((u) => u.role === "CANDIDATE");
@@ -230,6 +257,27 @@ const UsersTab: React.FC = () => {
         </div>
       )}
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <span className="text-sm font-bold text-primary">
+            {selected.size} compte{selected.size > 1 ? "s" : ""} sélectionné
+            {selected.size > 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={() => setComposing(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold"
+          >
+            <Mail size={15} /> Envoyer un e-mail
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-sm text-primary/60 hover:text-primary underline"
+          >
+            Tout désélectionner
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
       ) : visible.length === 0 ? (
@@ -239,6 +287,15 @@ const UsersTab: React.FC = () => {
           <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-primary/5 text-left text-primary/60 uppercase text-xs">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allShownSelected}
+                    onChange={toggleAllShown}
+                    aria-label="Tout sélectionner"
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3">Nom</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Rôle</th>
@@ -256,6 +313,16 @@ const UsersTab: React.FC = () => {
                     key={u.id}
                     className={`border-t border-primary/10 ${deleted ? "opacity-50" : ""}`}
                   >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(u.id)}
+                        onChange={() => toggle(u.id)}
+                        disabled={deleted}
+                        aria-label={`Sélectionner ${u.email}`}
+                        className="w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       {[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}
                     </td>
@@ -310,6 +377,14 @@ const UsersTab: React.FC = () => {
 
       {viewingId && (
         <UserDetailModal userId={viewingId} onClose={() => setViewingId(null)} />
+      )}
+
+      {composing && (
+        <SendEmailModal
+          recipients={chosen}
+          onClose={() => setComposing(false)}
+          onSent={() => setSelected(new Set())}
+        />
       )}
 
       {editing && (

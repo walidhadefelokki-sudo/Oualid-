@@ -152,6 +152,26 @@ export const adminService = {
     return data.data.user;
   },
 
+  /**
+   * Mails one batch of selected accounts.
+   *
+   * The caller splits the selection and calls this repeatedly: the serverless
+   * function is killed at 60 seconds, and sending is about two seconds a
+   * message, so one request cannot carry a whole campaign.
+   */
+  sendBroadcast: async (payload: BroadcastPayload): Promise<BroadcastResult> => {
+    const { data } = await api.post("/admin/emails/send", payload);
+    return data.data;
+  },
+
+  /** Sends the composed message to one address, before anyone else gets it. */
+  sendBroadcastPreview: async (
+    payload: Omit<BroadcastPayload, "userIds" | "mode"> & { to: string }
+  ): Promise<boolean> => {
+    const { data } = await api.post("/admin/emails/preview", payload);
+    return Boolean(data.success);
+  },
+
   getSchedules: async (params?: { from?: string; to?: string }): Promise<ScheduleEvent[]> => {
     const { data } = await api.get("/admin/schedules", { params });
     return data.data.events;
@@ -284,6 +304,34 @@ export interface CvDerived {
   linkedin?: string | null;
   portfolio?: string | null;
 }
+
+/**
+ * A message composed in the dashboard.
+ *
+ * `individual` sends one personalised copy per recipient — placeholders are
+ * filled and each person is the only address on their copy. `grouped` sends a
+ * single message with everyone blind-copied, which is faster but cannot be
+ * personalised and makes every reply land in one thread.
+ */
+export interface BroadcastPayload {
+  userIds: string[];
+  mode: "individual" | "grouped";
+  subject: string;
+  body: string;
+  buttonLabel?: string | null;
+  buttonUrl?: string | null;
+}
+
+export interface BroadcastResult {
+  mode: "individual" | "grouped";
+  sent: number;
+  failed: number;
+  results: Array<{ id: string; email: string; ok: boolean; error?: string }>;
+}
+
+/** How many recipients one request may carry, per mode. Mirrors the server. */
+export const BROADCAST_BATCH = 12;
+export const BROADCAST_MAX_BCC = 200;
 
 export interface AdminUserDetail extends AdminUser {
   phone?: string | null;

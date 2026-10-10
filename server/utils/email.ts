@@ -261,6 +261,14 @@ export interface SendEmailOptions {
   replyTo?: string;
   /** Plain-text alternative, for clients that do not render HTML. */
   text?: string;
+  /**
+   * Blind copies, for one message addressed to many.
+   *
+   * Blind rather than `to`: the recipients are candidates and recruiters who
+   * have no relationship with each other, and putting them in a visible header
+   * would hand every one of them the others' addresses.
+   */
+  bcc?: string[];
 }
 
 /**
@@ -300,6 +308,7 @@ export const sendEmail = async (
         html,
         ...(options.text ? { text: options.text } : {}),
         ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+        ...(options.bcc?.length ? { bcc: options.bcc } : {}),
       });
 
     try {
@@ -345,6 +354,7 @@ export const sendEmail = async (
       html,
       ...(options.text ? { text: options.text } : {}),
       ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+      ...(options.bcc?.length ? { bcc: options.bcc } : {}),
     });
 
     if (error) {
@@ -378,6 +388,7 @@ export const sendEmail = async (
       html,
       ...(options.text ? { text: options.text } : {}),
       ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+      ...(options.bcc?.length ? { bcc: options.bcc } : {}),
     });
     console.log('Message sent: %s', info.messageId);
     return true;
@@ -703,6 +714,98 @@ export const sendRecruiterProfileReminderEmail = async (
     layout("Publiez votre premi&egrave;re offre", body),
     { from: FROM_INFO, text, replyTo: 'info@darlemploi.dz' }
   );
+};
+
+/* -------------------------------------------------------------------------
+ * Admin broadcast
+ *
+ * An admin writes the subject and body in the dashboard and picks who gets
+ * it. The brand shell, the signature and the sender are not theirs to choose:
+ * every message still has to look like it came from the platform.
+ * --------------------------------------------------------------------- */
+
+export interface BroadcastContent {
+  subject: string;
+  /** Plain text. Blank lines separate paragraphs. */
+  body: string;
+  /** An optional call to action under the text. */
+  buttonLabel?: string | null;
+  buttonUrl?: string | null;
+}
+
+/**
+ * Turns the admin's plain text into paragraphs.
+ *
+ * Escaped first: the body is typed by a trusted admin, but an unescaped `<`
+ * would still break the message silently, and the escape costs nothing.
+ */
+const bodyToParagraphs = (body: string): string =>
+  body
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => paragraph(escapeForEmail(block).replace(/\n/g, '<br>')))
+    .join('');
+
+/**
+ * Removes the placeholders when there is nobody to fill them with.
+ *
+ * A grouped send has no single recipient, so "Bonjour {{prenom}}," becomes
+ * "Bonjour ," — a dangling comma, going out to everyone at once. The gap and
+ * the space before the punctuation are closed up so the line still reads.
+ */
+export const stripPlaceholders = (template: string): string =>
+  fillPlaceholders(template, { email: '', firstName: '', lastName: '' })
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/^[ \t]+/gm, '');
+
+/** Substitutes the recipient's details into the admin's text. */
+export const fillPlaceholders = (
+  template: string,
+  recipient: { firstName?: string | null; lastName?: string | null; email: string }
+): string =>
+  template
+    .replace(/\{\{\s*prenom\s*\}\}/gi, recipient.firstName?.trim() || '')
+    .replace(/\{\{\s*nom\s*\}\}/gi, recipient.lastName?.trim() || '')
+    .replace(/\{\{\s*email\s*\}\}/gi, recipient.email);
+
+/**
+ * Sends one admin-composed message.
+ *
+ * `bcc` carries the grouped mode: one message, every recipient blind-copied,
+ * so nobody learns who else was written to. In that mode `to` is the platform
+ * itself, because a message with no visible recipient looks like spam to most
+ * filters.
+ */
+export const sendAdminBroadcastEmail = async (
+  to: string,
+  content: BroadcastContent,
+  options: { bcc?: string[] } = {}
+): Promise<boolean> => {
+  const hasButton = Boolean(content.buttonLabel?.trim() && content.buttonUrl?.trim());
+
+  const html = layout(
+    escapeForEmail(content.subject),
+    `${bodyToParagraphs(content.body)}
+     ${hasButton ? button(content.buttonUrl!.trim(), escapeForEmail(content.buttonLabel!.trim())) : ''}
+     ${signature()}`
+  );
+
+  const text = [
+    content.body.trim(),
+    '',
+    ...(hasButton ? [`${content.buttonLabel!.trim()} : ${content.buttonUrl!.trim()}`, ''] : []),
+    "L'équipe Dar L'Emploi",
+    'www.darlemploi.dz · info@darlemploi.dz',
+  ].join('\n');
+
+  return sendEmail(to, content.subject, html, {
+    from: FROM_INFO,
+    replyTo: 'info@darlemploi.dz',
+    text,
+    ...(options.bcc?.length ? { bcc: options.bcc } : {}),
+  });
 };
 
 /**

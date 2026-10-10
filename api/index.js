@@ -254,7 +254,8 @@ var sendEmail = async (to, subject, html, options = {}) => {
       subject,
       html,
       ...options.text ? { text: options.text } : {},
-      ...options.replyTo ? { replyTo: options.replyTo } : {}
+      ...options.replyTo ? { replyTo: options.replyTo } : {},
+      ...options.bcc?.length ? { bcc: options.bcc } : {}
     });
     try {
       const info = await attempt(from);
@@ -288,7 +289,8 @@ var sendEmail = async (to, subject, html, options = {}) => {
       subject,
       html,
       ...options.text ? { text: options.text } : {},
-      ...options.replyTo ? { replyTo: options.replyTo } : {}
+      ...options.replyTo ? { replyTo: options.replyTo } : {},
+      ...options.bcc?.length ? { bcc: options.bcc } : {}
     });
     if (error) {
       console.error(
@@ -314,7 +316,8 @@ var sendEmail = async (to, subject, html, options = {}) => {
       subject,
       html,
       ...options.text ? { text: options.text } : {},
-      ...options.replyTo ? { replyTo: options.replyTo } : {}
+      ...options.replyTo ? { replyTo: options.replyTo } : {},
+      ...options.bcc?.length ? { bcc: options.bcc } : {}
     });
     console.log("Message sent: %s", info.messageId);
     return true;
@@ -422,6 +425,44 @@ var sendRecruiterWelcomeEmail = async (email, companyName) => {
     layout("Bienvenue sur Dar L'Emploi", body),
     { from: FROM_REGISTER, text }
   );
+};
+var signature = () => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 0;border-top:1px solid ${BRAND.rule};">
+    <tr>
+      <td style="padding-top:18px;">
+        <p style="margin:0;color:${BRAND.navy};font-size:15px;font-weight:700;">L'&eacute;quipe Dar L'Emploi</p>
+        <p style="margin:4px 0 0;color:${BRAND.muted};font-size:13px;line-height:1.6;">
+          <a href="${APP_URL}" style="color:${BRAND.navy};text-decoration:none;">www.darlemploi.dz</a>
+          &nbsp;&middot;&nbsp;
+          <a href="mailto:info@darlemploi.dz" style="color:${BRAND.muted};text-decoration:none;">info@darlemploi.dz</a>
+        </p>
+      </td>
+    </tr>
+  </table>`;
+var bodyToParagraphs = (body) => body.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean).map((block) => paragraph(escapeForEmail(block).replace(/\n/g, "<br>"))).join("");
+var stripPlaceholders = (template) => fillPlaceholders(template, { email: "", firstName: "", lastName: "" }).replace(/[ \t]+([,.;:!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[ \t]+/gm, "");
+var fillPlaceholders = (template, recipient) => template.replace(/\{\{\s*prenom\s*\}\}/gi, recipient.firstName?.trim() || "").replace(/\{\{\s*nom\s*\}\}/gi, recipient.lastName?.trim() || "").replace(/\{\{\s*email\s*\}\}/gi, recipient.email);
+var sendAdminBroadcastEmail = async (to, content, options = {}) => {
+  const hasButton = Boolean(content.buttonLabel?.trim() && content.buttonUrl?.trim());
+  const html = layout(
+    escapeForEmail(content.subject),
+    `${bodyToParagraphs(content.body)}
+     ${hasButton ? button(content.buttonUrl.trim(), escapeForEmail(content.buttonLabel.trim())) : ""}
+     ${signature()}`
+  );
+  const text = [
+    content.body.trim(),
+    "",
+    ...hasButton ? [`${content.buttonLabel.trim()} : ${content.buttonUrl.trim()}`, ""] : [],
+    "L'\xE9quipe Dar L'Emploi",
+    "www.darlemploi.dz \xB7 info@darlemploi.dz"
+  ].join("\n");
+  return sendEmail(to, content.subject, html, {
+    from: FROM_INFO,
+    replyTo: "info@darlemploi.dz",
+    text,
+    ...options.bcc?.length ? { bcc: options.bcc } : {}
+  });
 };
 var sendWelcomeEmail = async (email, name, role) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name) : sendCandidateWelcomeEmail(email, name);
 var sendApplicationSentEmail = async (email, details) => {
@@ -5320,6 +5361,118 @@ var deleteSchedule = async (req, res, next) => {
   }
 };
 
+// server/controllers/adminEmail.controller.ts
+init_prisma();
+var MAX_BATCH = 12;
+var MAX_BCC = 200;
+var asContent = (body) => ({
+  subject: body.subject.trim(),
+  body: body.body,
+  buttonLabel: body.buttonLabel?.trim() || null,
+  buttonUrl: body.buttonUrl?.trim() || null
+});
+var sendBroadcast = async (req, res, next) => {
+  try {
+    const { userIds, mode = "individual" } = req.body;
+    const content = asContent(req.body);
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, message: "Aucun destinataire." });
+    }
+    if (!content.subject) {
+      return res.status(400).json({ success: false, message: "L'objet est obligatoire." });
+    }
+    if (!content.body?.trim()) {
+      return res.status(400).json({ success: false, message: "Le message est vide." });
+    }
+    if (content.buttonLabel && !content.buttonUrl) {
+      return res.status(400).json({ success: false, message: "Le bouton a un libell\xE9 mais pas de lien." });
+    }
+    const limit = mode === "grouped" ? MAX_BCC : MAX_BATCH;
+    if (userIds.length > limit) {
+      return res.status(400).json({
+        success: false,
+        message: `Lot trop grand : ${userIds.length} destinataires pour un maximum de ${limit}.`
+      });
+    }
+    const recipients = await prisma_default.user.findMany({
+      where: { id: { in: userIds }, status: { not: "DELETED" } },
+      select: { id: true, email: true, firstName: true, lastName: true }
+    });
+    if (recipients.length === 0) {
+      return res.status(400).json({ success: false, message: "Aucun destinataire valide." });
+    }
+    if (mode === "grouped") {
+      const flat = {
+        ...content,
+        subject: stripPlaceholders(content.subject),
+        body: stripPlaceholders(content.body)
+      };
+      const sent = await sendAdminBroadcastEmail("info@darlemploi.dz", flat, {
+        bcc: recipients.map((r) => r.email)
+      });
+      return res.json({
+        success: true,
+        data: {
+          mode,
+          sent: sent ? recipients.length : 0,
+          failed: sent ? 0 : recipients.length,
+          results: recipients.map((r) => ({ id: r.id, email: r.email, ok: sent }))
+        }
+      });
+    }
+    const results = [];
+    for (const r of recipients) {
+      try {
+        const ok = await sendAdminBroadcastEmail(r.email, {
+          ...content,
+          subject: fillPlaceholders(content.subject, r),
+          body: fillPlaceholders(content.body, r)
+        });
+        results.push({ id: r.id, email: r.email, ok });
+      } catch (err) {
+        results.push({
+          id: r.id,
+          email: r.email,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+    return res.json({
+      success: true,
+      data: {
+        mode,
+        sent: results.filter((r) => r.ok).length,
+        failed: results.filter((r) => !r.ok).length,
+        results
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var sendBroadcastPreview = async (req, res, next) => {
+  try {
+    const { to } = req.body;
+    const content = asContent(req.body);
+    if (!to?.trim()) {
+      return res.status(400).json({ success: false, message: "Adresse de test manquante." });
+    }
+    if (!content.subject || !content.body?.trim()) {
+      return res.status(400).json({ success: false, message: "Objet ou message manquant." });
+    }
+    const admin = { email: to.trim(), firstName: "Test", lastName: "Dar L'Emploi" };
+    const ok = await sendAdminBroadcastEmail(to.trim(), {
+      ...content,
+      subject: fillPlaceholders(content.subject, admin),
+      body: fillPlaceholders(content.body, admin)
+    });
+    return res.json({ success: ok, data: { sent: ok } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router6 = Router6();
 router6.use(protect);
@@ -5341,6 +5494,8 @@ router6.get("/schedules", listSchedules);
 router6.post("/schedules", createSchedule);
 router6.patch("/schedules/:id", updateSchedule);
 router6.delete("/schedules/:id", deleteSchedule);
+router6.post("/emails/send", sendBroadcast);
+router6.post("/emails/preview", sendBroadcastPreview);
 router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router6.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router6;
@@ -5950,13 +6105,13 @@ var createCheckout = async (input) => {
     );
   }
 };
-var verifyWebhookSignature = (rawBody, signature) => {
-  if (!signature) return false;
+var verifyWebhookSignature = (rawBody, signature2) => {
+  if (!signature2) return false;
   const key = readKey();
   if (!key) return false;
   const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(signature, "utf8");
+  const b = Buffer.from(signature2, "utf8");
   if (a.length !== b.length) return false;
   return crypto7.timingSafeEqual(a, b);
 };
@@ -6147,8 +6302,8 @@ var chargilyWebhook = async (req, res) => {
     console.error("Chargily webhook: raw body missing \u2014 cannot verify signature.");
     return res.status(400).json({ message: "Cannot verify payload" });
   }
-  const signature = req.header("signature") || req.header("x-signature") || void 0;
-  if (!verifyWebhookSignature(raw, signature)) {
+  const signature2 = req.header("signature") || req.header("x-signature") || void 0;
+  if (!verifyWebhookSignature(raw, signature2)) {
     console.warn("Chargily webhook: bad signature, rejected.");
     return res.status(403).json({ message: "Invalid signature" });
   }

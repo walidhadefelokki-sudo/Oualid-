@@ -63,6 +63,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       google: "Continue with Google",
       back: "Back",
       passwordsDontMatch: "Passwords do not match.",
+      companyNameRequired: "Please enter your company name.",
       invalidEmail: "Please enter a valid email address.",
       error: "An error occurred during registration."
     },
@@ -82,6 +83,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       google: "Continuer avec Google",
       back: "Retour",
       passwordsDontMatch: "Les mots de passe ne correspondent pas.",
+      companyNameRequired: "Veuillez indiquer le nom de votre entreprise.",
       invalidEmail: "Veuillez entrer une adresse email valide.",
       error: "Une erreur est survenue lors de l'inscription."
     },
@@ -101,6 +103,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       google: "المتابعة باستخدام جوجل",
       back: "رجوع",
       passwordsDontMatch: "كلمات المرور غير متطابقة.",
+      companyNameRequired: "يرجى إدخال اسم شركتك.",
       invalidEmail: "يرجى إدخال عنوان بريد إلكتروني صحيح.",
       error: "حدث خطأ أثناء التسجيل."
     }
@@ -143,6 +146,13 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       return;
     }
 
+    // `required` on the input accepts a single space, which would name the
+    // company " " and show candidates a blank employer on every offer.
+    if (role === 'employer' && !formData.companyName.trim()) {
+      setError(t.companyNameRequired);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -155,7 +165,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
         role: role === 'employer' ? 'RECRUITER' : 'CANDIDATE',
         firstName: role === 'user' ? (firstName || formData.name) : undefined,
         lastName: role === 'user' ? (lastName || undefined) : undefined,
-        companyName: role === 'employer' ? formData.companyName : undefined,
+        companyName: role === 'employer' ? formData.companyName.trim() : undefined,
       });
 
       localStorage.setItem('token', data.token);

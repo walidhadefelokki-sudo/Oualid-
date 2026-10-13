@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import prisma from "../utils/prisma";
+import { companyNameFrom } from "../utils/companyName";
 import { Role, User } from "@prisma/client";
 
 /** Identity extracted from a verified Google profile. Never from the client. */
@@ -130,10 +131,14 @@ export async function findOrCreateUserFromGoogle(
     // every recruiter. Mirroring that here keeps a Google recruiter in the
     // same state as a form-registered one.
     if (requestedRole === "RECRUITER" && created.recruiterProfile) {
+      // Google gives us no company name, so the email's local part stands in,
+      // exactly as it does for a form signup that left the field empty.
+      const fallbackName = companyNameFrom(undefined, identity.email);
+
       await tx.company.create({
         data: {
-          name: "My Company",
-          slug: slugify("My Company"),
+          name: fallbackName,
+          slug: slugify(fallbackName),
           plan: "FREE",
           members: {
             create: { role: "OWNER", recruiter: { connect: { id: created.recruiterProfile.id } } },

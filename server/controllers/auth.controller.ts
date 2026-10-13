@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../utils/prisma";
+import { companyNameFrom } from "../utils/companyName";
 import { AppError } from "../middleware/error.middleware";
 import { sendWelcomeEmail, deliverEmail } from "../utils/email";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
@@ -49,6 +50,7 @@ const slugify = (name: string) => {
   const suffix = crypto.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
+
 
 // After creating a User with a RecruiterProfile, this creates the
 // recruiter's Company and links them as its OWNER via CompanyMember.
@@ -107,7 +109,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     });
 
     if (role === "RECRUITER" && user.recruiterProfile) {
-      await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
+      await createCompanyForRecruiter(user.recruiterProfile.id, companyNameFrom(companyName, email));
     }
 
     // Send the welcome email. `user.role` is the persisted role, not the
@@ -119,7 +121,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     // fallback addressed every company by its raw email address.
     const greeting =
       user.role === "RECRUITER"
-        ? companyName || "My Company"
+        ? companyNameFrom(companyName, email)
         : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
 
     /* Awaited, with a ceiling.

@@ -111,6 +111,14 @@ init_prisma();
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+// server/utils/companyName.ts
+var companyNameFrom = (companyName, email) => {
+  const given = typeof companyName === "string" ? companyName.trim() : "";
+  if (given) return given;
+  const local = email.split("@")[0]?.trim();
+  return local || "Entreprise";
+};
+
 // server/middleware/error.middleware.ts
 var errorHandler = (err, req, res, next) => {
   const statusCode = err.statusCode || 500;
@@ -1120,9 +1128,9 @@ var register = async (req, res, next) => {
       }
     });
     if (role === "RECRUITER" && user.recruiterProfile) {
-      await createCompanyForRecruiter(user.recruiterProfile.id, companyName || "My Company");
+      await createCompanyForRecruiter(user.recruiterProfile.id, companyNameFrom(companyName, email));
     }
-    const greeting = user.role === "RECRUITER" ? companyName || "My Company" : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
+    const greeting = user.role === "RECRUITER" ? companyNameFrom(companyName, email) : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
     await deliverEmail("Welcome", () => sendWelcomeEmail(email, greeting, user.role));
     const token = signToken(user.id, user.role);
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
@@ -1355,10 +1363,11 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
       }
     });
     if (requestedRole === "RECRUITER" && created.recruiterProfile) {
+      const fallbackName = companyNameFrom(void 0, identity.email);
       await tx.company.create({
         data: {
-          name: "My Company",
-          slug: slugify2("My Company"),
+          name: fallbackName,
+          slug: slugify2(fallbackName),
           plan: "FREE",
           members: {
             create: { role: "OWNER", recruiter: { connect: { id: created.recruiterProfile.id } } }
@@ -1879,6 +1888,9 @@ var getRecruiterJobs = async (req, res, next) => {
     const jobs = await prisma_default.job.findMany({
       where: { recruiterId: user.recruiterProfile.id },
       include: {
+        // The sector, so the CV directory can group candidates by the kind of
+        // work they applied for rather than only by the individual offer.
+        category: { select: { name: true } },
         applications: {
           select: {
             status: true,
@@ -1904,6 +1916,7 @@ var getRecruiterJobs = async (req, res, next) => {
         id: job.id,
         title: job.title,
         location: job.location,
+        sector: job.category?.name ?? null,
         publishedAt: job.publishedAt,
         status: job.status,
         applicationsCount,

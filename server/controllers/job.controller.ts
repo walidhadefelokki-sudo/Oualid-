@@ -84,6 +84,9 @@ export const getRecruiterJobs = async (req: Request, res: Response, next: NextFu
     const jobs = await prisma.job.findMany({
       where: { recruiterId: user.recruiterProfile.id },
       include: {
+        // The sector, so the CV directory can group candidates by the kind of
+        // work they applied for rather than only by the individual offer.
+        category: { select: { name: true } },
         applications: {
           select: {
             status: true,
@@ -118,6 +121,7 @@ export const getRecruiterJobs = async (req: Request, res: Response, next: NextFu
         id: job.id,
         title: job.title,
         location: job.location,
+        sector: job.category?.name ?? null,
         publishedAt: job.publishedAt,
         status: job.status,
         applicationsCount,

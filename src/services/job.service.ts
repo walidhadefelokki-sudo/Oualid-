@@ -31,6 +31,8 @@ export interface RecruiterJobCard {
   id: string;
   title: string;
   location?: string | null;
+  /** The offer's sector, from its JobCategory. Null when none was chosen. */
+  sector?: string | null;
   publishedAt?: string | null;
   status: string;
   applicationsCount: number;

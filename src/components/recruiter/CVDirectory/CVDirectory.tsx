@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   Search,
@@ -34,6 +34,17 @@ export interface CandidateCV {
   oralPresentationScore?: number;
 
   isPreselected: boolean;
+
+  /**
+   * The offers this candidate applied to, and their sectors.
+   *
+   * Plural because one person can apply to several of the recruiter's offers:
+   * the directory shows them once, but filtering on any of their offers has
+   * to find them. Optional so a caller that has not been updated still works.
+   */
+  jobIds?: string[];
+  jobTitles?: string[];
+  sectors?: string[];
 
   cvUrl?: string;
   createdAt: string;
@@ -101,6 +112,12 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   const [experienceFilter, setExperienceFilter] =
     useState("Tous");
 
+  const [jobFilter, setJobFilter] =
+    useState("Tous");
+
+  const [sectorFilter, setSectorFilter] =
+    useState("Tous");
+
   const [sortBy, setSortBy] =
     useState("ai");
 
@@ -119,6 +136,21 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
     );
 
     return ["Tous", ...values];
+  }, [candidates]);
+
+  /* Built from the candidates on screen rather than from the recruiter's whole
+   * offer list: an offer nobody applied to would only ever filter to an empty
+   * table. Sorted, because these arrive in application order. */
+  const availableJobs = useMemo(() => {
+    const values = new Set<string>();
+    for (const c of candidates) for (const t of c.jobTitles ?? []) values.add(t);
+    return ["Tous", ...[...values].sort((a, b) => a.localeCompare(b, "fr"))];
+  }, [candidates]);
+
+  const availableSectors = useMemo(() => {
+    const values = new Set<string>();
+    for (const c of candidates) for (const s of c.sectors ?? []) values.add(s);
+    return ["Tous", ...[...values].sort((a, b) => a.localeCompare(b, "fr"))];
   }, [candidates]);
 
   /* ---------------------------------------------------------------------- */
@@ -153,6 +185,22 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
       data = data.filter(
         (candidate) =>
           candidate.location === locationFilter
+      );
+    }
+
+    /* Job offer */
+
+    if (jobFilter !== "Tous") {
+      data = data.filter((candidate) =>
+        (candidate.jobTitles ?? []).includes(jobFilter)
+      );
+    }
+
+    /* Sector */
+
+    if (sectorFilter !== "Tous") {
+      data = data.filter((candidate) =>
+        (candidate.sectors ?? []).includes(sectorFilter)
       );
     }
 
@@ -223,6 +271,8 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
     search,
     locationFilter,
     experienceFilter,
+    jobFilter,
+    sectorFilter,
     sortBy,
   ]);
 
@@ -233,6 +283,15 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   const totalPages = Math.ceil(
     filteredCandidates.length / PAGE_SIZE
   );
+
+  /* Narrowing the filters while deep in the list used to leave the reader on
+   * a page that no longer exists, showing an empty table over a count that
+   * said there were results. The page is clamped rather than reset so paging
+   * through an unchanged list still works. */
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(filteredCandidates.length / PAGE_SIZE));
+    if (currentPage > lastPage) setCurrentPage(lastPage);
+  }, [filteredCandidates.length, currentPage]);
 
   const paginatedCandidates =
     filteredCandidates.slice(
@@ -359,7 +418,9 @@ Parcourez, filtrez et classez chaque CV reçu.
 
       <div className="rounded-3xl bg-white border p-6">
 
-        <div className="grid lg:grid-cols-4 gap-4">
+        {/* Six controls, so three to a row rather than the four that left the
+            last two stranded on a row of their own. */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
           {/* Search */}
 
@@ -417,6 +478,36 @@ Parcourez, filtrez et classez chaque CV reçu.
                 value={exp}
               >
                 {exp}
+              </option>
+            ))}
+          </select>
+
+          {/* Job offer — the default option names the filter, because these
+              dropdowns carry no labels and three bare "Tous" would not say
+              which is which. */}
+
+          <select
+            value={jobFilter}
+            onChange={(e) => setJobFilter(e.target.value)}
+            className="rounded-xl border px-4 py-3"
+          >
+            {availableJobs.map((job) => (
+              <option key={job} value={job}>
+                {job === "Tous" ? "Toutes les offres" : job}
+              </option>
+            ))}
+          </select>
+
+          {/* Sector */}
+
+          <select
+            value={sectorFilter}
+            onChange={(e) => setSectorFilter(e.target.value)}
+            className="rounded-xl border px-4 py-3"
+          >
+            {availableSectors.map((sector) => (
+              <option key={sector} value={sector}>
+                {sector === "Tous" ? "Tous les secteurs" : sector}
               </option>
             ))}
           </select>

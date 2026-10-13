@@ -128,6 +128,7 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import JobOfferCard from "./JobOfferCard";
 import { shareJobLink } from "../utils/shareJob";
+import categoryService, { JobCategory } from "../services/category.service";
 
 // Language proficiency, shared by the CV preview and the PDF export so the
 // bar in the on-screen CV and the bar in the downloaded file always agree.
@@ -488,6 +489,7 @@ export default function Dashboard({
           return {
             jobId: job.id,
             jobTitle: job.title,
+            jobSector: job.sector ?? null,
             publishedAt: job.publishedAt
               ? new Date(job.publishedAt).toLocaleDateString("fr-FR")
               : undefined,
@@ -2079,10 +2081,27 @@ export default function Dashboard({
           oralPresentationScore: c.oralPresentationScore,
           isPreselected: c.isPreselected ?? false,
           createdAt: c.appliedAt ?? new Date().toISOString(),
+          // Every offer this person applied to, not just the one that won the
+          // dedupe below: someone who applied to three offers should be found
+          // by filtering on any of the three.
+          jobIds: group.jobId ? [group.jobId] : [],
+          jobTitles: group.jobTitle ? [group.jobTitle] : [],
+          sectors: group.jobSector ? [group.jobSector] : [],
         };
 
         const existing = byCandidate.get(key);
-        if (!existing || row.aiScore > existing.aiScore) byCandidate.set(key, row);
+        if (!existing) {
+          byCandidate.set(key, row);
+          continue;
+        }
+
+        // The highest-scoring application supplies the displayed details; the
+        // offers and sectors accumulate across all of them.
+        const merged = row.aiScore > existing.aiScore ? { ...row } : { ...existing };
+        merged.jobIds = [...new Set([...existing.jobIds, ...row.jobIds])];
+        merged.jobTitles = [...new Set([...existing.jobTitles, ...row.jobTitles])];
+        merged.sectors = [...new Set([...existing.sectors, ...row.sectors])];
+        byCandidate.set(key, merged);
       }
     }
 
@@ -2310,9 +2329,23 @@ export default function Dashboard({
     }
   };
 
+  /* The real sectors, so the posting form offers what the database actually
+   * has. The form used to list six hardcoded labels that matched none of the
+   * eight JobCategory rows, and sent none of them — every offer was stored
+   * with no sector at all, which is why filtering by one found nothing. */
+  const [sectors, setSectors] = useState<JobCategory[]>([]);
+
+  useEffect(() => {
+    categoryService
+      .getCategories()
+      .then(setSectors)
+      .catch((e) => console.error('Failed to load sectors:', e));
+  }, []);
+
   const [newJobData, setNewJobData] = useState({
     title: '',
-    sector: 'Technologie',
+    /** A JobCategory id. Empty until the sectors load or the recruiter picks. */
+    sector: '',
     wilaya: 'Alger',
     type: 'CDI',
     experience: 'Confirmé (3-5 ans)',
@@ -2339,7 +2372,10 @@ export default function Dashboard({
       return;
     }
 
-    if (!newJobData.title || !newJobData.description) {
+    // The sector is marked required on the form and nothing checked it, so
+    // every offer so far was stored without one. The CV directory filters on
+    // it, so an offer with no sector is invisible to that filter.
+    if (!newJobData.title || !newJobData.description || !newJobData.sector) {
       alert(language === 'ar' ? 'يرجى ملء جميع الحقول المطلوبة.' : 'Veuillez remplir tous les champs obligatoires.');
       return;
     }
@@ -2352,13 +2388,14 @@ export default function Dashboard({
         wilaya: newJobData.wilaya,
         type: (JOB_TYPE_MAP[newJobData.type] || 'FULL_TIME') as any,
         experienceLevel: (EXPERIENCE_MAP[newJobData.experience] || 'MID') as any,
+        categoryId: newJobData.sector || undefined,
       });
 
       await loadPostedJobs();
 
       setNewJobData({
         title: '',
-        sector: 'Technologie',
+        sector: '',
         type: 'CDI',
         description: '',
         requirements: '',
@@ -4404,12 +4441,17 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                       onChange={(e) => setNewJobData({...newJobData, sector: e.target.value})}
                       className={`w-full px-6 py-4 rounded-2xl border border-gray-100 outline-none focus:border-[#173E7D] transition-all bg-white text-gray-700 ${isRTL ? 'text-right' : ''}`}
                     >
-                      <option value="Technologie">{lt("Technology", "Technologie", "التكنولوجيا")}</option>
-                      <option value="Santé">{lt("Health", "Santé", "الصحة")}</option>
-                      <option value="Finance">{lt("Finance", "Finance", "المالية")}</option>
-                      <option value="Éducation">{lt("Education", "Éducation", "التعليم")}</option>
-                      <option value="Construction">{lt("Construction", "Construction", "البناء")}</option>
-                      <option value="Commerce">{lt("Trade", "Commerce", "التجارة")}</option>
+                      {/* Value is the JobCategory id, which is what the API
+                          stores. The old labels were display text that went
+                          nowhere. */}
+                      <option value="">
+                        {lt("Choose a sector", "Choisir un secteur", "اختر قطاعًا")}
+                      </option>
+                      {sectors.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>

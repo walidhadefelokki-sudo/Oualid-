@@ -566,8 +566,19 @@ model JobCategory {
 
   jobs Job[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  // --- Freelance marketplace -------------------------------------------
+  // Shared with recruitment on purpose: one sector list, one admin screen.
+  services          ServiceListing[]    @relation("ServiceCategory")
+  freelanceProjects FreelanceProject[]  @relation("ProjectCategory")
+  freelancers       FreelancerProfile[] @relation("FreelancerCategory")
+  portfolioProjects PortfolioProject[]  @relation("PortfolioProjectCategory")
+
+  /// Subcategories. A category with a parent is a subcategory of it.
+  parentId String?
+  parent   JobCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children JobCategory[] @relation("CategoryTree")
 }
 
 //////////////////////////////////////////////////////////
@@ -582,7 +593,11 @@ model Skill {
 
   jobs JobSkill[]
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime          @default(now())
+  // --- Freelance marketplace -------------------------------------------
+  freelancers FreelancerSkill[]
+  services    ServiceSkill[]
+  projects    ProjectSkill[]
 }
 
 //////////////////////////////////////////////////////////
@@ -756,11 +771,24 @@ model FileAsset {
   size      Int?
   createdAt DateTime @default(now())
 
-  avatars           User[]             @relation("UserAvatar")
-  resumes           CandidateProfile[] @relation("CandidateResume")
-  logos             Company[]          @relation("CompanyLogo")
-  oralPresentations OralPresentation[]
-  applications      Application[]
+  avatars                User[]                  @relation("UserAvatar")
+  resumes                CandidateProfile[]      @relation("CandidateResume")
+  logos                  Company[]               @relation("CompanyLogo")
+  oralPresentations      OralPresentation[]
+  applications           Application[]
+  // --- Freelance marketplace -------------------------------------------
+  serviceMedia           ServiceMedia[]          @relation("ServiceMedia")
+  projectAttachments     ProjectAttachment[]     @relation("ProjectAttachment")
+  proposalAttachments    ProposalAttachment[]    @relation("ProposalAttachment")
+  deliveryFiles          DeliveryFile[]          @relation("DeliveryFile")
+  messageAttachments     MessageAttachment[]     @relation("MessageAttachment")
+  portfolioCovers        Portfolio[]             @relation("PortfolioCover")
+  portfolioProjectCovers PortfolioProject[]      @relation("PortfolioProjectCover")
+  portfolioMedia         PortfolioProjectMedia[] @relation("PortfolioMedia")
+  paymentReceipts        MarketplacePayment[]    @relation("PaymentReceipt")
+  invoiceFiles           MarketplaceInvoice[]    @relation("InvoiceFile")
+  verificationDocuments  IdentityVerification[]  @relation("VerificationDocument")
+  verificationSelfies    IdentityVerification[]  @relation("VerificationSelfie")
 }
 
 model User {
@@ -806,10 +834,31 @@ model User {
   crmNotesAbout   CrmNote[]       @relation("CrmNoteSubject")
   deviceTokens    DeviceToken[]
 
-  packOrders       PackOrder[]     @relation("PackOrderBuyer")
-  schedulesHosted  ScheduleEvent[] @relation("ScheduleHost")
-  schedulesCreated ScheduleEvent[] @relation("ScheduleCreator")
-  scheduleGuest    ScheduleGuest[] @relation("ScheduleGuest")
+  packOrders             PackOrder[]               @relation("PackOrderBuyer")
+  schedulesHosted        ScheduleEvent[]           @relation("ScheduleHost")
+  schedulesCreated       ScheduleEvent[]           @relation("ScheduleCreator")
+  scheduleGuest          ScheduleGuest[]           @relation("ScheduleGuest")
+  // --- Freelance marketplace -------------------------------------------
+  freelancerProfile      FreelancerProfile?
+  freelanceProjects      FreelanceProject[]        @relation("ProjectClient")
+  clientOrders           FreelanceOrder[]          @relation("OrderClient")
+  orderEvents            OrderEvent[]              @relation("OrderEventActor")
+  creditWallet           CreditWallet?
+  ledgerEntriesCreated   CreditLedgerEntry[]       @relation("LedgerActor")
+  freelanceSubscriptions FreelanceSubscription[]
+  marketplacePayments    MarketplacePayment[]
+  paymentsReviewed       MarketplacePayment[]      @relation("PaymentReviewer")
+  conversations          ConversationParticipant[]
+  messagesSent           Message[]                 @relation("MessageSender")
+  reviewsWritten         FreelanceReview[]         @relation("ReviewAuthor")
+  reviewsReceived        FreelanceReview[]         @relation("ReviewTarget")
+  reportsFiled           Report[]                  @relation("ReportReporter")
+  reportsAbout           Report[]                  @relation("ReportedUser")
+  reportsResolved        Report[]                  @relation("ReportResolver")
+  disputesOpened         Dispute[]                 @relation("DisputeOpener")
+  disputesAssigned       Dispute[]                 @relation("DisputeAssignee")
+  moderationActions      ModerationRecord[]        @relation("ModerationActor")
+  verificationsReviewed  IdentityVerification[]    @relation("VerificationReviewer")
 
   @@index([email])
   @@index([role])
@@ -939,6 +988,9 @@ model Company {
   packOrders        PackOrder[]
   jobs              Job[]
   favoriteCompanies FavoriteCompany[]
+  // --- Freelance marketplace -------------------------------------------
+  // An existing employer hires freelancers from the same business account.
+  freelanceProjects FreelanceProject[] @relation("ProjectCompany")
 
   @@index([slug])
 }
@@ -1253,4 +1305,1244 @@ enum ScheduleStatus {
   CONFIRMED
   DONE
   CANCELLED
+}
+
+//////////////////////////////////////////////////////////
+// FREELANCE MARKETPLACE
+//
+// Dar L'Emploi Freelance extends the recruitment platform rather than
+// standing beside it: one User, one login, one set of companies. A user is
+// not a freelancer *or* a client — they hold a FreelancerProfile when they
+// sell and act as a client through their own User row when they buy, so the
+// same account does both without a second identity.
+//
+// Money is Decimal(12,2), never Float: a Float cannot hold 2500.10 exactly
+// and these values are invoiced. Credits are whole numbers and live in an
+// append-only ledger, because a balance that can be set rather than derived
+// is a balance that can be argued with.
+//////////////////////////////////////////////////////////
+
+enum FreelancerAvailability {
+  FULL_TIME
+  PART_TIME
+  OCCASIONAL
+  UNAVAILABLE
+}
+
+/// Earned from real completed work and ratings, never self-assigned.
+enum SellerLevel {
+  NEW
+  LEVEL_1
+  LEVEL_2
+  TOP_RATED
+}
+
+/// Shared by services, projects and portfolios — anything a moderator sees
+/// before the public does.
+enum ModerationState {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ServiceStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  PAUSED
+  EXPIRED
+  REJECTED
+}
+
+enum PackageTier {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum BudgetType {
+  FIXED
+  HOURLY
+}
+
+enum ProjectVisibility {
+  PUBLIC
+  INVITE_ONLY
+}
+
+enum FreelanceProjectStatus {
+  DRAFT
+  PENDING
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  COMPLETED
+  REJECTED
+}
+
+enum ProposalStatus {
+  SENT
+  VIEWED
+  SHORTLISTED
+  SELECTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum FreelanceOrderStatus {
+  CREATED
+  IN_PROGRESS
+  DELIVERED
+  REVISION_REQUESTED
+  COMPLETED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  DELIVERED
+  APPROVED
+}
+
+/// Every reason a balance can move. Stored on an append-only ledger row so
+/// the balance is a consequence of history rather than a number someone set.
+enum CreditEntryType {
+  PURCHASE
+  SERVICE_PUBLICATION
+  PROPOSAL_SUBMISSION
+  BOOST_PURCHASE
+  REFUND
+  PROMOTION
+  TRIAL_GRANT
+  ADMIN_ADJUSTMENT
+  EXPIRATION
+}
+
+enum MarketplacePaymentStatus {
+  PENDING
+  AWAITING_REVIEW
+  PAID
+  REJECTED
+  FAILED
+  REFUNDED
+  EXPIRED
+}
+
+/// CCP and BaridiMob are receipt-and-review, not gateways: they produce a
+/// pending payment a human approves, never an automatic credit grant.
+enum MarketplacePaymentMethod {
+  CHARGILY_CIB
+  CHARGILY_EDAHABIA
+  CCP_TRANSFER
+  BARIDIMOB
+  BANK_TRANSFER
+  ADMIN_GRANT
+}
+
+enum FreelancePlanTier {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum FreelanceSubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum BoostPlacement {
+  HOMEPAGE
+  CATEGORY
+  PROPOSAL
+}
+
+enum PortfolioSectionType {
+  HEADER
+  ABOUT
+  SKILLS
+  FEATURED_PROJECTS
+  SERVICES
+  EXPERIENCE
+  EDUCATION
+  CERTIFICATES
+  REVIEWS
+  CONTACT
+}
+
+enum ReportReason {
+  SCAM
+  FAKE_PROFILE
+  OFFENSIVE
+  SUSPICIOUS_PAYMENT
+  ABUSE
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  ACTIONED
+  DISMISSED
+}
+
+enum DisputeStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  CLOSED
+}
+
+//////////////////////////////////////////////////////////
+// FREELANCER PROFILE
+//////////////////////////////////////////////////////////
+
+model FreelancerProfile {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Public handle behind /@username. Unique and immutable-ish: it is the
+  /// address a freelancer prints on a card.
+  username String @unique
+
+  displayName String
+  title       String?
+  bio         String?
+
+  categoryId String?
+  category   JobCategory? @relation("FreelancerCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+
+  wilaya    String?
+  languages Language[]
+
+  /// Per hour, in DZD. Optional: not every freelancer sells time.
+  hourlyRate Decimal? @db.Decimal(12, 2)
+
+  availability FreelancerAvailability @default(OCCASIONAL)
+
+  /// Derived from completed orders and ratings by a scheduled recomputation.
+  /// Never writable from the client.
+  level SellerLevel @default(NEW)
+
+  /// Set only by a passed verification review, never by the freelancer.
+  identityVerified Boolean   @default(false)
+  verifiedAt       DateTime?
+
+  /// One free publication and a proposal allowance, once per account. Held
+  /// here rather than inferred from the ledger so a user cannot earn another
+  /// by deleting and recreating their profile.
+  trialClaimedAt DateTime?
+
+  completedOrders Int      @default(0)
+  ratingAverage   Decimal? @db.Decimal(3, 2)
+  ratingCount     Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skills        FreelancerSkill[]
+  services      ServiceListing[]
+  proposals     Proposal[]
+  orders        FreelanceOrder[]        @relation("OrderFreelancer")
+  portfolio     Portfolio?
+  subscriptions FreelanceSubscription[]
+  boosts        Boost[]
+  verification  IdentityVerification?
+
+  @@index([categoryId])
+  @@index([level])
+  @@index([wilaya])
+}
+
+model FreelancerSkill {
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([freelancerId, skillId])
+  @@index([skillId])
+}
+
+/// Identity documents. Separate from the profile so the document columns can
+/// be read by the verification flow alone, and never join a public query.
+model IdentityVerification {
+  id String @id @default(uuid())
+
+  freelancerId String            @unique
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  documentId String?
+  document   FileAsset? @relation("VerificationDocument", fields: [documentId], references: [id], onDelete: SetNull)
+
+  selfieId String?
+  selfie   FileAsset? @relation("VerificationSelfie", fields: [selfieId], references: [id], onDelete: SetNull)
+
+  state           ModerationState @default(PENDING)
+  rejectionReason String?
+
+  reviewedById String?
+  reviewedBy   User?     @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////////
+// SERVICES
+//////////////////////////////////////////////////////////
+
+model ServiceListing {
+  id String @id @default(uuid())
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  title String
+  slug  String @unique
+
+  categoryId String?
+  category   JobCategory? @relation("ServiceCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+
+  description String
+
+  status ServiceStatus @default(DRAFT)
+
+  rejectionReason String?
+
+  publishedAt DateTime?
+  /// Publication buys a window, not a permanent listing.
+  expiresAt   DateTime?
+
+  /// Public views only. Owner previews and edit screens are not traffic.
+  views Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  packages     ServicePackage[]
+  addons       ServiceAddon[]
+  faqs         ServiceFaq[]
+  requirements ServiceRequirement[]
+  media        ServiceMedia[]
+  skills       ServiceSkill[]
+  orders       FreelanceOrder[]
+  boosts       Boost[]
+  reports      Report[]
+
+  @@index([freelancerId])
+  @@index([categoryId])
+  @@index([status, publishedAt])
+  @@index([status, expiresAt])
+}
+
+model ServicePackage {
+  id String @id @default(uuid())
+
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  tier PackageTier
+
+  name        String
+  description String?
+
+  price Decimal @db.Decimal(12, 2)
+
+  deliveryDays Int
+  revisions    Int @default(0)
+
+  features String[]
+
+  orders FreelanceOrder[]
+
+  /// One package per tier per service, so "Standard" is unambiguous.
+  @@unique([serviceId, tier])
+}
+
+model ServiceAddon {
+  id String @id @default(uuid())
+
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  name  String
+  price Decimal @db.Decimal(12, 2)
+
+  /// Days added to the package's delivery time when chosen.
+  extraDays Int @default(0)
+
+  orderAddons FreelanceOrderAddon[]
+
+  @@index([serviceId])
+}
+
+model ServiceFaq {
+  id String @id @default(uuid())
+
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  question String
+  answer   String
+  position Int    @default(0)
+
+  @@index([serviceId])
+}
+
+/// What the buyer must supply before work can start.
+model ServiceRequirement {
+  id String @id @default(uuid())
+
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  prompt   String
+  required Boolean @default(true)
+  position Int     @default(0)
+
+  @@index([serviceId])
+}
+
+model ServiceMedia {
+  id String @id @default(uuid())
+
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("ServiceMedia", fields: [fileId], references: [id], onDelete: Cascade)
+
+  position Int @default(0)
+
+  @@index([serviceId])
+}
+
+model ServiceSkill {
+  serviceId String
+  service   ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, skillId])
+  @@index([skillId])
+}
+
+//////////////////////////////////////////////////////////
+// CLIENT PROJECTS AND PROPOSALS
+//////////////////////////////////////////////////////////
+
+model FreelanceProject {
+  id String @id @default(uuid())
+
+  /// The client is a plain User: posting work needs no seller profile, and
+  /// publishing a project is free.
+  clientId String
+  client   User   @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// Set when an existing employer hires through their business account.
+  companyId String?
+  company   Company? @relation("ProjectCompany", fields: [companyId], references: [id], onDelete: SetNull)
+
+  title       String
+  slug        String @unique
+  description String
+
+  categoryId String?
+  category   JobCategory? @relation("ProjectCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+
+  budgetType BudgetType @default(FIXED)
+  budgetMin  Decimal?   @db.Decimal(12, 2)
+  budgetMax  Decimal?   @db.Decimal(12, 2)
+
+  deadline DateTime?
+
+  remote Boolean @default(true)
+  wilaya String?
+
+  visibility ProjectVisibility      @default(PUBLIC)
+  status     FreelanceProjectStatus @default(DRAFT)
+
+  rejectionReason String?
+
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skills      ProjectSkill[]
+  attachments ProjectAttachment[]
+  proposals   Proposal[]
+  invites     ProjectInvite[]
+  orders      FreelanceOrder[]
+  reports     Report[]
+
+  @@index([clientId])
+  @@index([categoryId])
+  @@index([status, publishedAt])
+}
+
+model ProjectSkill {
+  projectId String
+  project   FreelanceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, skillId])
+  @@index([skillId])
+}
+
+model ProjectAttachment {
+  id String @id @default(uuid())
+
+  projectId String
+  project   FreelanceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("ProjectAttachment", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// Who may see an INVITE_ONLY project.
+model ProjectInvite {
+  projectId String
+  project   FreelanceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  freelancerId String
+
+  invitedAt DateTime @default(now())
+
+  @@id([projectId, freelancerId])
+}
+
+model Proposal {
+  id String @id @default(uuid())
+
+  projectId String
+  project   FreelanceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  coverLetter String
+
+  price        Decimal @db.Decimal(12, 2)
+  deliveryDays Int
+
+  status ProposalStatus @default(SENT)
+
+  viewedAt      DateTime?
+  shortlistedAt DateTime?
+  decidedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments ProposalAttachment[]
+  boosts      Boost[]
+
+  /// One proposal per freelancer per project. The constraint, not a check in
+  /// the handler, is what stops a double-submit charging twice.
+  @@unique([projectId, freelancerId])
+  @@index([freelancerId, status])
+}
+
+model ProposalAttachment {
+  id String @id @default(uuid())
+
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("ProposalAttachment", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+//////////////////////////////////////////////////////////
+// ORDERS
+//////////////////////////////////////////////////////////
+
+model FreelanceOrder {
+  id        String @id @default(uuid())
+  reference String @unique
+
+  clientId String
+  client   User   @relation("OrderClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation("OrderFreelancer", fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  /// An order comes from a purchased service package or from a hired
+  /// proposal. Exactly one of these is set.
+  serviceId String?
+  service   ServiceListing? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  packageId String?
+  package   ServicePackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   FreelanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// Priced by the server from the package and add-ons. A client-supplied
+  /// total is never trusted.
+  agreedPrice Decimal @db.Decimal(12, 2)
+  currency    String  @default("DZD")
+
+  deliveryDueAt DateTime?
+
+  status FreelanceOrderStatus @default(CREATED)
+
+  /// The platform does not hold the money for the work itself under the MVP
+  /// model: the two sides settle directly. Revenue is credits and plans.
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  addons       FreelanceOrderAddon[]
+  milestones   OrderMilestone[]
+  deliveries   OrderDelivery[]
+  events       OrderEvent[]
+  reviews      FreelanceReview[]
+  disputes     Dispute[]
+  conversation Conversation?
+
+  @@index([clientId, status])
+  @@index([freelancerId, status])
+}
+
+model FreelanceOrderAddon {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  addonId String?
+  addon   ServiceAddon? @relation(fields: [addonId], references: [id], onDelete: SetNull)
+
+  /// Copied at purchase: an add-on repriced later must not restate a past
+  /// order's total.
+  name  String
+  price Decimal @db.Decimal(12, 2)
+
+  @@index([orderId])
+}
+
+model OrderMilestone {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  title  String
+  amount Decimal?  @db.Decimal(12, 2)
+  dueAt  DateTime?
+
+  status   MilestoneStatus @default(PENDING)
+  position Int             @default(0)
+
+  @@index([orderId])
+}
+
+model OrderDelivery {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  message String?
+
+  /// Rises with each resubmission, so a revision history is readable.
+  attempt Int @default(1)
+
+  revisionRequested Boolean @default(false)
+  revisionNote      String?
+
+  acceptedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  files DeliveryFile[]
+
+  @@index([orderId])
+}
+
+model DeliveryFile {
+  id String @id @default(uuid())
+
+  deliveryId String
+  delivery   OrderDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("DeliveryFile", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+}
+
+/// Append-only trail of status changes, so a dispute can be read rather than
+/// reconstructed.
+model OrderEvent {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("OrderEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  fromStatus FreelanceOrderStatus?
+  toStatus   FreelanceOrderStatus
+  note       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+//////////////////////////////////////////////////////////
+// REVIEWS
+//////////////////////////////////////////////////////////
+
+model FreelanceReview {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  targetId String
+  target   User   @relation("ReviewTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  rating Int
+
+  /// The published criteria, each 1-5 and optional on a client review.
+  qualityRating       Int?
+  communicationRating Int?
+  deadlineRating      Int?
+
+  comment String?
+
+  /// One reply from the reviewed party, not a thread.
+  response    String?
+  respondedAt DateTime?
+
+  state ModerationState @default(APPROVED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One review per person per order, enforced by the database rather than
+  /// by a check that a retry can race.
+  @@unique([orderId, authorId])
+  @@index([targetId])
+}
+
+//////////////////////////////////////////////////////////
+// MESSAGING
+//////////////////////////////////////////////////////////
+
+model Conversation {
+  id String @id @default(uuid())
+
+  /// Optional context, so a thread opened from a service or an order can say
+  /// what it is about.
+  orderId String?         @unique
+  order   FreelanceOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([updatedAt])
+}
+
+model ConversationParticipant {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  lastReadAt DateTime?
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id String @id @default(uuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  body String?
+
+  /// Raised when a phone number or external link appears early in a thread.
+  /// A signal for moderators, never an automatic ban.
+  flagged    Boolean @default(false)
+  flagReason String?
+
+  createdAt DateTime @default(now())
+
+  attachments MessageAttachment[]
+  reports     Report[]
+
+  @@index([conversationId, createdAt])
+}
+
+model MessageAttachment {
+  id String @id @default(uuid())
+
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("MessageAttachment", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+//////////////////////////////////////////////////////////
+// CREDITS
+//////////////////////////////////////////////////////////
+
+model CreditWallet {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// A cache of the ledger, updated in the same transaction as the entry it
+  /// follows. The ledger is the truth; this exists so a balance check is one
+  /// row rather than a sum.
+  balance Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries CreditLedgerEntry[]
+
+  @@index([userId])
+}
+
+model CreditLedgerEntry {
+  id String @id @default(uuid())
+
+  walletId String
+  wallet   CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  type CreditEntryType
+
+  /// Signed: negative spends, positive grants. Never zero.
+  delta Int
+
+  /// The balance after this entry, so history can be read without replaying
+  /// every row before it.
+  balanceAfter Int
+
+  /// What caused it — a service id, a proposal id, a payment id.
+  referenceType String?
+  referenceId   String?
+
+  note String?
+
+  /// The guard against a retried request spending twice. A repeat of the
+  /// same operation collides here instead of making a second entry.
+  idempotencyKey String? @unique
+
+  createdById String?
+  createdBy   User?   @relation("LedgerActor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+/// Admin-editable, because the launch prices in the brief are proposals and
+/// not confirmed market data.
+model CreditPack {
+  id String @id @default(uuid())
+
+  name     String
+  credits  Int
+  price    Decimal @db.Decimal(12, 2)
+  currency String  @default("DZD")
+
+  active   Boolean @default(true)
+  position Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments MarketplacePayment[]
+}
+
+//////////////////////////////////////////////////////////
+// SUBSCRIPTIONS AND BOOSTS
+//
+// Separate from the recruiter Subscription model, which hangs off a Company
+// and carries RecruiterPlan. A freelance plan belongs to a person and has
+// different quotas; overloading one model would mean a nullable company and
+// two meanings for every row.
+//////////////////////////////////////////////////////////
+
+model FreelancePlan {
+  id String @id @default(uuid())
+
+  tier FreelancePlanTier @unique
+
+  name     String
+  price    Decimal @db.Decimal(12, 2)
+  currency String  @default("DZD")
+
+  /// Null means unlimited, within the operational safeguards applied in code.
+  maxActiveServices    Int?
+  monthlyProposals     Int?
+  maxPortfolioProjects Int?
+
+  prioritySearch    Boolean @default(false)
+  removableBranding Boolean @default(false)
+  customSubdomain   Boolean @default(false)
+  weeklyBoosts      Int     @default(0)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions FreelanceSubscription[]
+}
+
+model FreelanceSubscription {
+  id String @id @default(uuid())
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   FreelancePlan @relation(fields: [planId], references: [id])
+
+  status FreelanceSubscriptionStatus @default(ACTIVE)
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  /// Reset when the period rolls over, so a quota is per period rather than
+  /// per lifetime.
+  proposalsUsedThisPeriod Int      @default(0)
+  periodStartedAt         DateTime
+
+  autoRenew Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments MarketplacePayment[]
+
+  @@index([freelancerId, status])
+}
+
+model Boost {
+  id String @id @default(uuid())
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  /// A boost promotes one service or one proposal.
+  serviceId String?
+  service   ServiceListing? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  proposalId String?
+  proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  placement BoostPlacement
+  startsAt  DateTime
+  endsAt    DateTime
+
+  /// What was paid, kept with the boost so a later price change does not
+  /// rewrite history.
+  pricePaid   Decimal? @db.Decimal(12, 2)
+  creditsPaid Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([placement, startsAt, endsAt])
+  @@index([freelancerId])
+}
+
+//////////////////////////////////////////////////////////
+// MARKETPLACE PAYMENTS
+//////////////////////////////////////////////////////////
+
+model MarketplacePayment {
+  id        String @id @default(uuid())
+  reference String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// A payment buys exactly one of these.
+  creditPackId String?
+  creditPack   CreditPack? @relation(fields: [creditPackId], references: [id], onDelete: SetNull)
+
+  subscriptionId String?
+  subscription   FreelanceSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("DZD")
+
+  method MarketplacePaymentMethod
+  status MarketplacePaymentStatus @default(PENDING)
+
+  /// The gateway's own id. Unique so a replayed webhook cannot be processed
+  /// a second time.
+  providerCheckoutId String? @unique
+  providerPayload    Json?
+
+  paidAt DateTime?
+
+  /// Manual transfers: the uploaded proof and the human who judged it. A
+  /// screenshot alone never grants credits.
+  receiptId String?
+  receipt   FileAsset? @relation("PaymentReceipt", fields: [receiptId], references: [id], onDelete: SetNull)
+
+  reviewedById    String?
+  reviewedBy      User?     @relation("PaymentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice MarketplaceInvoice?
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+model MarketplaceInvoice {
+  id String @id @default(uuid())
+
+  paymentId String             @unique
+  payment   MarketplacePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  number String @unique
+
+  issuedAt DateTime @default(now())
+
+  /// The rendered document, once generated.
+  fileId String?
+  file   FileAsset? @relation("InvoiceFile", fields: [fileId], references: [id], onDelete: SetNull)
+}
+
+//////////////////////////////////////////////////////////
+// PORTFOLIOS
+//////////////////////////////////////////////////////////
+
+model Portfolio {
+  id String @id @default(uuid())
+
+  freelancerId String            @unique
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  /// Draft until published. An unpublished portfolio is never served.
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+
+  template    String @default("default")
+  accentColor String @default("#173E7D")
+  fontFamily  String @default("default")
+
+  /// Which language the public page renders in by default.
+  defaultLanguage Language @default(FR)
+
+  seoTitle       String?
+  seoDescription String?
+
+  coverId String?
+  cover   FileAsset? @relation("PortfolioCover", fields: [coverId], references: [id], onDelete: SetNull)
+
+  /// Public page views only.
+  views Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections PortfolioSection[]
+  projects PortfolioProject[]
+}
+
+model PortfolioSection {
+  id String @id @default(uuid())
+
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  type     PortfolioSectionType
+  visible  Boolean              @default(true)
+  position Int                  @default(0)
+
+  /// Per-language overrides for the heading and body of this section.
+  content Json?
+
+  @@unique([portfolioId, type])
+}
+
+model PortfolioProject {
+  id String @id @default(uuid())
+
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+
+  categoryId String?
+  category   JobCategory? @relation("PortfolioProjectCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+
+  role        String?
+  tools       String[]
+  clientName  String?
+  externalUrl String?
+  /// YouTube or Vimeo, kept as a link rather than a re-hosted file.
+  videoUrl    String?
+
+  completedAt DateTime?
+
+  /// At most three, enforced in code against the plan's limit.
+  featured Boolean @default(false)
+  position Int     @default(0)
+
+  coverId String?
+  cover   FileAsset? @relation("PortfolioProjectCover", fields: [coverId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media PortfolioProjectMedia[]
+
+  @@index([portfolioId])
+}
+
+model PortfolioProjectMedia {
+  id String @id @default(uuid())
+
+  projectId String
+  project   PortfolioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fileId String
+  file   FileAsset @relation("PortfolioMedia", fields: [fileId], references: [id], onDelete: Cascade)
+
+  position Int @default(0)
+
+  @@index([projectId])
+}
+
+//////////////////////////////////////////////////////////
+// MODERATION, REPORTS, DISPUTES
+//////////////////////////////////////////////////////////
+
+/// One row per moderator decision, on whatever was judged. Kept apart from
+/// the moderated record so a history survives edits and resubmissions.
+model ModerationRecord {
+  id String @id @default(uuid())
+
+  entityType String
+  entityId   String
+
+  state  ModerationState
+  reason String?
+
+  moderatorId String?
+  moderator   User?   @relation("ModerationActor", fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([state, createdAt])
+}
+
+model Report {
+  id String @id @default(uuid())
+
+  reporterId String
+  reporter   User   @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  /// Exactly one target is set.
+  serviceId String?
+  service   ServiceListing? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   FreelanceProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  reportedUserId String?
+  reportedUser   User?   @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  reason ReportReason
+  detail String?
+
+  status ReportStatus @default(OPEN)
+
+  /// A report is private to the reporter and to staff. It is never shown on
+  /// the thing it is about.
+  resolvedById String?
+  resolvedBy   User?     @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt   DateTime?
+  resolution   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+}
+
+model Dispute {
+  id String @id @default(uuid())
+
+  orderId String
+  order   FreelanceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  openedById String
+  openedBy   User   @relation("DisputeOpener", fields: [openedById], references: [id], onDelete: Cascade)
+
+  subject String
+  detail  String
+
+  status DisputeStatus @default(OPEN)
+
+  assignedToId String?
+  assignedTo   User?   @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  resolution String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([orderId])
 }

@@ -1,11 +1,20 @@
 import React from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { I18nProvider, useI18n } from "./i18n";
+import { AuthProvider } from "./auth";
 import PublicLayout from "./PublicLayout";
+import WorkspaceLayout from "./WorkspaceLayout";
 import Home from "./pages/Home";
 import Browse, { Categories } from "./pages/Browse";
-import Workspace from "./pages/Workspace";
-import { AuthProvider } from "./auth";
+import SignIn from "./pages/SignIn";
+import Overview from "./pages/workspace/Overview";
+import {
+  MyCredits,
+  MyOrders,
+  MyProfile,
+  MyProposals,
+  MyServices,
+} from "./pages/workspace/Sections";
 
 /**
  * Dar L'Emploi Freelance.
@@ -14,11 +23,11 @@ import { AuthProvider } from "./auth";
  * only line that changes when it moves to freelance.darlemploi.dz, because
  * every route below is written relative to it.
  *
- * The site tree has four areas — public, freelancer, client, admin. Only the
- * public one has pages so far. Routes for the other three are deliberately
- * absent rather than present and empty: a menu entry that opens a blank
- * dashboard is the "fake dashboard" the brief rules out, and an honest 404
- * is more useful than a shell with nothing behind it.
+ * The site tree has four areas — public, freelancer, client, admin. The
+ * first two have pages. Routes for the client and admin areas are
+ * deliberately absent rather than present and empty: a menu entry that opens
+ * a blank dashboard is the fake dashboard the brief rules out, and an honest
+ * 404 is more useful than a shell with nothing behind it.
  */
 
 const BASENAME = "/freelance";
@@ -28,9 +37,7 @@ const NotFound: React.FC = () => {
   return (
     <div className="max-w-xl mx-auto px-4 py-24 text-center">
       <p className="text-6xl font-display font-bold text-[#173E7D]/20">404</p>
-      <h1 className="mt-4 text-2xl font-display font-bold text-[#173E7D]">
-        Page introuvable
-      </h1>
+      <h1 className="mt-4 text-2xl font-display font-bold text-[#173E7D]">Page introuvable</h1>
       <p className="mt-2 text-[#2B3442]/60">
         Cette page n'existe pas encore sur la marketplace.
       </p>
@@ -71,10 +78,21 @@ const FreelanceApp: React.FC = () => (
             <Route path="recherche" element={<Services />} />
             <Route path="projets" element={<Projects />} />
             <Route path="freelances" element={<Freelancers />} />
-            {/* The freelancer workspace. One route so far: the dashboard,
-                which shows the activation form when the account has no
-                profile yet. */}
-            <Route path="freelance-espace" element={<Workspace />} />
+
+            <Route path="connexion" element={<SignIn mode="signin" />} />
+            <Route path="inscription" element={<SignIn mode="signup" />} />
+
+            {/* The workspace gates on signed-in, then on activated, before
+                any section renders. */}
+            <Route path="freelance-espace" element={<WorkspaceLayout />}>
+              <Route index element={<Overview />} />
+              <Route path="services" element={<MyServices />} />
+              <Route path="propositions" element={<MyProposals />} />
+              <Route path="commandes" element={<MyOrders />} />
+              <Route path="credits" element={<MyCredits />} />
+              <Route path="profil" element={<MyProfile />} />
+            </Route>
+
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

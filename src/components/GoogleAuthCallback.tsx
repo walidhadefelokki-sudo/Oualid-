@@ -76,6 +76,25 @@ export default function GoogleAuthCallback({
       .post('/auth/google/session')
       .then(({ data }) => {
         localStorage.setItem('token', data.token);
+
+        /* Where the sign-in started. The marketplace at /freelance is a
+         * separate application in the same bundle, so returning there needs a
+         * real navigation rather than this app's internal view state.
+         *
+         * Only a same-site path is accepted: "//evil.com" resolves to another
+         * origin once the browser reads it, which would turn the callback
+         * into an open redirect. */
+        const requested = new URLSearchParams(window.location.search).get('next');
+        const next =
+          requested && requested.startsWith('/') && !requested.startsWith('//')
+            ? requested
+            : null;
+
+        if (next) {
+          window.location.replace(next);
+          return;
+        }
+
         // Clear the callback path so a refresh doesn't retry a spent cookie.
         window.history.replaceState({}, '', '/');
         onAuthSuccess({ token: data.token, user: data.data.user });

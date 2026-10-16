@@ -318,3 +318,182 @@ export const getWallet = async (req: Request, res: Response, next: NextFunction)
     next(err);
   }
 };
+
+/**
+ * The freelancer's own services, at every status.
+ *
+ * Distinct from the public listing, which shows only what is live. Here the
+ * owner needs to see their drafts, what is waiting on moderation and what
+ * has expired, because those are the things they can act on.
+ */
+export const listMyServices = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const profile = await prisma.freelancerProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+
+    const services = await prisma.serviceListing.findMany({
+      where: { freelancerId: profile.id },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        rejectionReason: true,
+        views: true,
+        publishedAt: true,
+        expiresAt: true,
+        updatedAt: true,
+        category: { select: { name: true } },
+        media: { take: 1, orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        packages: { orderBy: { price: "asc" }, take: 1, select: { price: true } },
+        _count: { select: { orders: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        services: services.map((s) => ({
+          id: s.id,
+          title: s.title,
+          slug: s.slug,
+          status: s.status,
+          rejectionReason: s.rejectionReason,
+          views: s.views,
+          publishedAt: s.publishedAt,
+          expiresAt: s.expiresAt,
+          updatedAt: s.updatedAt,
+          category: s.category?.name ?? null,
+          coverUrl: s.media[0]?.file.url ?? null,
+          startingPrice: s.packages[0]?.price ?? null,
+          orderCount: s._count.orders,
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** The freelancer's proposals, with the project each was sent to. */
+export const listMyProposals = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const profile = await prisma.freelancerProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+
+    const proposals = await prisma.proposal.findMany({
+      where: { freelancerId: profile.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        price: true,
+        deliveryDays: true,
+        status: true,
+        viewedAt: true,
+        createdAt: true,
+        project: { select: { title: true, slug: true, status: true } },
+      },
+    });
+
+    res.json({ success: true, data: { proposals } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** Orders where this account is the freelancer or the client. */
+export const listMyOrders = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const profile = await prisma.freelancerProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    const orders = await prisma.freelanceOrder.findMany({
+      where: {
+        OR: [{ clientId: userId }, ...(profile ? [{ freelancerId: profile.id }] : [])],
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        agreedPrice: true,
+        currency: true,
+        deliveryDueAt: true,
+        createdAt: true,
+        clientId: true,
+        service: { select: { title: true } },
+        project: { select: { title: true } },
+        freelancer: { select: { displayName: true, username: true } },
+        client: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        orders: orders.map((o) => ({
+          ...o,
+          // Which side of the order this viewer is on decides what the page
+          // offers them to do.
+          role: o.clientId === userId ? "client" : "freelancer",
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** Updates the freelancer's own profile. */
+export const updateMyProfile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const profile = await prisma.freelancerProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+
+    const { displayName, title, bio, wilaya, categoryId, hourlyRate, availability, languages } =
+      req.body as Record<string, unknown>;
+
+    if (displayName !== undefined && !String(displayName).trim()) {
+      return next(new AppError("Le nom affiché ne peut pas être vide.", 400));
+    }
+
+    /* username, level, identityVerified and the rating are deliberately not
+     * settable here. The handle is the public address of a page people have
+     * bookmarked, and the other three are earned or granted — a profile
+     * endpoint that accepted them would let anyone award themselves a
+     * verified badge and Top Rated. */
+    const updated = await prisma.freelancerProfile.update({
+      where: { id: profile.id },
+      data: {
+        ...(displayName !== undefined ? { displayName: String(displayName).trim() } : {}),
+        ...(title !== undefined ? { title: title ? String(title).trim() : null } : {}),
+        ...(bio !== undefined ? { bio: bio ? String(bio).trim() : null } : {}),
+        ...(wilaya !== undefined ? { wilaya: wilaya ? String(wilaya).trim() : null } : {}),
+        ...(categoryId !== undefined ? { categoryId: categoryId ? String(categoryId) : null } : {}),
+        ...(hourlyRate !== undefined
+          ? { hourlyRate: hourlyRate != null && hourlyRate !== "" ? String(hourlyRate) : null }
+          : {}),
+        ...(availability !== undefined ? { availability: availability as never } : {}),
+        ...(Array.isArray(languages) ? { languages: languages as never[] } : {}),
+      },
+      select: { id: true },
+    });
+
+    res.json({ success: true, data: { id: updated.id } });
+  } catch (err) {
+    next(err);
+  }
+};

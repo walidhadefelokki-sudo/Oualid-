@@ -50,8 +50,25 @@ export const googleAuthStart = (req: Request, res: Response, next: NextFunction)
   // from Google, and never widened here.
   const requestedRole: Role = req.query.role === "employer" ? "RECRUITER" : "CANDIDATE";
 
+  /* Where to land afterwards. The marketplace lives at /freelance and signs
+   * people in from its own screen; without this they were returned to the
+   * recruitment app and whatever they were doing was lost.
+   *
+   * Travels inside the signed state rather than as a query parameter, so it
+   * cannot be rewritten between here and the callback. Validated as a
+   * same-site path on both sides: "//evil.com" resolves to another origin
+   * once a browser reads it, which would make this an open redirect. */
+  const requestedNext =
+    typeof req.query.next === "string" &&
+    req.query.next.startsWith("/") &&
+    !req.query.next.startsWith("//")
+      ? req.query.next
+      : undefined;
+
   const nonce = crypto.randomBytes(24).toString("hex");
-  const state = jwt.sign({ nonce, role: requestedRole }, getJwtSecret(), { expiresIn: "10m" });
+  const state = jwt.sign({ nonce, role: requestedRole, next: requestedNext }, getJwtSecret(), {
+    expiresIn: "10m",
+  });
 
   res.cookie(STATE_COOKIE, nonce, cookieOptions(10 * 60 * 1000));
 
@@ -84,13 +101,26 @@ export const googleAuthCallback = (req: Request, res: Response, next: NextFuncti
   res.clearCookie(STATE_COOKIE, { path: "/" });
 
   let stateRole: Role = "CANDIDATE";
+  let stateNext: string | undefined;
   try {
-    const decoded = jwt.verify(stateToken, getJwtSecret()) as { nonce: string; role: Role };
+    const decoded = jwt.verify(stateToken, getJwtSecret()) as {
+      nonce: string;
+      role: Role;
+      next?: string;
+    };
     if (!cookieNonce || decoded.nonce !== cookieNonce) {
       console.warn("Google OAuth: state nonce mismatch — possible CSRF, rejecting");
       return failRedirect(res, "invalid_state");
     }
     stateRole = decoded.role === "RECRUITER" ? "RECRUITER" : "CANDIDATE";
+    // Re-checked after verification as well as before signing: a path that
+    // leaves this process and comes back is validated at both ends.
+    stateNext =
+      typeof decoded.next === "string" &&
+      decoded.next.startsWith("/") &&
+      !decoded.next.startsWith("//")
+        ? decoded.next
+        : undefined;
   } catch {
     console.warn("Google OAuth: state token invalid or expired, rejecting");
     return failRedirect(res, "invalid_state");
@@ -127,7 +157,12 @@ export const googleAuthCallback = (req: Request, res: Response, next: NextFuncti
         });
 
         res.cookie(HANDOFF_COOKIE, token, cookieOptions(60 * 1000));
-        return res.redirect(`${getFrontendUrl()}/auth/callback`);
+        // ?next= rides to the callback page, which forwards there once it has
+        // traded the handoff cookie for the token.
+        const callback = `${getFrontendUrl()}/auth/callback`;
+        return res.redirect(
+          stateNext ? `${callback}?next=${encodeURIComponent(stateNext)}` : callback
+        );
       } catch (error: any) {
         // Account-linking refusals carry a message meant for the user; anything
         // else stays generic so database detail never reaches the browser.

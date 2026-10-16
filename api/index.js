@@ -1397,8 +1397,11 @@ var googleAuthStart = (req, res, next) => {
     return next(new AppError(getGoogleConfigError() ?? "Google sign-in is unavailable.", 503));
   }
   const requestedRole = req.query.role === "employer" ? "RECRUITER" : "CANDIDATE";
+  const requestedNext = typeof req.query.next === "string" && req.query.next.startsWith("/") && !req.query.next.startsWith("//") ? req.query.next : void 0;
   const nonce = crypto5.randomBytes(24).toString("hex");
-  const state = jwt2.sign({ nonce, role: requestedRole }, getJwtSecret(), { expiresIn: "10m" });
+  const state = jwt2.sign({ nonce, role: requestedRole, next: requestedNext }, getJwtSecret(), {
+    expiresIn: "10m"
+  });
   res.cookie(STATE_COOKIE, nonce, cookieOptions(10 * 60 * 1e3));
   passport2.authenticate("google", {
     session: false,
@@ -1414,6 +1417,7 @@ var googleAuthCallback = (req, res, next) => {
   const cookieNonce = req.cookies?.[STATE_COOKIE];
   res.clearCookie(STATE_COOKIE, { path: "/" });
   let stateRole = "CANDIDATE";
+  let stateNext;
   try {
     const decoded = jwt2.verify(stateToken, getJwtSecret());
     if (!cookieNonce || decoded.nonce !== cookieNonce) {
@@ -1421,6 +1425,7 @@ var googleAuthCallback = (req, res, next) => {
       return failRedirect(res, "invalid_state");
     }
     stateRole = decoded.role === "RECRUITER" ? "RECRUITER" : "CANDIDATE";
+    stateNext = typeof decoded.next === "string" && decoded.next.startsWith("/") && !decoded.next.startsWith("//") ? decoded.next : void 0;
   } catch {
     console.warn("Google OAuth: state token invalid or expired, rejecting");
     return failRedirect(res, "invalid_state");
@@ -1446,7 +1451,10 @@ var googleAuthCallback = (req, res, next) => {
           expiresIn: "30d"
         });
         res.cookie(HANDOFF_COOKIE, token, cookieOptions(60 * 1e3));
-        return res.redirect(`${getFrontendUrl()}/auth/callback`);
+        const callback = `${getFrontendUrl()}/auth/callback`;
+        return res.redirect(
+          stateNext ? `${callback}?next=${encodeURIComponent(stateNext)}` : callback
+        );
       } catch (error) {
         const isLinkingRefusal = error?.message?.includes("already exists with this email");
         console.error("Google OAuth: callback failed \u2014", error?.message);
@@ -2326,8 +2334,941 @@ router3.get("/", getAllCategories);
 router3.get("/:slug", getCategoryBySlug);
 var category_routes_default = router3;
 
-// server/routes/application.routes.ts
+// server/routes/freelance.routes.ts
 import { Router as Router4 } from "express";
+
+// server/controllers/freelancePublic.controller.ts
+init_prisma();
+var PAGE_SIZE = 24;
+var MAX_PAGE_SIZE = 48;
+var paging = (req) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const size = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(req.query.limit) || PAGE_SIZE));
+  return { skip: (page - 1) * size, take: size, page, size };
+};
+var publishedServiceWhere = () => ({
+  status: "PUBLISHED",
+  OR: [{ expiresAt: null }, { expiresAt: { gt: /* @__PURE__ */ new Date() } }]
+});
+var listCategories = async (_req, res, next) => {
+  try {
+    const categories = await prisma_default.jobCategory.findMany({
+      where: { parentId: null },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        icon: true,
+        children: {
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, slug: true }
+        },
+        _count: { select: { services: { where: publishedServiceWhere() } } }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        categories: categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          description: c.description,
+          icon: c.icon,
+          subcategories: c.children,
+          serviceCount: c._count.services
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listServices = async (req, res, next) => {
+  try {
+    const { skip, take, page, size } = paging(req);
+    const {
+      q,
+      category,
+      wilaya,
+      level,
+      language,
+      verified,
+      minPrice,
+      maxPrice,
+      maxDeliveryDays,
+      minRating,
+      sort
+    } = req.query;
+    const packageFilter = {};
+    if (minPrice) packageFilter.price = { gte: Number(minPrice) };
+    if (maxPrice) {
+      packageFilter.price = { ...packageFilter.price, lte: Number(maxPrice) };
+    }
+    if (maxDeliveryDays) packageFilter.deliveryDays = { lte: Number(maxDeliveryDays) };
+    const freelancerFilter = {};
+    if (wilaya) freelancerFilter.wilaya = wilaya;
+    if (level) freelancerFilter.level = level;
+    if (language) freelancerFilter.languages = { has: language };
+    if (verified === "true") freelancerFilter.identityVerified = true;
+    if (minRating) freelancerFilter.ratingAverage = { gte: Number(minRating) };
+    const where = {
+      ...publishedServiceWhere(),
+      ...q ? {
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } }
+        ]
+      } : {},
+      ...category ? { category: { slug: category } } : {},
+      ...Object.keys(packageFilter).length ? { packages: { some: packageFilter } } : {},
+      ...Object.keys(freelancerFilter).length ? { freelancer: freelancerFilter } : {}
+    };
+    const orderBy = sort === "recent" ? [{ publishedAt: "desc" }] : sort === "rating" ? [{ freelancer: { ratingAverage: "desc" } }] : [{ views: "desc" }, { publishedAt: "desc" }];
+    const [total, services] = await Promise.all([
+      prisma_default.serviceListing.count({ where }),
+      prisma_default.serviceListing.findMany({
+        where,
+        orderBy,
+        skip,
+        take,
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          views: true,
+          publishedAt: true,
+          category: { select: { name: true, slug: true } },
+          media: {
+            take: 1,
+            orderBy: { position: "asc" },
+            select: { file: { select: { url: true } } }
+          },
+          packages: {
+            orderBy: { price: "asc" },
+            take: 1,
+            select: { price: true, deliveryDays: true }
+          },
+          freelancer: {
+            select: {
+              username: true,
+              displayName: true,
+              level: true,
+              identityVerified: true,
+              ratingAverage: true,
+              ratingCount: true,
+              wilaya: true,
+              user: { select: { avatar: { select: { url: true } } } }
+            }
+          }
+        }
+      })
+    ]);
+    res.json({
+      success: true,
+      data: {
+        services: services.map((s) => ({
+          id: s.id,
+          title: s.title,
+          slug: s.slug,
+          category: s.category,
+          coverUrl: s.media[0]?.file.url ?? null,
+          startingPrice: s.packages[0]?.price ?? null,
+          deliveryDays: s.packages[0]?.deliveryDays ?? null,
+          freelancer: {
+            username: s.freelancer.username,
+            displayName: s.freelancer.displayName,
+            level: s.freelancer.level,
+            verified: s.freelancer.identityVerified,
+            rating: s.freelancer.ratingAverage,
+            ratingCount: s.freelancer.ratingCount,
+            wilaya: s.freelancer.wilaya,
+            avatarUrl: s.freelancer.user.avatar?.url ?? null
+          }
+        })),
+        page,
+        pageSize: size,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / size))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listProjects = async (req, res, next) => {
+  try {
+    const { skip, take, page, size } = paging(req);
+    const { q, category, wilaya, remote, minBudget, maxBudget } = req.query;
+    const where = {
+      status: "OPEN",
+      visibility: "PUBLIC",
+      ...q ? {
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } }
+        ]
+      } : {},
+      ...category ? { category: { slug: category } } : {},
+      ...wilaya ? { wilaya } : {},
+      ...remote === "true" ? { remote: true } : {},
+      ...minBudget ? { budgetMax: { gte: Number(minBudget) } } : {},
+      ...maxBudget ? { budgetMin: { lte: Number(maxBudget) } } : {}
+    };
+    const [total, projects] = await Promise.all([
+      prisma_default.freelanceProject.count({ where }),
+      prisma_default.freelanceProject.findMany({
+        where,
+        orderBy: { publishedAt: "desc" },
+        skip,
+        take,
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          description: true,
+          budgetType: true,
+          budgetMin: true,
+          budgetMax: true,
+          deadline: true,
+          remote: true,
+          wilaya: true,
+          publishedAt: true,
+          category: { select: { name: true, slug: true } },
+          skills: { select: { skill: { select: { name: true } } } },
+          _count: { select: { proposals: true } },
+          // The client's name, never their email or phone.
+          client: { select: { firstName: true, lastName: true } },
+          company: { select: { name: true } }
+        }
+      })
+    ]);
+    res.json({
+      success: true,
+      data: {
+        projects: projects.map((p) => ({
+          id: p.id,
+          title: p.title,
+          slug: p.slug,
+          // Enough to judge whether to open it, not the whole brief.
+          excerpt: p.description.slice(0, 220),
+          budgetType: p.budgetType,
+          budgetMin: p.budgetMin,
+          budgetMax: p.budgetMax,
+          deadline: p.deadline,
+          remote: p.remote,
+          wilaya: p.wilaya,
+          publishedAt: p.publishedAt,
+          category: p.category,
+          skills: p.skills.map((s) => s.skill.name),
+          proposalCount: p._count.proposals,
+          clientName: p.company?.name ?? [p.client.firstName, p.client.lastName].filter(Boolean).join(" ") ?? null
+        })),
+        page,
+        pageSize: size,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / size))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listFreelancers = async (req, res, next) => {
+  try {
+    const { skip, take, page, size } = paging(req);
+    const { q, category, wilaya, level, language, verified } = req.query;
+    const where = {
+      // Someone with nothing published is not a directory entry.
+      services: { some: publishedServiceWhere() },
+      ...q ? {
+        OR: [
+          { displayName: { contains: q, mode: "insensitive" } },
+          { title: { contains: q, mode: "insensitive" } },
+          { bio: { contains: q, mode: "insensitive" } }
+        ]
+      } : {},
+      ...category ? { category: { slug: category } } : {},
+      ...wilaya ? { wilaya } : {},
+      ...level ? { level } : {},
+      ...language ? { languages: { has: language } } : {},
+      ...verified === "true" ? { identityVerified: true } : {}
+    };
+    const [total, freelancers] = await Promise.all([
+      prisma_default.freelancerProfile.count({ where }),
+      prisma_default.freelancerProfile.findMany({
+        where,
+        orderBy: [{ ratingAverage: "desc" }, { completedOrders: "desc" }],
+        skip,
+        take,
+        select: {
+          username: true,
+          displayName: true,
+          title: true,
+          bio: true,
+          wilaya: true,
+          hourlyRate: true,
+          availability: true,
+          level: true,
+          identityVerified: true,
+          ratingAverage: true,
+          ratingCount: true,
+          completedOrders: true,
+          languages: true,
+          category: { select: { name: true, slug: true } },
+          skills: { take: 6, select: { skill: { select: { name: true } } } },
+          user: { select: { avatar: { select: { url: true } } } },
+          _count: { select: { services: { where: publishedServiceWhere() } } }
+        }
+      })
+    ]);
+    res.json({
+      success: true,
+      data: {
+        freelancers: freelancers.map((f) => ({
+          username: f.username,
+          displayName: f.displayName,
+          title: f.title,
+          bio: f.bio,
+          wilaya: f.wilaya,
+          hourlyRate: f.hourlyRate,
+          availability: f.availability,
+          level: f.level,
+          verified: f.identityVerified,
+          rating: f.ratingAverage,
+          ratingCount: f.ratingCount,
+          completedOrders: f.completedOrders,
+          languages: f.languages,
+          category: f.category,
+          skills: f.skills.map((s) => s.skill.name),
+          avatarUrl: f.user.avatar?.url ?? null,
+          serviceCount: f._count.services
+        })),
+        page,
+        pageSize: size,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / size))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listPricing = async (_req, res, next) => {
+  try {
+    const [packs, plans] = await Promise.all([
+      prisma_default.creditPack.findMany({
+        where: { active: true },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, credits: true, price: true, currency: true }
+      }),
+      prisma_default.freelancePlan.findMany({
+        where: { active: true },
+        orderBy: { price: "asc" }
+      })
+    ]);
+    res.json({ success: true, data: { packs, plans } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/controllers/freelancer.controller.ts
+init_prisma();
+import { CreditEntryType as CreditEntryType2 } from "@prisma/client";
+
+// server/services/credits.service.ts
+init_prisma();
+import { CreditEntryType, Prisma } from "@prisma/client";
+var InsufficientCreditsError = class extends Error {
+  constructor(required, available) {
+    super(`Insufficient credits: ${required} required, ${available} available`);
+    this.required = required;
+    this.available = available;
+    this.name = "InsufficientCreditsError";
+  }
+};
+var getOrCreateWallet = async (userId, tx = prisma_default) => {
+  const existing = await tx.creditWallet.findUnique({ where: { userId } });
+  if (existing) return existing;
+  try {
+    return await tx.creditWallet.create({ data: { userId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const wallet = await tx.creditWallet.findUnique({ where: { userId } });
+      if (wallet) return wallet;
+    }
+    throw err;
+  }
+};
+var getBalance = async (userId) => {
+  const wallet = await prisma_default.creditWallet.findUnique({
+    where: { userId },
+    select: { balance: true }
+  });
+  return wallet?.balance ?? 0;
+};
+var move = async (input) => {
+  const { userId, delta, type, idempotencyKey, referenceType, referenceId, note, createdById } = input;
+  if (!Number.isInteger(delta)) throw new Error("Credit delta must be a whole number");
+  if (delta === 0) throw new Error("Credit delta must not be zero");
+  if (idempotencyKey) {
+    const seen = await prisma_default.creditLedgerEntry.findUnique({
+      where: { idempotencyKey },
+      select: { id: true, balanceAfter: true }
+    });
+    if (seen) return { balance: seen.balanceAfter, entryId: seen.id, replayed: true };
+  }
+  try {
+    return await prisma_default.$transaction(
+      async (tx) => {
+        const wallet = await getOrCreateWallet(userId, tx);
+        const next = wallet.balance + delta;
+        if (next < 0) throw new InsufficientCreditsError(Math.abs(delta), wallet.balance);
+        const entry = await tx.creditLedgerEntry.create({
+          data: {
+            walletId: wallet.id,
+            type,
+            delta,
+            balanceAfter: next,
+            idempotencyKey,
+            referenceType,
+            referenceId,
+            note,
+            createdById
+          },
+          select: { id: true }
+        });
+        await tx.creditWallet.update({
+          where: { id: wallet.id },
+          data: { balance: next }
+        });
+        return { balance: next, entryId: entry.id, replayed: false };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  } catch (err) {
+    if (idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const winner = await prisma_default.creditLedgerEntry.findUnique({
+        where: { idempotencyKey },
+        select: { id: true, balanceAfter: true }
+      });
+      if (winner) return { balance: winner.balanceAfter, entryId: winner.id, replayed: true };
+    }
+    throw err;
+  }
+};
+var spend = async (input) => {
+  if (input.amount <= 0) throw new Error("Spend amount must be positive");
+  return move({ ...input, delta: -input.amount });
+};
+var grant = async (input) => {
+  if (input.amount <= 0) throw new Error("Grant amount must be positive");
+  return move({ ...input, delta: input.amount });
+};
+var refundFor = async (referenceType, referenceId, note) => {
+  const original = await prisma_default.creditLedgerEntry.findFirst({
+    where: { referenceType, referenceId, delta: { lt: 0 } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, delta: true, wallet: { select: { userId: true } } }
+  });
+  if (!original) return null;
+  return grant({
+    userId: original.wallet.userId,
+    amount: Math.abs(original.delta),
+    type: CreditEntryType.REFUND,
+    // Derived from the entry being refunded, so a second attempt to refund
+    // the same spend is a replay rather than a second payout.
+    idempotencyKey: `refund:${original.id}`,
+    referenceType,
+    referenceId,
+    note
+  });
+};
+var history = async (userId, page = 1, pageSize = 25) => {
+  const wallet = await prisma_default.creditWallet.findUnique({
+    where: { userId },
+    select: { id: true, balance: true }
+  });
+  if (!wallet) return { balance: 0, entries: [], total: 0, page, pageSize, totalPages: 1 };
+  const [total, entries] = await Promise.all([
+    prisma_default.creditLedgerEntry.count({ where: { walletId: wallet.id } }),
+    prisma_default.creditLedgerEntry.findMany({
+      where: { walletId: wallet.id },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        type: true,
+        delta: true,
+        balanceAfter: true,
+        note: true,
+        referenceType: true,
+        referenceId: true,
+        createdAt: true
+      }
+    })
+  ]);
+  return {
+    balance: wallet.balance,
+    entries,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize))
+  };
+};
+var getCreditCosts = async () => {
+  const keys = [
+    "freelance.credits.servicePublication",
+    "freelance.credits.proposal",
+    "freelance.service.durationDays",
+    "freelance.trial.services",
+    "freelance.trial.proposals"
+  ];
+  const rows = await prisma_default.platformSetting.findMany({ where: { key: { in: keys } } });
+  const read = (key, fallback) => {
+    const raw = rows.find((r) => r.key === key)?.value;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    servicePublication: read("freelance.credits.servicePublication", 10),
+    proposal: read("freelance.credits.proposal", 2),
+    serviceDurationDays: read("freelance.service.durationDays", 30),
+    trialServices: read("freelance.trial.services", 1),
+    trialProposals: read("freelance.trial.proposals", 5)
+  };
+};
+var credits_service_default = {
+  getOrCreateWallet,
+  getBalance,
+  move,
+  spend,
+  grant,
+  refundFor,
+  history,
+  getCreditCosts,
+  InsufficientCreditsError
+};
+
+// server/controllers/freelancer.controller.ts
+var slugifyUsername = (raw) => raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 30);
+var uniqueUsername = async (base) => {
+  const root = base || "freelance";
+  for (let n = 0; n < 50; n++) {
+    const candidate = n === 0 ? root : `${root}-${n}`;
+    const taken = await prisma_default.freelancerProfile.findUnique({
+      where: { username: candidate },
+      select: { id: true }
+    });
+    if (!taken) return candidate;
+  }
+  return `${root}-${Date.now().toString(36)}`;
+};
+var getActivationDraft = async (req, res, next) => {
+  try {
+    const user = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        candidateProfile: {
+          select: {
+            headline: true,
+            bio: true,
+            city: true,
+            wilaya: true,
+            skills: true,
+            currentJobTitle: true,
+            yearsExperience: true,
+            linkedinUrl: true,
+            portfolioUrl: true
+          }
+        },
+        freelancerProfile: { select: { username: true } }
+      }
+    });
+    if (!user) return next(new AppError("User not found", 404));
+    if (user.freelancerProfile) {
+      return res.json({
+        success: true,
+        data: { alreadyActive: true, username: user.freelancerProfile.username }
+      });
+    }
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+    const c = user.candidateProfile;
+    res.json({
+      success: true,
+      data: {
+        alreadyActive: false,
+        suggested: {
+          username: await uniqueUsername(slugifyUsername(fullName || user.email.split("@")[0])),
+          displayName: fullName || user.email.split("@")[0],
+          title: c?.currentJobTitle ?? c?.headline ?? null,
+          bio: c?.bio ?? null,
+          wilaya: c?.wilaya ?? c?.city ?? null,
+          skills: c?.skills ?? [],
+          linkedin: c?.linkedinUrl ?? null,
+          portfolio: c?.portfolioUrl ?? null
+        },
+        /** Shown so the user knows where the suggestions came from. */
+        source: c ? "cv" : "account"
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var activate = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const existing = await prisma_default.freelancerProfile.findUnique({
+      where: { userId },
+      select: { username: true }
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Un profil freelance existe d\xE9j\xE0 pour ce compte.",
+        data: { username: existing.username }
+      });
+    }
+    const { username, displayName, title, bio, wilaya, categoryId, languages, hourlyRate, skills } = req.body;
+    const handle = slugifyUsername(String(username ?? ""));
+    if (!handle || handle.length < 3) {
+      return next(new AppError("Nom d'utilisateur invalide (3 caract\xE8res minimum).", 400));
+    }
+    if (!String(displayName ?? "").trim()) {
+      return next(new AppError("Le nom affich\xE9 est obligatoire.", 400));
+    }
+    const taken = await prisma_default.freelancerProfile.findUnique({
+      where: { username: handle },
+      select: { id: true }
+    });
+    if (taken) return next(new AppError("Ce nom d'utilisateur est d\xE9j\xE0 pris.", 409));
+    const costs = await credits_service_default.getCreditCosts();
+    const profile = await prisma_default.$transaction(async (tx) => {
+      const created = await tx.freelancerProfile.create({
+        data: {
+          userId,
+          username: handle,
+          displayName: String(displayName).trim(),
+          title: title ? String(title).trim() : null,
+          bio: bio ? String(bio).trim() : null,
+          wilaya: wilaya ? String(wilaya).trim() : null,
+          categoryId: categoryId ? String(categoryId) : null,
+          hourlyRate: hourlyRate != null ? String(hourlyRate) : null,
+          languages: Array.isArray(languages) ? languages : [],
+          trialClaimedAt: /* @__PURE__ */ new Date()
+        },
+        select: { id: true, username: true }
+      });
+      if (Array.isArray(skills)) {
+        for (const raw of skills.slice(0, 20)) {
+          const name = String(raw).trim();
+          if (!name) continue;
+          const skill = await tx.skill.upsert({
+            where: { name },
+            update: {},
+            create: { name },
+            select: { id: true }
+          });
+          await tx.freelancerSkill.create({
+            data: { freelancerId: created.id, skillId: skill.id }
+          });
+        }
+      }
+      await tx.portfolio.create({ data: { freelancerId: created.id } });
+      return created;
+    });
+    const trialCredits = costs.trialProposals * costs.proposal;
+    if (trialCredits > 0) {
+      await credits_service_default.grant({
+        userId,
+        amount: trialCredits,
+        type: CreditEntryType2.TRIAL_GRANT,
+        idempotencyKey: `trial:${profile.id}`,
+        note: `Essai gratuit : ${costs.trialProposals} propositions`
+      });
+    }
+    res.status(201).json({
+      success: true,
+      data: { username: profile.username, credits: await credits_service_default.getBalance(userId) }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getMyWorkspace = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        title: true,
+        bio: true,
+        wilaya: true,
+        hourlyRate: true,
+        availability: true,
+        level: true,
+        identityVerified: true,
+        ratingAverage: true,
+        ratingCount: true,
+        completedOrders: true,
+        languages: true,
+        category: { select: { id: true, name: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        portfolio: { select: { published: true } }
+      }
+    });
+    if (!profile) {
+      return res.json({ success: true, data: { active: false } });
+    }
+    const now = /* @__PURE__ */ new Date();
+    const [
+      published,
+      pending,
+      drafts,
+      expired,
+      proposalsSent,
+      proposalsShortlisted,
+      activeOrders,
+      completedOrders,
+      balance
+    ] = await Promise.all([
+      prisma_default.serviceListing.count({
+        where: {
+          freelancerId: profile.id,
+          status: "PUBLISHED",
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+        }
+      }),
+      prisma_default.serviceListing.count({ where: { freelancerId: profile.id, status: "PENDING" } }),
+      prisma_default.serviceListing.count({ where: { freelancerId: profile.id, status: "DRAFT" } }),
+      prisma_default.serviceListing.count({
+        where: { freelancerId: profile.id, status: "PUBLISHED", expiresAt: { lte: now } }
+      }),
+      prisma_default.proposal.count({ where: { freelancerId: profile.id } }),
+      prisma_default.proposal.count({ where: { freelancerId: profile.id, status: "SHORTLISTED" } }),
+      prisma_default.freelanceOrder.count({
+        where: {
+          freelancerId: profile.id,
+          status: { in: ["CREATED", "IN_PROGRESS", "DELIVERED", "REVISION_REQUESTED"] }
+        }
+      }),
+      prisma_default.freelanceOrder.count({ where: { freelancerId: profile.id, status: "COMPLETED" } }),
+      credits_service_default.getBalance(userId)
+    ]);
+    res.json({
+      success: true,
+      data: {
+        active: true,
+        profile: {
+          ...profile,
+          skills: profile.skills.map((s) => s.skill.name),
+          portfolioPublished: profile.portfolio?.published ?? false
+        },
+        stats: {
+          published,
+          pending,
+          drafts,
+          expired,
+          proposalsSent,
+          proposalsShortlisted,
+          activeOrders,
+          completedOrders
+        },
+        wallet: { balance, costs: await credits_service_default.getCreditCosts() }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getWallet = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const data = await credits_service_default.history(req.user.id, page);
+    res.json({ success: true, data: { ...data, costs: await credits_service_default.getCreditCosts() } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMyServices = async (req, res, next) => {
+  try {
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true }
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+    const services = await prisma_default.serviceListing.findMany({
+      where: { freelancerId: profile.id },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        rejectionReason: true,
+        views: true,
+        publishedAt: true,
+        expiresAt: true,
+        updatedAt: true,
+        category: { select: { name: true } },
+        media: { take: 1, orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        packages: { orderBy: { price: "asc" }, take: 1, select: { price: true } },
+        _count: { select: { orders: true } }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        services: services.map((s) => ({
+          id: s.id,
+          title: s.title,
+          slug: s.slug,
+          status: s.status,
+          rejectionReason: s.rejectionReason,
+          views: s.views,
+          publishedAt: s.publishedAt,
+          expiresAt: s.expiresAt,
+          updatedAt: s.updatedAt,
+          category: s.category?.name ?? null,
+          coverUrl: s.media[0]?.file.url ?? null,
+          startingPrice: s.packages[0]?.price ?? null,
+          orderCount: s._count.orders
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMyProposals = async (req, res, next) => {
+  try {
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true }
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+    const proposals = await prisma_default.proposal.findMany({
+      where: { freelancerId: profile.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        price: true,
+        deliveryDays: true,
+        status: true,
+        viewedAt: true,
+        createdAt: true,
+        project: { select: { title: true, slug: true, status: true } }
+      }
+    });
+    res.json({ success: true, data: { proposals } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMyOrders = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+    const orders = await prisma_default.freelanceOrder.findMany({
+      where: {
+        OR: [{ clientId: userId }, ...profile ? [{ freelancerId: profile.id }] : []]
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        agreedPrice: true,
+        currency: true,
+        deliveryDueAt: true,
+        createdAt: true,
+        clientId: true,
+        service: { select: { title: true } },
+        project: { select: { title: true } },
+        freelancer: { select: { displayName: true, username: true } },
+        client: { select: { firstName: true, lastName: true } }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        orders: orders.map((o) => ({
+          ...o,
+          // Which side of the order this viewer is on decides what the page
+          // offers them to do.
+          role: o.clientId === userId ? "client" : "freelancer"
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMyProfile = async (req, res, next) => {
+  try {
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true }
+    });
+    if (!profile) return next(new AppError("Aucun profil freelance.", 404));
+    const { displayName, title, bio, wilaya, categoryId, hourlyRate, availability, languages } = req.body;
+    if (displayName !== void 0 && !String(displayName).trim()) {
+      return next(new AppError("Le nom affich\xE9 ne peut pas \xEAtre vide.", 400));
+    }
+    const updated = await prisma_default.freelancerProfile.update({
+      where: { id: profile.id },
+      data: {
+        ...displayName !== void 0 ? { displayName: String(displayName).trim() } : {},
+        ...title !== void 0 ? { title: title ? String(title).trim() : null } : {},
+        ...bio !== void 0 ? { bio: bio ? String(bio).trim() : null } : {},
+        ...wilaya !== void 0 ? { wilaya: wilaya ? String(wilaya).trim() : null } : {},
+        ...categoryId !== void 0 ? { categoryId: categoryId ? String(categoryId) : null } : {},
+        ...hourlyRate !== void 0 ? { hourlyRate: hourlyRate != null && hourlyRate !== "" ? String(hourlyRate) : null } : {},
+        ...availability !== void 0 ? { availability } : {},
+        ...Array.isArray(languages) ? { languages } : {}
+      },
+      select: { id: true }
+    });
+    res.json({ success: true, data: { id: updated.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// server/routes/freelance.routes.ts
+var router4 = Router4();
+router4.get("/categories", listCategories);
+router4.get("/services", listServices);
+router4.get("/projects", listProjects);
+router4.get("/freelancers", listFreelancers);
+router4.get("/pricing", listPricing);
+router4.get("/me/activation", protect, getActivationDraft);
+router4.post("/me/activate", protect, activate);
+router4.get("/me/workspace", protect, getMyWorkspace);
+router4.get("/me/wallet", protect, getWallet);
+router4.get("/me/services", protect, listMyServices);
+router4.get("/me/proposals", protect, listMyProposals);
+router4.get("/me/orders", protect, listMyOrders);
+router4.patch("/me/profile", protect, updateMyProfile);
+var freelance_routes_default = router4;
+
+// server/routes/application.routes.ts
+import { Router as Router5 } from "express";
 
 // server/controllers/application.controller.ts
 init_prisma();
@@ -4337,16 +5278,16 @@ var updateApplicationStatus = async (req, res, next) => {
 };
 
 // server/routes/application.routes.ts
-var router4 = Router4();
-router4.use(protect);
-router4.post("/", restrictTo("CANDIDATE"), applyToJob);
-router4.get("/my", restrictTo("CANDIDATE"), getMyApplications);
-router4.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
-router4.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
-var application_routes_default = router4;
+var router5 = Router5();
+router5.use(protect);
+router5.post("/", restrictTo("CANDIDATE"), applyToJob);
+router5.get("/my", restrictTo("CANDIDATE"), getMyApplications);
+router5.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
+router5.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
+var application_routes_default = router5;
 
 // server/routes/contact.routes.ts
-import { Router as Router5 } from "express";
+import { Router as Router6 } from "express";
 
 // server/controllers/contact.controller.ts
 init_prisma();
@@ -4529,14 +5470,14 @@ var sendSupportMessage = async (req, res) => {
 };
 
 // server/routes/contact.routes.ts
-var router5 = Router5();
-router5.post("/", sendContactMessage);
-router5.post("/corporate", sendCorporateEnquiry);
-router5.post("/support", protect, sendSupportMessage);
-var contact_routes_default = router5;
+var router6 = Router6();
+router6.post("/", sendContactMessage);
+router6.post("/corporate", sendCorporateEnquiry);
+router6.post("/support", protect, sendSupportMessage);
+var contact_routes_default = router6;
 
 // server/routes/admin.routes.ts
-import { Router as Router6 } from "express";
+import { Router as Router7 } from "express";
 
 // server/controllers/admin.controller.ts
 init_prisma();
@@ -5487,34 +6428,34 @@ var sendBroadcastPreview = async (req, res, next) => {
 };
 
 // server/routes/admin.routes.ts
-var router6 = Router6();
-router6.use(protect);
-router6.use(restrictTo("ADMIN"));
-router6.get("/stats", getStats);
-router6.get("/companies", getAllCompanies);
-router6.get("/companies/:id", getCompany);
-router6.patch("/companies/:id/plan", updateCompanyPlan);
-router6.patch("/companies/:id/postings", grantCompanyPostings);
-router6.get("/users", getAllUsers);
-router6.patch("/users/:id/status", updateUserStatus);
-router6.get("/users/:id", getUserDetail);
-router6.patch("/users/:id", updateUser);
-router6.delete("/users/:id", deleteUser);
-router6.get("/jobs", getAllJobsAdmin);
-router6.patch("/jobs/:id", updateJobAdmin);
-router6.delete("/jobs/:id", deleteJobAdmin);
-router6.get("/schedules", listSchedules);
-router6.post("/schedules", createSchedule);
-router6.patch("/schedules/:id", updateSchedule);
-router6.delete("/schedules/:id", deleteSchedule);
-router6.post("/emails/send", sendBroadcast);
-router6.post("/emails/preview", sendBroadcastPreview);
-router6.get("/preselections/corporate-pending", getCorporatePendingPreselections);
-router6.post("/preselections/:applicationId", adminPreselect);
-var admin_routes_default = router6;
+var router7 = Router7();
+router7.use(protect);
+router7.use(restrictTo("ADMIN"));
+router7.get("/stats", getStats);
+router7.get("/companies", getAllCompanies);
+router7.get("/companies/:id", getCompany);
+router7.patch("/companies/:id/plan", updateCompanyPlan);
+router7.patch("/companies/:id/postings", grantCompanyPostings);
+router7.get("/users", getAllUsers);
+router7.patch("/users/:id/status", updateUserStatus);
+router7.get("/users/:id", getUserDetail);
+router7.patch("/users/:id", updateUser);
+router7.delete("/users/:id", deleteUser);
+router7.get("/jobs", getAllJobsAdmin);
+router7.patch("/jobs/:id", updateJobAdmin);
+router7.delete("/jobs/:id", deleteJobAdmin);
+router7.get("/schedules", listSchedules);
+router7.post("/schedules", createSchedule);
+router7.patch("/schedules/:id", updateSchedule);
+router7.delete("/schedules/:id", deleteSchedule);
+router7.post("/emails/send", sendBroadcast);
+router7.post("/emails/preview", sendBroadcastPreview);
+router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
+router7.post("/preselections/:applicationId", adminPreselect);
+var admin_routes_default = router7;
 
 // server/routes/crm.routes.ts
-import { Router as Router7 } from "express";
+import { Router as Router8 } from "express";
 
 // server/controllers/crm.controller.ts
 init_prisma();
@@ -5761,21 +6702,21 @@ var listContacts = async (req, res, next) => {
 };
 
 // server/routes/crm.routes.ts
-var router7 = Router7();
-router7.use(protect);
-router7.use(restrictTo("ADMIN"));
-router7.get("/leads", listLeads);
-router7.post("/leads", createLead);
-router7.patch("/leads/:id", updateLead);
-router7.delete("/leads/:id", deleteLead);
-router7.post("/leads/:id/convert", convertLead);
-router7.post("/notes", addNote);
-router7.delete("/notes/:id", deleteNote);
-router7.get("/contacts", listContacts);
-var crm_routes_default = router7;
+var router8 = Router8();
+router8.use(protect);
+router8.use(restrictTo("ADMIN"));
+router8.get("/leads", listLeads);
+router8.post("/leads", createLead);
+router8.patch("/leads/:id", updateLead);
+router8.delete("/leads/:id", deleteLead);
+router8.post("/leads/:id/convert", convertLead);
+router8.post("/notes", addNote);
+router8.delete("/notes/:id", deleteNote);
+router8.get("/contacts", listContacts);
+var crm_routes_default = router8;
 
 // server/routes/company.routes.ts
-import { Router as Router8 } from "express";
+import { Router as Router9 } from "express";
 
 // server/controllers/company.controller.ts
 init_prisma();
@@ -6001,17 +6942,17 @@ var getMySubscription = async (req, res, next) => {
 };
 
 // server/routes/company.routes.ts
-var router8 = Router8();
-router8.use(protect);
-router8.use(restrictTo("RECRUITER", "ADMIN"));
-router8.get("/me", getMyCompany);
-router8.get("/me/subscription", getMySubscription);
-router8.patch("/me", updateMyCompany);
-router8.patch("/me/logo", handleAvatarUpload, updateMyCompanyLogo);
-var company_routes_default = router8;
+var router9 = Router9();
+router9.use(protect);
+router9.use(restrictTo("RECRUITER", "ADMIN"));
+router9.get("/me", getMyCompany);
+router9.get("/me/subscription", getMySubscription);
+router9.patch("/me", updateMyCompany);
+router9.patch("/me/logo", handleAvatarUpload, updateMyCompanyLogo);
+var company_routes_default = router9;
 
 // server/routes/payment.routes.ts
-import { Router as Router9 } from "express";
+import { Router as Router10 } from "express";
 
 // server/controllers/payment.controller.ts
 init_prisma();
@@ -6439,19 +7380,19 @@ var getOrderStatus = async (req, res, next) => {
 };
 
 // server/routes/payment.routes.ts
-var router9 = Router9();
-router9.post("/webhook/chargily", chargilyWebhook);
-router9.get("/packs", listPacks);
-router9.use(protect);
-router9.use(restrictTo("RECRUITER", "ADMIN"));
-router9.post("/checkout", startPackCheckout);
-router9.get("/orders/:id", getOrderStatus);
-router9.get("/invoices", listInvoices);
-router9.get("/invoices/:id/pdf", downloadInvoice);
-var payment_routes_default = router9;
+var router10 = Router10();
+router10.post("/webhook/chargily", chargilyWebhook);
+router10.get("/packs", listPacks);
+router10.use(protect);
+router10.use(restrictTo("RECRUITER", "ADMIN"));
+router10.post("/checkout", startPackCheckout);
+router10.get("/orders/:id", getOrderStatus);
+router10.get("/invoices", listInvoices);
+router10.get("/invoices/:id/pdf", downloadInvoice);
+var payment_routes_default = router10;
 
 // server/routes/preselection.routes.ts
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
@@ -6669,94 +7610,94 @@ var preselection_controller_default = {
 };
 
 // server/routes/preselection.routes.ts
-var router10 = Router10();
-router10.get(
+var router11 = Router11();
+router11.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   preselection_controller_default.getMyPreselection
 );
-router10.get(
+router11.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getPreselection
 );
-router10.patch(
+router11.patch(
   "/application/:applicationId/review",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.reviewCandidate
 );
-router10.patch(
+router11.patch(
   "/application/:applicationId/shortlist",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.shortlistCandidate
 );
-router10.patch(
+router11.patch(
   "/application/:applicationId/reject",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.rejectCandidate
 );
-router10.patch(
+router11.patch(
   "/application/:applicationId/comment",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
 );
-router10.get(
+router11.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterPreselections
 );
-router10.get(
+router11.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRecruiterStatistics
 );
-router10.get(
+router11.get(
   "/recruiter/ranking",
   protect,
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.getRanking
 );
-router10.get(
+router11.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAllPreselections
 );
-router10.get(
+router11.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.getAdminStatistics
 );
-router10.patch(
+router11.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.recalculatePreselection
 );
-router10.delete(
+router11.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   preselection_controller_default.deletePreselection
 );
-var preselection_routes_default = router10;
+var preselection_routes_default = router11;
 
 // server/routes/oralPresentation.routes.ts
 import express from "express";
@@ -7302,46 +8243,46 @@ var getRecruiterStatistics2 = async (req, res, next) => {
 };
 
 // server/routes/oralPresentation.routes.ts
-var router11 = express.Router();
-router11.use(protect);
-router11.post(
+var router12 = express.Router();
+router12.use(protect);
+router12.post(
   "/me/upload-url",
   restrictTo("CANDIDATE"),
   createPresentationUploadUrl
 );
-router11.post(
+router12.post(
   "/me/confirm",
   restrictTo("CANDIDATE"),
   confirmPresentationUpload
 );
-router11.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
-router11.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
-router11.get(
+router12.get("/me", restrictTo("CANDIDATE"), getMyPresentation);
+router12.delete("/me", restrictTo("CANDIDATE"), deletePresentation);
+router12.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterPresentations
 );
-router11.get(
+router12.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics2
 );
-router11.get(
+router12.get(
   "/candidate/:candidateId",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getPresentationByCandidateId
 );
-router11.patch(
+router12.patch(
   "/candidate/:candidateId/recruiter-score",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   updateRecruiterScore
 );
-router11.get("/", restrictTo("ADMIN"), getAllPresentations);
-var oralPresentation_routes_default = router11;
+router12.get("/", restrictTo("ADMIN"), getAllPresentations);
+var oralPresentation_routes_default = router12;
 
 // server/routes/quiz.routes.ts
 import express2 from "express";
@@ -7922,37 +8863,37 @@ var deleteAttempt = async (req, res, next) => {
 };
 
 // server/routes/quiz.routes.ts
-var router12 = express2.Router();
-router12.use(protect);
-router12.post("/start", restrictTo("CANDIDATE"), startQuiz);
-router12.get("/", restrictTo("CANDIDATE"), getQuiz);
-router12.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
-router12.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
-router12.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
-router12.get(
+var router13 = express2.Router();
+router13.use(protect);
+router13.post("/start", restrictTo("CANDIDATE"), startQuiz);
+router13.get("/", restrictTo("CANDIDATE"), getQuiz);
+router13.post("/submit", restrictTo("CANDIDATE"), submitQuiz);
+router13.get("/attempt", restrictTo("CANDIDATE"), getMyAttempt);
+router13.delete("/attempt", restrictTo("CANDIDATE"), deleteAttempt);
+router13.get(
   "/recruiter",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterAttempts
 );
-router12.get(
+router13.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getRecruiterStatistics3
 );
-router12.get(
+router13.get(
   "/attempt/:id",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   getAttemptById
 );
-router12.get("/all", restrictTo("ADMIN"), getAllAttempts);
-router12.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
-var quiz_routes_default = router12;
+router13.get("/all", restrictTo("ADMIN"), getAllAttempts);
+router13.get("/admin/statistics", restrictTo("ADMIN"), getAdminStatistics2);
+var quiz_routes_default = router13;
 
 // server/routes/aiAnalysis.routes.ts
-import { Router as Router11 } from "express";
+import { Router as Router12 } from "express";
 
 // server/controllers/aiAnalysis.controller.ts
 var AIAnalysisController = class {
@@ -8065,43 +9006,43 @@ var AIAnalysisController = class {
 var aiAnalysis_controller_default = new AIAnalysisController();
 
 // server/routes/aiAnalysis.routes.ts
-var router13 = Router11();
-router13.use(protect);
-router13.get(
+var router14 = Router12();
+router14.use(protect);
+router14.get(
   "/:applicationId",
   restrictTo("CANDIDATE", "RECRUITER", "ADMIN"),
   aiAnalysis_controller_default.getAnalysis
 );
-router13.post(
+router14.post(
   "/:applicationId/analyze",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.analyzeApplication
 );
-router13.post(
+router14.post(
   "/:applicationId/recalculate",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.recalculate
 );
-router13.get(
+router14.get(
   "/recruiter/all",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getRecruiterAnalyses
 );
-router13.get(
+router14.get(
   "/recruiter/statistics",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("PREMIUM"),
   aiAnalysis_controller_default.getStatistics
 );
-router13.delete(
+router14.delete(
   "/:applicationId",
   restrictTo("ADMIN"),
   aiAnalysis_controller_default.deleteAnalysis
 );
-var aiAnalysis_routes_default = router13;
+var aiAnalysis_routes_default = router14;
 
 // server/routes/candidateProfile.routes.ts
 import express3 from "express";
@@ -8318,7 +9259,7 @@ var uploadCV = async (req, res, next) => {
     next(err);
   }
 };
-var updateMyProfile = async (req, res, next) => {
+var updateMyProfile2 = async (req, res, next) => {
   try {
     const user = await prisma_default.user.findUnique({
       where: { id: req.user.id },
@@ -8646,36 +9587,36 @@ var listCandidateDirectory = async (req, res, next) => {
 };
 
 // server/routes/candidateProfile.routes.ts
-var router14 = express3.Router();
-router14.use(protect);
-router14.get(
+var router15 = express3.Router();
+router15.use(protect);
+router15.get(
   "/directory",
   restrictTo("RECRUITER", "ADMIN"),
   requireRecruiterTier("CORPORATE"),
   listCandidateDirectory
 );
-router14.get(
+router15.get(
   "/:candidateId/cv-document",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvDocument
 );
-router14.get(
+router15.get(
   "/:candidateId/cv-file",
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateCvFile
 );
-router14.use(restrictTo("CANDIDATE"));
-router14.patch("/me", updateMyProfile);
-router14.post("/me/cv/upload-url", createCvUploadUrl);
-router14.post("/me/cv/confirm", confirmCvUpload);
-router14.post("/me/cv", handleCvUpload, uploadCV);
-router14.get("/me/cv", getMyCV);
-router14.get("/me/cv-builder", getMyCvBuilder);
-router14.put("/me/cv-builder", saveMyCvBuilder);
-var candidateProfile_routes_default = router14;
+router15.use(restrictTo("CANDIDATE"));
+router15.patch("/me", updateMyProfile2);
+router15.post("/me/cv/upload-url", createCvUploadUrl);
+router15.post("/me/cv/confirm", confirmCvUpload);
+router15.post("/me/cv", handleCvUpload, uploadCV);
+router15.get("/me/cv", getMyCV);
+router15.get("/me/cv-builder", getMyCvBuilder);
+router15.put("/me/cv-builder", saveMyCvBuilder);
+var candidateProfile_routes_default = router15;
 
 // server/routes/candidateScore.routes.ts
-import { Router as Router12 } from "express";
+import { Router as Router13 } from "express";
 
 // server/controllers/candidateScore.controller.ts
 var getMyScore = async (req, res, next) => {
@@ -8825,71 +9766,71 @@ var deleteScore = async (req, res, next) => {
 };
 
 // server/routes/candidateScore.routes.ts
-var router15 = Router12();
-router15.get(
+var router16 = Router13();
+router16.get(
   "/application/:applicationId",
   protect,
   restrictTo("CANDIDATE"),
   getMyScore
 );
-router15.get(
+router16.get(
   "/application/:applicationId/details",
   protect,
   restrictTo("RECRUITER", "ADMIN"),
   getCandidateScore
 );
-router15.patch(
+router16.patch(
   "/application/:applicationId/interview-score",
   protect,
   restrictTo("RECRUITER"),
   updateInterviewScore
 );
-router15.patch(
+router16.patch(
   "/application/:applicationId/recruiter-score",
   protect,
   restrictTo("RECRUITER"),
   updateRecruiterScore2
 );
-router15.get(
+router16.get(
   "/recruiter",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterScores
 );
-router15.get(
+router16.get(
   "/recruiter/statistics",
   protect,
   restrictTo("RECRUITER"),
   getRecruiterStatistics4
 );
-router15.get(
+router16.get(
   "/",
   protect,
   restrictTo("ADMIN"),
   getAllScores
 );
-router15.get(
+router16.get(
   "/statistics",
   protect,
   restrictTo("ADMIN"),
   getAdminStatistics3
 );
-router15.patch(
+router16.patch(
   "/application/:applicationId/recalculate",
   protect,
   restrictTo("ADMIN"),
   recalculateScore
 );
-router15.delete(
+router16.delete(
   "/application/:applicationId",
   protect,
   restrictTo("ADMIN"),
   deleteScore
 );
-var candidateScore_routes_default = router15;
+var candidateScore_routes_default = router16;
 
 // server/routes/notification.routes.ts
-import { Router as Router13 } from "express";
+import { Router as Router14 } from "express";
 
 // server/controllers/notification.controller.ts
 init_prisma();
@@ -8937,12 +9878,12 @@ var markAllNotificationsRead = async (req, res, next) => {
 };
 
 // server/routes/notification.routes.ts
-var router16 = Router13();
-router16.use(protect);
-router16.get("/", getMyNotifications);
-router16.patch("/read-all", markAllNotificationsRead);
-router16.patch("/:id/read", markNotificationRead);
-var notification_routes_default = router16;
+var router17 = Router14();
+router17.use(protect);
+router17.get("/", getMyNotifications);
+router17.patch("/read-all", markAllNotificationsRead);
+router17.patch("/:id/read", markNotificationRead);
+var notification_routes_default = router17;
 
 // server/app.ts
 dotenv3.config();
@@ -9043,6 +9984,7 @@ function createApp() {
   app2.use("/api/auth", auth_routes_default);
   app2.use("/api/jobs", job_routes_default);
   app2.use("/api/categories", category_routes_default);
+  app2.use("/api/freelance", freelance_routes_default);
   app2.use("/api/applications", application_routes_default);
   app2.use("/api/contact", contact_routes_default);
   app2.use("/api/admin", admin_routes_default);

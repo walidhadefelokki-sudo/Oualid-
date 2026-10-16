@@ -108,12 +108,12 @@ const PublicLayout: React.FC = () => {
                     <LayoutDashboard size={14} /> {t("nav.dashboard")}
                   </Link>
                 ) : (
-                  <a
-                    href="/"
+                  <Link
+                    to="/connexion"
                     className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 border border-white/30 text-xs font-bold text-white hover:bg-white/10"
                   >
                     {t("nav.signin")}
-                  </a>
+                  </Link>
                 ))}
 
               {/* Back to the recruitment site. A full page load on purpose:

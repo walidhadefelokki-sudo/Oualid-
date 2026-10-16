@@ -26,5 +26,9 @@ router.get("/me/activation", protect, freelancer.getActivationDraft);
 router.post("/me/activate", protect, freelancer.activate);
 router.get("/me/workspace", protect, freelancer.getMyWorkspace);
 router.get("/me/wallet", protect, freelancer.getWallet);
+router.get("/me/services", protect, freelancer.listMyServices);
+router.get("/me/proposals", protect, freelancer.listMyProposals);
+router.get("/me/orders", protect, freelancer.listMyOrders);
+router.patch("/me/profile", protect, freelancer.updateMyProfile);
 
 export default router;

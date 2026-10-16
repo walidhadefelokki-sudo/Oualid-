@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
 import SchedulesTab from "./SchedulesTab";
+import FreelanceModerationTab from "./FreelanceModerationTab";
 import adminService, {
   AdminStats,
   Company,
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "users" | "jobs" | "schedules" | "crm" | "preselection";
+type Tab = "overview" | "plans" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation";
 
 interface AdminDashboardProps {
   onGoHome: () => void;
@@ -45,6 +46,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         <SidebarItem icon={<CalendarDays size={18} />} label="Agenda" active={tab === "schedules"} onClick={() => go("schedules")} />
         <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => go("crm")} />
         <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => go("preselection")} />
+        <SidebarItem icon={<ShieldCheck size={18} />} label="Modération freelance" active={tab === "freelance-moderation"} onClick={() => go("freelance-moderation")} />
       </nav>
 
       <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
@@ -100,6 +102,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
           {tab === "schedules" && <SchedulesTab />}
           {tab === "crm" && <CrmTab />}
           {tab === "preselection" && <PreselectionTab />}
+          {tab === "freelance-moderation" && <FreelanceModerationTab />}
         </main>
       </div>
     </div>

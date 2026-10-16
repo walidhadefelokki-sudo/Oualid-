@@ -3,6 +3,7 @@ import * as adminController from "../controllers/admin.controller";
 import * as adminManage from "../controllers/adminManage.controller";
 import * as schedule from "../controllers/schedule.controller";
 import * as adminEmail from "../controllers/adminEmail.controller";
+import * as freelanceModeration from "../controllers/freelanceModeration.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 
@@ -45,6 +46,14 @@ router.delete("/schedules/:id", schedule.deleteSchedule);
 // request: the function is killed at 60s and the send is the slow part.
 router.post("/emails/send", adminEmail.sendBroadcast);
 router.post("/emails/preview", adminEmail.sendBroadcastPreview);
+
+// Freelance moderation. Nothing a freelancer submits reaches the public
+// until one of these decisions is taken.
+router.get("/freelance/moderation", freelanceModeration.listQueue);
+router.get("/freelance/moderation/stats", freelanceModeration.getQueueStats);
+router.get("/freelance/moderation/history", freelanceModeration.listHistory);
+router.post("/freelance/moderation/services/:id/approve", freelanceModeration.approveService);
+router.post("/freelance/moderation/services/:id/reject", freelanceModeration.rejectService);
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", adminController.getCorporatePendingPreselections);

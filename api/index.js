@@ -27,6 +27,145 @@ var init_prisma = __esm({
   }
 });
 
+// server/services/plans.service.ts
+var plans_service_exports = {};
+__export(plans_service_exports, {
+  PlanLimitError: () => PlanLimitError,
+  assertCanPublishService: () => assertCanPublishService,
+  consumeProposalQuota: () => consumeProposalQuota,
+  default: () => plans_service_default,
+  getEntitlements: () => getEntitlements,
+  resolveProposalCharge: () => resolveProposalCharge
+});
+import { FreelancePlanTier } from "@prisma/client";
+var FREE_FALLBACK, statsFor, monthAfter, currentPeriod, getEntitlements, PlanLimitError, assertCanPublishService, resolveProposalCharge, consumeProposalQuota, plans_service_default;
+var init_plans_service = __esm({
+  "server/services/plans.service.ts"() {
+    init_prisma();
+    FREE_FALLBACK = {
+      tier: FreelancePlanTier.FREE,
+      name: "Gratuit",
+      maxActiveServices: 1,
+      monthlyProposals: null,
+      maxPortfolioProjects: 6,
+      prioritySearch: false,
+      removableBranding: false,
+      customSubdomain: false,
+      weeklyBoosts: 0
+    };
+    statsFor = (tier) => tier === "PREMIUM" || tier === "AGENCY" ? "full" : tier === "PRO" ? "basic" : "none";
+    monthAfter = (d) => {
+      const end = new Date(d);
+      end.setMonth(end.getMonth() + 1);
+      return end;
+    };
+    currentPeriod = (startedAt) => {
+      const now = /* @__PURE__ */ new Date();
+      if (now < monthAfter(startedAt)) return { periodStartedAt: startedAt, rolled: false };
+      const next = new Date(startedAt);
+      while (now >= monthAfter(next)) next.setMonth(next.getMonth() + 1);
+      return { periodStartedAt: next, rolled: true };
+    };
+    getEntitlements = async (freelancerId) => {
+      const now = /* @__PURE__ */ new Date();
+      const subscription = await prisma_default.freelanceSubscription.findFirst({
+        where: { freelancerId, status: "ACTIVE", endsAt: { gt: now } },
+        orderBy: { endsAt: "desc" },
+        include: { plan: true }
+      });
+      let proposalsUsed = subscription?.proposalsUsedThisPeriod ?? 0;
+      if (subscription) {
+        const { periodStartedAt, rolled } = currentPeriod(subscription.periodStartedAt);
+        if (rolled) {
+          await prisma_default.freelanceSubscription.update({
+            where: { id: subscription.id },
+            data: { periodStartedAt, proposalsUsedThisPeriod: 0 }
+          });
+          proposalsUsed = 0;
+        }
+      }
+      const plan = subscription?.plan ?? await prisma_default.freelancePlan.findUnique({
+        where: { tier: FreelancePlanTier.FREE }
+      });
+      const p = plan ?? FREE_FALLBACK;
+      const tier = p.tier;
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3);
+      const [activeServices, portfolioProjects, boostsUsedThisWeek] = await Promise.all([
+        prisma_default.serviceListing.count({
+          where: {
+            freelancerId,
+            // A paused or expired listing is not occupying a slot.
+            status: "PUBLISHED",
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+          }
+        }),
+        prisma_default.portfolioProject.count({ where: { portfolio: { freelancerId } } }),
+        prisma_default.boost.count({ where: { freelancerId, createdAt: { gte: weekAgo } } })
+      ]);
+      const monthlyProposals = p.monthlyProposals ?? null;
+      return {
+        tier,
+        planName: p.name,
+        subscriptionId: subscription?.id ?? null,
+        renewsAt: subscription?.endsAt ?? null,
+        maxActiveServices: p.maxActiveServices ?? null,
+        activeServices,
+        canPublishService: p.maxActiveServices == null || activeServices < p.maxActiveServices,
+        monthlyProposals,
+        proposalsUsedThisPeriod: proposalsUsed,
+        proposalsRemaining: monthlyProposals == null ? null : Math.max(0, monthlyProposals - proposalsUsed),
+        maxPortfolioProjects: p.maxPortfolioProjects ?? null,
+        portfolioProjects,
+        prioritySearch: p.prioritySearch,
+        removableBranding: p.removableBranding,
+        customSubdomain: p.customSubdomain,
+        weeklyBoosts: p.weeklyBoosts,
+        boostsUsedThisWeek,
+        stats: statsFor(tier)
+      };
+    };
+    PlanLimitError = class extends Error {
+      constructor(message, limit, used) {
+        super(message);
+        this.limit = limit;
+        this.used = used;
+        this.name = "PlanLimitError";
+      }
+    };
+    assertCanPublishService = async (freelancerId) => {
+      const e = await getEntitlements(freelancerId);
+      if (!e.canPublishService) {
+        throw new PlanLimitError(
+          `La formule ${e.planName} permet ${e.maxActiveServices} service(s) en ligne. Mettez un service en pause ou changez de formule.`,
+          e.maxActiveServices,
+          e.activeServices
+        );
+      }
+      return e;
+    };
+    resolveProposalCharge = async (freelancerId) => {
+      const e = await getEntitlements(freelancerId);
+      if (e.subscriptionId && e.proposalsRemaining !== null && e.proposalsRemaining > 0) {
+        return { method: "quota", subscriptionId: e.subscriptionId };
+      }
+      return { method: "credits", subscriptionId: null };
+    };
+    consumeProposalQuota = async (subscriptionId) => {
+      await prisma_default.freelanceSubscription.update({
+        where: { id: subscriptionId },
+        data: { proposalsUsedThisPeriod: { increment: 1 } }
+      });
+    };
+    plans_service_default = {
+      getEntitlements,
+      assertCanPublishService,
+      resolveProposalCharge,
+      consumeProposalQuota,
+      PlanLimitError
+    };
+  }
+});
+
 // server/app.ts
 import express4 from "express";
 import cors from "cors";
@@ -674,8 +813,8 @@ var deliverEmail = async (label, send, timeoutMs = 8e3) => {
   try {
     await Promise.race([
       send(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+      new Promise((_, reject2) => {
+        timer = setTimeout(() => reject2(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
       })
     ]);
   } catch (err) {
@@ -2863,6 +3002,7 @@ var credits_service_default = {
 };
 
 // server/controllers/freelancer.controller.ts
+init_plans_service();
 var slugifyUsername = (raw) => raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 30);
 var uniqueUsername = async (base) => {
   const root = base || "freelance";
@@ -3093,7 +3233,10 @@ var getMyWorkspace = async (req, res, next) => {
           activeOrders,
           completedOrders
         },
-        wallet: { balance, costs: await credits_service_default.getCreditCosts() }
+        wallet: { balance, costs: await credits_service_default.getCreditCosts() },
+        // What the plan allows, computed server-side. The page uses it to
+        // show limits; the handlers use it to enforce them.
+        entitlements: await plans_service_default.getEntitlements(profile.id)
       }
     });
   } catch (err) {
@@ -3257,6 +3400,416 @@ var updateMyProfile = async (req, res, next) => {
   }
 };
 
+// server/controllers/service.controller.ts
+init_prisma();
+
+// server/services/servicePublication.service.ts
+init_prisma();
+import { CreditEntryType as CreditEntryType3, ServiceStatus } from "@prisma/client";
+init_plans_service();
+var ServiceValidationError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ServiceValidationError";
+  }
+};
+var slugify4 = (title) => {
+  const base = title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 60);
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${base || "service"}-${suffix}`;
+};
+var assertReadyForReview = (service) => {
+  if (service.title.trim().length < 10) {
+    throw new ServiceValidationError("Le titre doit faire au moins 10 caract\xE8res.");
+  }
+  if (service.description.trim().length < 60) {
+    throw new ServiceValidationError("La description doit faire au moins 60 caract\xE8res.");
+  }
+  if (service.packages.length === 0) {
+    throw new ServiceValidationError("Ajoutez au moins une formule avec un prix.");
+  }
+  for (const p of service.packages) {
+    if (Number(p.price) <= 0) {
+      throw new ServiceValidationError("Chaque formule doit avoir un prix sup\xE9rieur \xE0 z\xE9ro.");
+    }
+    if (p.deliveryDays <= 0) {
+      throw new ServiceValidationError("Chaque formule doit avoir un d\xE9lai de livraison.");
+    }
+  }
+};
+var submitForReview = async (freelancerId, serviceId, userId) => {
+  const service = await prisma_default.serviceListing.findFirst({
+    where: { id: serviceId, freelancerId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      packages: { select: { price: true, deliveryDays: true } }
+    }
+  });
+  if (!service) throw new ServiceValidationError("Service introuvable.");
+  if (service.status === "PENDING") {
+    throw new ServiceValidationError("Ce service est d\xE9j\xE0 en attente de validation.");
+  }
+  if (service.status === "PUBLISHED") {
+    throw new ServiceValidationError("Ce service est d\xE9j\xE0 en ligne.");
+  }
+  assertReadyForReview(service);
+  await plans_service_default.assertCanPublishService(freelancerId);
+  const costs = await credits_service_default.getCreditCosts();
+  const previousStatus = service.status;
+  const claimed = await prisma_default.serviceListing.updateMany({
+    where: { id: service.id, freelancerId, status: { in: ["DRAFT", "REJECTED"] } },
+    data: {
+      status: ServiceStatus.PENDING,
+      rejectionReason: null,
+      publicationAttempts: { increment: 1 }
+    }
+  });
+  if (claimed.count === 0) {
+    throw new ServiceValidationError("Ce service est d\xE9j\xE0 en attente de validation.");
+  }
+  const { publicationAttempts } = await prisma_default.serviceListing.findUniqueOrThrow({
+    where: { id: service.id },
+    select: { publicationAttempts: true }
+  });
+  try {
+    const charge = await credits_service_default.spend({
+      userId,
+      amount: costs.servicePublication,
+      type: CreditEntryType3.SERVICE_PUBLICATION,
+      idempotencyKey: `service-publication:${service.id}:${publicationAttempts}`,
+      referenceType: "service",
+      referenceId: service.id,
+      note: `Publication : ${service.title.slice(0, 60)}`
+    });
+    return { status: ServiceStatus.PENDING, balance: charge.balance, charged: !charge.replayed };
+  } catch (err) {
+    await prisma_default.serviceListing.updateMany({
+      where: { id: service.id, status: ServiceStatus.PENDING },
+      data: { status: previousStatus, publicationAttempts: { decrement: 1 } }
+    });
+    throw err;
+  }
+};
+var approve = async (serviceId, moderatorId) => {
+  const service = await prisma_default.serviceListing.findUnique({
+    where: { id: serviceId },
+    select: { id: true, freelancerId: true, status: true }
+  });
+  if (!service) throw new ServiceValidationError("Service introuvable.");
+  if (service.status !== "PENDING") {
+    throw new ServiceValidationError("Ce service n'est pas en attente de validation.");
+  }
+  await plans_service_default.assertCanPublishService(service.freelancerId);
+  const costs = await credits_service_default.getCreditCosts();
+  const now = /* @__PURE__ */ new Date();
+  const expiresAt = new Date(now.getTime() + costs.serviceDurationDays * 864e5);
+  const [updated] = await prisma_default.$transaction([
+    prisma_default.serviceListing.update({
+      where: { id: service.id },
+      data: { status: ServiceStatus.PUBLISHED, publishedAt: now, expiresAt }
+    }),
+    prisma_default.moderationRecord.create({
+      data: {
+        entityType: "service",
+        entityId: service.id,
+        state: "APPROVED",
+        moderatorId
+      }
+    })
+  ]);
+  return updated;
+};
+var reject = async (serviceId, moderatorId, reason) => {
+  if (!reason?.trim()) {
+    throw new ServiceValidationError("Un motif est obligatoire pour refuser un service.");
+  }
+  const service = await prisma_default.serviceListing.findUnique({
+    where: { id: serviceId },
+    select: { id: true, status: true }
+  });
+  if (!service) throw new ServiceValidationError("Service introuvable.");
+  if (service.status !== "PENDING") {
+    throw new ServiceValidationError("Ce service n'est pas en attente de validation.");
+  }
+  await prisma_default.$transaction([
+    prisma_default.serviceListing.update({
+      where: { id: service.id },
+      data: { status: ServiceStatus.REJECTED, rejectionReason: reason.trim() }
+    }),
+    prisma_default.moderationRecord.create({
+      data: {
+        entityType: "service",
+        entityId: service.id,
+        state: "REJECTED",
+        reason: reason.trim(),
+        moderatorId
+      }
+    })
+  ]);
+  const refund = await credits_service_default.refundFor(
+    "service",
+    service.id,
+    "Remboursement : service refus\xE9 par la mod\xE9ration"
+  );
+  return { refunded: refund?.replayed === false, balance: refund?.balance ?? null };
+};
+var servicePublication_service_default = { submitForReview, approve, reject, slugify: slugify4, ServiceValidationError };
+
+// server/controllers/service.controller.ts
+init_plans_service();
+var TIERS = ["BASIC", "STANDARD", "PREMIUM"];
+var requireProfile = async (userId) => {
+  const profile = await prisma_default.freelancerProfile.findUnique({
+    where: { userId },
+    select: { id: true }
+  });
+  if (!profile) throw new AppError("Aucun profil freelance pour ce compte.", 404);
+  return profile.id;
+};
+var asHttpError = (err) => {
+  if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
+  if (err instanceof PlanLimitError) return new AppError(err.message, 403);
+  if (err instanceof InsufficientCreditsError) {
+    return new AppError(
+      `Cr\xE9dits insuffisants : ${err.required} requis, ${err.available} disponibles.`,
+      402
+    );
+  }
+  return err;
+};
+var createDraft = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const title = String(req.body.title ?? "").trim();
+    const service = await prisma_default.serviceListing.create({
+      data: {
+        freelancerId,
+        title: title || "Nouveau service",
+        slug: servicePublication_service_default.slugify(title || "service"),
+        description: "",
+        status: "DRAFT"
+      },
+      select: { id: true }
+    });
+    res.status(201).json({ success: true, data: { id: service.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var getMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const service = await prisma_default.serviceListing.findFirst({
+      where: { id: req.params.id, freelancerId },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        status: true,
+        rejectionReason: true,
+        views: true,
+        publishedAt: true,
+        expiresAt: true,
+        categoryId: true,
+        packages: {
+          orderBy: { price: "asc" },
+          select: {
+            id: true,
+            tier: true,
+            name: true,
+            description: true,
+            price: true,
+            deliveryDays: true,
+            revisions: true,
+            features: true
+          }
+        },
+        addons: { select: { id: true, name: true, price: true, extraDays: true } },
+        faqs: { orderBy: { position: "asc" }, select: { id: true, question: true, answer: true } },
+        requirements: {
+          orderBy: { position: "asc" },
+          select: { id: true, prompt: true, required: true }
+        },
+        skills: { select: { skill: { select: { name: true } } } }
+      }
+    });
+    if (!service) return next(new AppError("Service introuvable.", 404));
+    res.json({
+      success: true,
+      data: { service: { ...service, skills: service.skills.map((s) => s.skill.name) } }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const existing = await prisma_default.serviceListing.findFirst({
+      where: { id: req.params.id, freelancerId },
+      select: { id: true, status: true }
+    });
+    if (!existing) return next(new AppError("Service introuvable.", 404));
+    if (existing.status === "PENDING") {
+      return next(
+        new AppError("Ce service est en cours de validation et ne peut pas \xEAtre modifi\xE9.", 409)
+      );
+    }
+    const { title, description, categoryId, packages, faqs, requirements, skills } = req.body;
+    await prisma_default.$transaction(async (tx) => {
+      await tx.serviceListing.update({
+        where: { id: existing.id },
+        data: {
+          ...title !== void 0 ? { title: String(title).trim() || "Nouveau service" } : {},
+          ...description !== void 0 ? { description: String(description) } : {},
+          ...categoryId !== void 0 ? { categoryId: categoryId || null } : {}
+        }
+      });
+      if (Array.isArray(packages)) {
+        await tx.servicePackage.deleteMany({ where: { serviceId: existing.id } });
+        for (const p of packages) {
+          const tier = TIERS.includes(p.tier) ? p.tier : "BASIC";
+          if (p.price === "" || p.price == null) continue;
+          await tx.servicePackage.create({
+            data: {
+              serviceId: existing.id,
+              tier,
+              name: String(p.name ?? tier).trim() || tier,
+              description: p.description ? String(p.description) : null,
+              price: String(Number(p.price) || 0),
+              deliveryDays: Math.max(1, Number(p.deliveryDays) || 1),
+              revisions: Math.max(0, Number(p.revisions) || 0),
+              features: Array.isArray(p.features) ? p.features.map(String).filter(Boolean).slice(0, 12) : []
+            }
+          });
+        }
+      }
+      if (Array.isArray(faqs)) {
+        await tx.serviceFaq.deleteMany({ where: { serviceId: existing.id } });
+        for (const [i, f] of faqs.slice(0, 15).entries()) {
+          if (!f?.question?.trim() || !f?.answer?.trim()) continue;
+          await tx.serviceFaq.create({
+            data: {
+              serviceId: existing.id,
+              question: String(f.question).trim(),
+              answer: String(f.answer).trim(),
+              position: i
+            }
+          });
+        }
+      }
+      if (Array.isArray(requirements)) {
+        await tx.serviceRequirement.deleteMany({ where: { serviceId: existing.id } });
+        for (const [i, r] of requirements.slice(0, 15).entries()) {
+          if (!r?.prompt?.trim()) continue;
+          await tx.serviceRequirement.create({
+            data: {
+              serviceId: existing.id,
+              prompt: String(r.prompt).trim(),
+              required: r.required !== false,
+              position: i
+            }
+          });
+        }
+      }
+      if (Array.isArray(skills)) {
+        await tx.serviceSkill.deleteMany({ where: { serviceId: existing.id } });
+        for (const raw of skills.slice(0, 15)) {
+          const name = String(raw).trim();
+          if (!name) continue;
+          const skill = await tx.skill.upsert({
+            where: { name },
+            update: {},
+            create: { name },
+            select: { id: true }
+          });
+          await tx.serviceSkill.create({
+            data: { serviceId: existing.id, skillId: skill.id }
+          });
+        }
+      }
+    });
+    res.json({ success: true, data: { id: existing.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var submitMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const result = await servicePublication_service_default.submitForReview(freelancerId, req.params.id, req.user.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};
+var pauseMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const done = await prisma_default.serviceListing.updateMany({
+      where: { id: req.params.id, freelancerId, status: "PUBLISHED" },
+      data: { status: "PAUSED" }
+    });
+    if (done.count === 0) return next(new AppError("Ce service n'est pas en ligne.", 409));
+    res.json({ success: true, data: { status: "PAUSED" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var resumeMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const service = await prisma_default.serviceListing.findFirst({
+      where: { id: req.params.id, freelancerId, status: "PAUSED" },
+      select: { id: true, expiresAt: true }
+    });
+    if (!service) return next(new AppError("Ce service n'est pas en pause.", 409));
+    const { assertCanPublishService: assertCanPublishService2 } = await Promise.resolve().then(() => (init_plans_service(), plans_service_exports));
+    try {
+      await assertCanPublishService2(freelancerId);
+    } catch (err) {
+      return next(asHttpError(err));
+    }
+    const expired = service.expiresAt && service.expiresAt <= /* @__PURE__ */ new Date();
+    await prisma_default.serviceListing.update({
+      where: { id: service.id },
+      data: { status: expired ? "EXPIRED" : "PUBLISHED" }
+    });
+    res.json({ success: true, data: { status: expired ? "EXPIRED" : "PUBLISHED" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteMyService = async (req, res, next) => {
+  try {
+    const freelancerId = await requireProfile(req.user.id);
+    const service = await prisma_default.serviceListing.findFirst({
+      where: { id: req.params.id, freelancerId },
+      select: { id: true, status: true, _count: { select: { orders: true } } }
+    });
+    if (!service) return next(new AppError("Service introuvable.", 404));
+    if (service._count.orders > 0) {
+      return next(
+        new AppError(
+          "Ce service a des commandes et ne peut pas \xEAtre supprim\xE9. Mettez-le en pause.",
+          409
+        )
+      );
+    }
+    if (service.status === "PENDING") {
+      return next(new AppError("Ce service est en cours de validation.", 409));
+    }
+    await prisma_default.serviceListing.delete({ where: { id: service.id } });
+    res.json({ success: true, data: { id: service.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -3272,6 +3825,13 @@ router4.get("/me/services", protect, listMyServices);
 router4.get("/me/proposals", protect, listMyProposals);
 router4.get("/me/orders", protect, listMyOrders);
 router4.patch("/me/profile", protect, updateMyProfile);
+router4.post("/me/services", protect, createDraft);
+router4.get("/me/services/:id", protect, getMyService);
+router4.patch("/me/services/:id", protect, updateMyService);
+router4.post("/me/services/:id/submit", protect, submitMyService);
+router4.post("/me/services/:id/pause", protect, pauseMyService);
+router4.post("/me/services/:id/resume", protect, resumeMyService);
+router4.delete("/me/services/:id", protect, deleteMyService);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -4486,8 +5046,8 @@ var withTimeout = async (work, ms) => {
   try {
     return await Promise.race([
       work,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new AttemptTimeout(`timed out after ${ms}ms`)), ms);
+      new Promise((_, reject2) => {
+        timer = setTimeout(() => reject2(new AttemptTimeout(`timed out after ${ms}ms`)), ms);
       })
     ]);
   } finally {
@@ -6434,6 +6994,161 @@ var sendBroadcastPreview = async (req, res, next) => {
   }
 };
 
+// server/controllers/freelanceModeration.controller.ts
+init_prisma();
+init_plans_service();
+var asHttpError2 = (err) => {
+  if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
+  if (err instanceof PlanLimitError) return new AppError(err.message, 409);
+  return err;
+};
+var listQueue = async (req, res, next) => {
+  try {
+    const services = await prisma_default.serviceListing.findMany({
+      where: { status: "PENDING" },
+      orderBy: { updatedAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        updatedAt: true,
+        publicationAttempts: true,
+        category: { select: { name: true } },
+        packages: {
+          orderBy: { price: "asc" },
+          select: { tier: true, name: true, price: true, deliveryDays: true, revisions: true, features: true }
+        },
+        faqs: { orderBy: { position: "asc" }, select: { question: true, answer: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        media: { orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        freelancer: {
+          select: {
+            username: true,
+            displayName: true,
+            level: true,
+            identityVerified: true,
+            ratingAverage: true,
+            ratingCount: true,
+            wilaya: true,
+            user: { select: { email: true } }
+          }
+        }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        services: services.map((s) => ({
+          id: s.id,
+          title: s.title,
+          description: s.description,
+          submittedAt: s.updatedAt,
+          // Second and later attempts deserve a closer look: this one has
+          // been refused before.
+          attempt: s.publicationAttempts,
+          category: s.category?.name ?? null,
+          packages: s.packages,
+          faqs: s.faqs,
+          skills: s.skills.map((x) => x.skill.name),
+          images: s.media.map((m) => m.file.url),
+          freelancer: {
+            username: s.freelancer.username,
+            displayName: s.freelancer.displayName,
+            email: s.freelancer.user.email,
+            level: s.freelancer.level,
+            verified: s.freelancer.identityVerified,
+            rating: s.freelancer.ratingAverage,
+            ratingCount: s.freelancer.ratingCount,
+            wilaya: s.freelancer.wilaya
+          }
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getQueueStats = async (_req, res, next) => {
+  try {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const [pending, overdue, approvedToday, rejectedToday] = await Promise.all([
+      prisma_default.serviceListing.count({ where: { status: "PENDING" } }),
+      // Waiting longer than the target. Measured, not assumed: the
+      // specification's "moins de 24 heures" is a claim that has to be
+      // checkable before anyone repeats it.
+      prisma_default.serviceListing.count({ where: { status: "PENDING", updatedAt: { lt: dayAgo } } }),
+      prisma_default.moderationRecord.count({
+        where: { entityType: "service", state: "APPROVED", createdAt: { gte: dayAgo } }
+      }),
+      prisma_default.moderationRecord.count({
+        where: { entityType: "service", state: "REJECTED", createdAt: { gte: dayAgo } }
+      })
+    ]);
+    res.json({ success: true, data: { pending, overdue, approvedToday, rejectedToday } });
+  } catch (err) {
+    next(err);
+  }
+};
+var approveService = async (req, res, next) => {
+  try {
+    const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
+    res.json({ success: true, data: { id: service.id, status: service.status } });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var rejectService = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var listHistory = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = 30;
+    const [total, records] = await Promise.all([
+      prisma_default.moderationRecord.count({ where: { entityType: "service" } }),
+      prisma_default.moderationRecord.findMany({
+        where: { entityType: "service" },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          entityId: true,
+          state: true,
+          reason: true,
+          createdAt: true,
+          moderator: { select: { email: true, firstName: true, lastName: true } }
+        }
+      })
+    ]);
+    const titles = await prisma_default.serviceListing.findMany({
+      where: { id: { in: records.map((r) => r.entityId) } },
+      select: { id: true, title: true }
+    });
+    const titleById = new Map(titles.map((t) => [t.id, t.title]));
+    res.json({
+      success: true,
+      data: {
+        records: records.map((r) => ({
+          ...r,
+          title: titleById.get(r.entityId) ?? "(service supprim\xE9)"
+        })),
+        page,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router7 = Router7();
 router7.use(protect);
@@ -6457,6 +7172,11 @@ router7.patch("/schedules/:id", updateSchedule);
 router7.delete("/schedules/:id", deleteSchedule);
 router7.post("/emails/send", sendBroadcast);
 router7.post("/emails/preview", sendBroadcastPreview);
+router7.get("/freelance/moderation", listQueue);
+router7.get("/freelance/moderation/stats", getQueueStats);
+router7.get("/freelance/moderation/history", listHistory);
+router7.post("/freelance/moderation/services/:id/approve", approveService);
+router7.post("/freelance/moderation/services/:id/reject", rejectService);
 router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router7.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router7;

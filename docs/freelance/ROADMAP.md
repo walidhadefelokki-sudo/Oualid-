@@ -8,8 +8,7 @@ The plan follows the PDF's own three phases. Nothing here is a guess about
 what exists: every "done" line is code in the repository with the test or the
 verification that proved it.
 
-Last updated after `fa54c95` — the service editor. Eleven commits, none
-pushed.
+Last updated after the moderation queue. Thirteen commits, none pushed.
 
 ---
 
@@ -44,29 +43,26 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
 | **Plans** | Free / Pro / Premium limits computed and enforced server-side | 14 tests incl. quota rollover and expiry |
 | **Dashboard** | Six sections, all real reads; plan card with usage meters | every tier verified through the endpoint |
 | **Service editor** | Three formulas, draft, submit, pause, resume, delete | full loop verified: draft → charge → approve → public |
+| **Moderation** | Admin queue with age, approve, refuse with a reason and refund, decision history | refusal refunded 10 and the resubmission charged again |
 
 ### Not done, in dependency order
 
-1. **Moderation queue (admin).** *Blocks everything.* Submitted services sit
-   in `PENDING` for ever and the credits are already spent. The approve and
-   reject logic exists and is tested; it has no screen. Until this ships the
-   marketplace cannot actually publish anything without a developer.
-2. **Client project publishing.** The feed and the detail page read fine, but
+1. **Client project publishing.** The feed and the detail page read fine, but
    nothing can create a project, so the feed is empty by construction and
    proposals have nothing to answer.
-3. **Proposals.** Submit, withdraw, and the client's side — compare,
+2. **Proposals.** Submit, withdraw, and the client's side — compare,
    shortlist, hire. The credit charge and the quota decision are written and
    tested (`resolveProposalCharge`); the endpoints are not.
-4. **Orders.** Created from a package, a hired proposal or an accepted custom
+3. **Orders.** Created from a package, a hired proposal or an accepted custom
    offer. Milestones, deliveries, revisions, completion.
-5. **Messaging.** Conversations, attachments, custom offers sent from a
+4. **Messaging.** Conversations, attachments, custom offers sent from a
    thread. Real-time is a later refinement — polling is enough to start.
-6. **Reviews.** Only after a completed order, both directions, one public
+5. **Reviews.** Only after a completed order, both directions, one public
    reply.
-7. **Payments.** Credit packs through Chargily, which is already live on the
+6. **Payments.** Credit packs through Chargily, which is already live on the
    recruitment side, plus the CCP/BaridiMob receipt queue a human approves.
    Invoices reuse the existing PDF generator.
-8. **Service media.** Uploads through the existing Supabase storage. Cards
+7. **Service media.** Uploads through the existing Supabase storage. Cards
    currently fall back to an initial.
 
 ### Known gaps in what is done

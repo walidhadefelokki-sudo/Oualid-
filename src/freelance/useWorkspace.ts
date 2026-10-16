@@ -91,17 +91,30 @@ export interface WorkspaceData {
 export const useWorkspace = (enabled: boolean) => {
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const { data: body } = await api.get("/freelance/me/workspace");
+
+      /* Checked rather than trusted. A response that is missing the payload
+       * is not an empty workspace, it is a broken one, and storing undefined
+       * here used to leave the dashboard on "Chargement…" for ever with
+       * nothing logged. */
+      if (!body?.data || typeof body.data.active !== "boolean") {
+        throw new Error("Réponse inattendue du serveur.");
+      }
+
       setData(body.data);
-    } catch {
-      // A failure here is almost always an expired token, which the auth
-      // provider has already cleared. Treating it as "not active" shows the
-      // sign-in screen rather than an error about a side request.
-      setData({ active: false });
+    } catch (err) {
+      setData(null);
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Impossible de charger votre espace."
+      );
     } finally {
       setLoading(false);
     }
@@ -112,7 +125,7 @@ export const useWorkspace = (enabled: boolean) => {
     else setLoading(false);
   }, [enabled, reload]);
 
-  return { data, loading, reload };
+  return { data, loading, error, reload };
 };
 
 /** What the layout passes down to each section. */

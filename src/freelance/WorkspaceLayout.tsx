@@ -43,7 +43,7 @@ const ITEMS = [
 const WorkspaceLayout: React.FC = () => {
   const { signedIn, loading: authLoading } = useAuth();
   const location = useLocation();
-  const { data, loading, reload } = useWorkspace(signedIn);
+  const { data, loading, error, reload } = useWorkspace(signedIn);
 
   if (authLoading) return <Loading />;
 
@@ -54,7 +54,29 @@ const WorkspaceLayout: React.FC = () => {
     return <SignIn />;
   }
 
-  if (loading || !data) return <Loading />;
+  if (loading) return <Loading />;
+
+  /* A failure is shown, not waited out. This screen used to sit on
+   * "Chargement…" indefinitely whenever the workspace request came back
+   * without a payload, which is what a server running older code does. */
+  if (error || !data) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <p className="font-bold text-red-700">Impossible de charger votre espace</p>
+          <p className="mt-2 text-sm text-red-600 break-words">
+            {error ?? "Réponse inattendue du serveur."}
+          </p>
+          <button
+            onClick={reload}
+            className="mt-5 rounded-full px-6 py-2.5 bg-[#173E7D] text-white text-sm font-bold"
+          >
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!data.active) return <Activate onActivated={reload} />;
 

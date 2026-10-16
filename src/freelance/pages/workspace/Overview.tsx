@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Coins, FileText, Inbox, Send, ShoppingBag, Sparkles } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useWorkspaceContext } from "../../useWorkspace";
+import PlanCard from "./PlanCard";
 
 /**
  * The dashboard overview.
@@ -47,6 +48,7 @@ const Overview: React.FC = () => {
   const p = data.profile!;
   const s = data.stats!;
   const w = data.wallet!;
+  const e = data.entitlements;
 
   const lowBalance = w.balance < w.costs.servicePublication;
 
@@ -101,6 +103,12 @@ const Overview: React.FC = () => {
           Acheter des crédits
         </Link>
       </div>
+
+      {e && (
+        <div className="mb-6">
+          <PlanCard e={e} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat

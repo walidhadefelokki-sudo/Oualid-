@@ -3,6 +3,7 @@ import { CreditEntryType } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import credits from "../services/credits.service";
+import plans from "../services/plans.service";
 
 /**
  * Becoming a freelancer, and the workspace that follows.
@@ -301,6 +302,9 @@ export const getMyWorkspace = async (req: Request, res: Response, next: NextFunc
           completedOrders,
         },
         wallet: { balance, costs: await credits.getCreditCosts() },
+        // What the plan allows, computed server-side. The page uses it to
+        // show limits; the handlers use it to enforce them.
+        entitlements: await plans.getEntitlements(profile.id),
       },
     });
   } catch (err) {

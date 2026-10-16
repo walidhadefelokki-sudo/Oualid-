@@ -51,11 +51,41 @@ export interface WorkspaceWallet {
   };
 }
 
+/** What the account's plan allows, as the server computed it. */
+export interface Entitlements {
+  tier: "FREE" | "PRO" | "PREMIUM" | "AGENCY";
+  planName: string;
+  subscriptionId: string | null;
+  renewsAt: string | null;
+
+  /** Null means unlimited. */
+  maxActiveServices: number | null;
+  activeServices: number;
+  canPublishService: boolean;
+
+  monthlyProposals: number | null;
+  proposalsUsedThisPeriod: number;
+  proposalsRemaining: number | null;
+
+  maxPortfolioProjects: number | null;
+  portfolioProjects: number;
+
+  prioritySearch: boolean;
+  removableBranding: boolean;
+  customSubdomain: boolean;
+
+  weeklyBoosts: number;
+  boostsUsedThisWeek: number;
+
+  stats: "none" | "basic" | "full";
+}
+
 export interface WorkspaceData {
   active: boolean;
   profile?: WorkspaceProfile;
   stats?: WorkspaceStats;
   wallet?: WorkspaceWallet;
+  entitlements?: Entitlements;
 }
 
 export const useWorkspace = (enabled: boolean) => {

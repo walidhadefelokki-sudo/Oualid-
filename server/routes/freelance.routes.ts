@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as freelancePublic from "../controllers/freelancePublic.controller";
 import * as freelancer from "../controllers/freelancer.controller";
+import * as service from "../controllers/service.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -30,5 +31,15 @@ router.get("/me/services", protect, freelancer.listMyServices);
 router.get("/me/proposals", protect, freelancer.listMyProposals);
 router.get("/me/orders", protect, freelancer.listMyOrders);
 router.patch("/me/profile", protect, freelancer.updateMyProfile);
+
+// The service editor. Every handler scopes its query to the caller's own
+// profile rather than checking ownership after the fact.
+router.post("/me/services", protect, service.createDraft);
+router.get("/me/services/:id", protect, service.getMyService);
+router.patch("/me/services/:id", protect, service.updateMyService);
+router.post("/me/services/:id/submit", protect, service.submitMyService);
+router.post("/me/services/:id/pause", protect, service.pauseMyService);
+router.post("/me/services/:id/resume", protect, service.resumeMyService);
+router.delete("/me/services/:id", protect, service.deleteMyService);
 
 export default router;

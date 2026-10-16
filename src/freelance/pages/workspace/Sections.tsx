@@ -75,9 +75,17 @@ export const MyServices: React.FC = () => {
     <>
       <div className="flex items-baseline justify-between gap-4 mb-5">
         <h1 className={h1 + " mb-0"}>Mes services</h1>
-        <span className="text-sm text-[#2B3442]/50">
-          {ws.wallet!.costs.servicePublication} crédits / {ws.wallet!.costs.serviceDurationDays} j
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-[#2B3442]/50">
+            {ws.wallet!.costs.servicePublication} crédits / {ws.wallet!.costs.serviceDurationDays} j
+          </span>
+          <Link
+            to="/freelance-espace/services/nouveau"
+            className="rounded-full px-5 py-2.5 bg-[#173E7D] text-white text-sm font-bold"
+          >
+            Nouveau service
+          </Link>
+        </div>
       </div>
 
       {failed ? (
@@ -85,11 +93,23 @@ export const MyServices: React.FC = () => {
       ) : data === null ? (
         <Loading />
       ) : data.length === 0 ? (
-        <EmptyState message="Vous n'avez pas encore de service." />
+        <div className="text-center">
+          <EmptyState message="Vous n'avez pas encore de service." />
+          <Link
+            to="/freelance-espace/services/nouveau"
+            className="inline-block mt-4 rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
+          >
+            Créer mon premier service
+          </Link>
+        </div>
       ) : (
         <div className="space-y-3">
           {data.map((s) => (
-            <div key={s.id} className={`${card} p-4 flex flex-wrap items-center gap-4`}>
+            <Link
+              key={s.id}
+              to={`/freelance-espace/services/${s.id}`}
+              className={`${card} p-4 flex flex-wrap items-center gap-4 hover:border-[#173E7D]/40 transition-colors`}
+            >
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-[#173E7D] break-words">{s.title}</p>
                 <p className="text-xs text-[#2B3442]/50 mt-0.5">
@@ -104,7 +124,7 @@ export const MyServices: React.FC = () => {
               </div>
               <Price value={s.startingPrice} />
               <Status value={s.status} />
-            </div>
+            </Link>
           ))}
         </div>
       )}

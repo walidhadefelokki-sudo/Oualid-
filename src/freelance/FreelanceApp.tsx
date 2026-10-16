@@ -9,6 +9,7 @@ import Browse, { Categories } from "./pages/Browse";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import Overview from "./pages/workspace/Overview";
+import ServiceEditor from "./pages/workspace/ServiceEditor";
 import {
   MyCredits,
   MyOrders,
@@ -90,6 +91,8 @@ const FreelanceApp: React.FC = () => (
             <Route path="freelance-espace" element={<WorkspaceLayout />}>
               <Route index element={<Overview />} />
               <Route path="services" element={<MyServices />} />
+              <Route path="services/nouveau" element={<ServiceEditor />} />
+              <Route path="services/:id" element={<ServiceEditor />} />
               <Route path="propositions" element={<MyProposals />} />
               <Route path="commandes" element={<MyOrders />} />
               <Route path="credits" element={<MyCredits />} />

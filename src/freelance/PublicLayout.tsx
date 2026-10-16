@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { Briefcase, Globe, Menu, X } from "lucide-react";
 import { Lang, useI18n } from "./i18n";
+import logoLight from "../assets/logo2-v2.png";
 
 /**
  * The shell around every public marketplace page.
@@ -74,7 +75,16 @@ const PublicLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="h-16 flex items-center gap-6">
             <Link to="/" className="flex items-center gap-2 shrink-0">
-              <span className="font-display text-lg font-bold">Dar L'Emploi</span>
+              {/* The pale wordmark, not the navy one: this header is a navy
+                  gradient and logo-v2.png would disappear into it. The asset
+                  is imported rather than the Logo2 component because that
+                  component only offers h-6, h-12 and h-24, and none of the
+                  three sits well in a 64px bar. */}
+              <img
+                src={logoLight}
+                alt="Dar L'Emploi"
+                className="h-7 sm:h-8 w-auto block object-contain"
+              />
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4AF37] border border-[#D4AF37]/50 rounded px-1.5 py-0.5">
                 {t("brand.freelance")}
               </span>

@@ -72,7 +72,16 @@ const createCompanyForRecruiter = async (recruiterProfileId: string, companyName
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, password, role, firstName, lastName, companyName, plan } = req.body;
+    const { email, password, role, firstName, lastName, companyName, plan, source } = req.body;
+
+    /* Which side of the platform this signup came from. The account is
+     * shared either way — one login for jobs and freelance — but a
+     * marketplace signup is not a job applicant, and the recruitment admin
+     * should not count them as candidates who never applied.
+     *
+     * Read from a fixed set, never stored raw: this value ends up in admin
+     * filters and reports. */
+    const signupSource = source === "FREELANCE" ? "FREELANCE" : "JOBS";
 
     // Covers the "signed up with Google first, now registering" case: the
     // unique email constraint already prevents a duplicate User, but the
@@ -99,6 +108,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         role,
         firstName,
         lastName,
+        signupSource,
         candidateProfile: role === "CANDIDATE" ? { create: {} } : undefined,
         recruiterProfile: role === "RECRUITER" ? { create: {} } : undefined,
       },

@@ -871,6 +871,14 @@ model User {
   impersonationsOfMe      ImpersonationSession[] @relation("ImpersonationTarget")
   cmsEdits                CmsContent[]           @relation("CmsEditor")
 
+  /// Which side of the platform this account was created on.
+  ///
+  /// The account itself is shared — one login for jobs and freelance, as
+  /// the specification requires — but a marketplace signup is not a job
+  /// applicant, and the recruitment admin should be able to tell them
+  /// apart rather than counting them as candidates who never applied.
+  signupSource String @default("JOBS")
+
   @@index([email])
   @@index([role])
 }

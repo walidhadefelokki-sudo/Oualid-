@@ -1098,7 +1098,8 @@ var createCompanyForRecruiter = async (recruiterProfileId, companyName) => {
 };
 var register = async (req, res, next) => {
   try {
-    const { email, password, role, firstName, lastName, companyName, plan } = req.body;
+    const { email, password, role, firstName, lastName, companyName, plan, source } = req.body;
+    const signupSource = source === "FREELANCE" ? "FREELANCE" : "JOBS";
     const existingUser = await prisma_default.user.findUnique({ where: { email } });
     if (existingUser) {
       if (existingUser.password === null) {
@@ -1119,6 +1120,7 @@ var register = async (req, res, next) => {
         role,
         firstName,
         lastName,
+        signupSource,
         candidateProfile: role === "CANDIDATE" ? { create: {} } : void 0,
         recruiterProfile: role === "RECRUITER" ? { create: {} } : void 0
       },
@@ -1391,7 +1393,11 @@ var cookieOptions = (maxAgeMs) => ({
   maxAge: maxAgeMs,
   path: "/"
 });
-var failRedirect = (res, code) => res.redirect(`${getFrontendUrl()}/auth/callback?error=${encodeURIComponent(code)}`);
+var failRedirect = (res, code, next) => {
+  const base = getFrontendUrl();
+  const callback = next?.startsWith("/freelance") ? `${base}/freelance/auth/callback` : `${base}/auth/callback`;
+  return res.redirect(`${callback}?error=${encodeURIComponent(code)}`);
+};
 var googleAuthStart = (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {
     return next(new AppError(getGoogleConfigError() ?? "Google sign-in is unavailable.", 503));
@@ -1437,11 +1443,11 @@ var googleAuthCallback = (req, res, next) => {
       try {
         if (err) {
           console.error("Google OAuth: provider error \u2014", err.message);
-          return failRedirect(res, "provider_error");
+          return failRedirect(res, "provider_error", stateNext);
         }
         if (!identity) {
           console.warn("Google OAuth: no identity returned \u2014", info?.message ?? "cancelled by user");
-          return failRedirect(res, info?.message ? "no_email" : "cancelled");
+          return failRedirect(res, info?.message ? "no_email" : "cancelled", stateNext);
         }
         const { user, outcome } = await findOrCreateUserFromGoogle(identity, stateRole);
         console.info(
@@ -1451,14 +1457,15 @@ var googleAuthCallback = (req, res, next) => {
           expiresIn: "30d"
         });
         res.cookie(HANDOFF_COOKIE, token, cookieOptions(60 * 1e3));
-        const callback = `${getFrontendUrl()}/auth/callback`;
+        const base = getFrontendUrl();
+        const callback = stateNext?.startsWith("/freelance") ? `${base}/freelance/auth/callback` : `${base}/auth/callback`;
         return res.redirect(
           stateNext ? `${callback}?next=${encodeURIComponent(stateNext)}` : callback
         );
       } catch (error) {
         const isLinkingRefusal = error?.message?.includes("already exists with this email");
         console.error("Google OAuth: callback failed \u2014", error?.message);
-        return failRedirect(res, isLinkingRefusal ? "email_in_use" : "server_error");
+        return failRedirect(res, isLinkingRefusal ? "email_in_use" : "server_error", stateNext);
       }
     }
   )(req, res, next);

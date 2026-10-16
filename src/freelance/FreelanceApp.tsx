@@ -7,6 +7,7 @@ import WorkspaceLayout from "./WorkspaceLayout";
 import Home from "./pages/Home";
 import Browse, { Categories } from "./pages/Browse";
 import SignIn from "./pages/SignIn";
+import AuthCallback from "./pages/AuthCallback";
 import Overview from "./pages/workspace/Overview";
 import {
   MyCredits,
@@ -81,6 +82,8 @@ const FreelanceApp: React.FC = () => (
 
             <Route path="connexion" element={<SignIn mode="signin" />} />
             <Route path="inscription" element={<SignIn mode="signup" />} />
+            {/* Google returns here, not to the recruitment app's callback. */}
+            <Route path="auth/callback" element={<AuthCallback />} />
 
             {/* The workspace gates on signed-in, then on activated, before
                 any section renders. */}

@@ -75,6 +75,10 @@ const SignIn: React.FC<{ mode?: "signin" | "signup" }> = ({ mode = "signin" }) =
             // A marketplace signup is a person, not a company. They become a
             // freelancer by activating a profile, not by their account role.
             role: "CANDIDATE",
+            // Shared account, but not a job applicant: the recruitment
+            // admin should not count marketplace signups as candidates
+            // who never applied.
+            source: "FREELANCE",
             firstName: form.firstName.trim() || undefined,
             lastName: form.lastName.trim() || undefined,
           })

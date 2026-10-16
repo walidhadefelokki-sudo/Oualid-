@@ -27,9 +27,21 @@ const cookieOptions = (maxAgeMs: number) => ({
   path: "/",
 });
 
-/** Redirect to the frontend with a machine-readable error code, never a stack. */
-const failRedirect = (res: Response, code: string) =>
-  res.redirect(`${getFrontendUrl()}/auth/callback?error=${encodeURIComponent(code)}`);
+/**
+ * Redirect to the frontend with a machine-readable error code, never a stack.
+ *
+ * `next` decides which application's callback screen reports it: a failure
+ * belongs on the screen the person was signing in to. It is unknown for the
+ * failures raised before the state is decoded, and those fall back to the
+ * recruitment callback.
+ */
+const failRedirect = (res: Response, code: string, next?: string) => {
+  const base = getFrontendUrl();
+  const callback = next?.startsWith("/freelance")
+    ? `${base}/freelance/auth/callback`
+    : `${base}/auth/callback`;
+  return res.redirect(`${callback}?error=${encodeURIComponent(code)}`);
+};
 
 /**
  * GET /api/auth/google — start the flow.
@@ -133,13 +145,13 @@ export const googleAuthCallback = (req: Request, res: Response, next: NextFuncti
       try {
         if (err) {
           console.error("Google OAuth: provider error —", err.message);
-          return failRedirect(res, "provider_error");
+          return failRedirect(res, "provider_error", stateNext);
         }
 
         // Passport reports a user-cancelled consent screen as no identity.
         if (!identity) {
           console.warn("Google OAuth: no identity returned —", info?.message ?? "cancelled by user");
-          return failRedirect(res, info?.message ? "no_email" : "cancelled");
+          return failRedirect(res, info?.message ? "no_email" : "cancelled", stateNext);
         }
 
         // State was verified above, before the code exchange; `stateRole` is
@@ -157,9 +169,18 @@ export const googleAuthCallback = (req: Request, res: Response, next: NextFuncti
         });
 
         res.cookie(HANDOFF_COOKIE, token, cookieOptions(60 * 1000));
-        // ?next= rides to the callback page, which forwards there once it has
-        // traded the handoff cookie for the token.
-        const callback = `${getFrontendUrl()}/auth/callback`;
+
+        /* Each application has its own callback screen.
+         *
+         * Returning a marketplace sign-in to /auth/callback mounted the
+         * recruitment app, rendered it, and only then forwarded — a visible
+         * flash of the other product in the middle of signing in to this
+         * one. The mechanism is identical either way; only the page differs. */
+        const base = getFrontendUrl();
+        const callback = stateNext?.startsWith("/freelance")
+          ? `${base}/freelance/auth/callback`
+          : `${base}/auth/callback`;
+
         return res.redirect(
           stateNext ? `${callback}?next=${encodeURIComponent(stateNext)}` : callback
         );
@@ -168,7 +189,7 @@ export const googleAuthCallback = (req: Request, res: Response, next: NextFuncti
         // else stays generic so database detail never reaches the browser.
         const isLinkingRefusal = error?.message?.includes("already exists with this email");
         console.error("Google OAuth: callback failed —", error?.message);
-        return failRedirect(res, isLinkingRefusal ? "email_in_use" : "server_error");
+        return failRedirect(res, isLinkingRefusal ? "email_in_use" : "server_error", stateNext);
       }
     }
   )(req, res, next);

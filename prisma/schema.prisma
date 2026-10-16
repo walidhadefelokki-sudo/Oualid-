@@ -1646,6 +1646,13 @@ model ServiceListing {
 
   rejectionReason String?
 
+  /// How many times this service has been submitted for review.
+  ///
+  /// Part of the idempotency key for the publication charge. Without it
+  /// the key is per service, so a refused service resubmitted after a fix
+  /// matched the first charge and republished for free.
+  publicationAttempts Int @default(0)
+
   publishedAt DateTime?
   /// Publication buys a window, not a permanent listing.
   expiresAt   DateTime?

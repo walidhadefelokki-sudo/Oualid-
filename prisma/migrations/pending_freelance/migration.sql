@@ -41,7 +41,7 @@ CREATE TYPE "MarketplacePaymentStatus" AS ENUM ('PENDING', 'AWAITING_REVIEW', 'P
 CREATE TYPE "MarketplacePaymentMethod" AS ENUM ('CHARGILY_CIB', 'CHARGILY_EDAHABIA', 'CCP_TRANSFER', 'BARIDIMOB', 'BANK_TRANSFER', 'ADMIN_GRANT');
 
 -- CreateEnum
-CREATE TYPE "FreelancePlanTier" AS ENUM ('FREE', 'PRO', 'PREMIUM');
+CREATE TYPE "FreelancePlanTier" AS ENUM ('FREE', 'PRO', 'PREMIUM', 'AGENCY');
 
 -- CreateEnum
 CREATE TYPE "FreelanceSubscriptionStatus" AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELLED', 'EXPIRED');
@@ -61,8 +61,31 @@ CREATE TYPE "ReportStatus" AS ENUM ('OPEN', 'REVIEWING', 'ACTIONED', 'DISMISSED'
 -- CreateEnum
 CREATE TYPE "DisputeStatus" AS ENUM ('OPEN', 'REVIEWING', 'RESOLVED', 'CLOSED');
 
+-- CreateEnum
+CREATE TYPE "FavoriteTargetType" AS ENUM ('SERVICE', 'FREELANCER', 'PROJECT');
+
+-- CreateEnum
+CREATE TYPE "CustomOfferStatus" AS ENUM ('SENT', 'ACCEPTED', 'DECLINED', 'WITHDRAWN', 'EXPIRED');
+
+-- CreateEnum
+CREATE TYPE "PromoCodeKind" AS ENUM ('PERCENT_OFF', 'AMOUNT_OFF', 'BONUS_CREDITS');
+
+-- CreateEnum
+CREATE TYPE "StaffRole" AS ENUM ('ADMINISTRATOR', 'MODERATOR', 'FINANCE', 'SUPPORT');
+
+-- CreateEnum
+CREATE TYPE "CmsContentType" AS ENUM ('LEGAL_PAGE', 'HELP_ARTICLE', 'HOMEPAGE_BANNER', 'EMAIL_TEMPLATE', 'SMS_TEMPLATE');
+
+-- AlterTable
+ALTER TABLE "Company" ADD COLUMN     "nif" TEXT,
+ADD COLUMN     "registreCommerce" TEXT,
+ADD COLUMN     "verifiedAt" TIMESTAMP(3);
+
 -- AlterTable
 ALTER TABLE "JobCategory" ADD COLUMN     "parentId" TEXT;
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "phoneVerifiedAt" TIMESTAMP(3);
 
 -- CreateTable
 CREATE TABLE "FreelancerProfile" (
@@ -664,6 +687,107 @@ CREATE TABLE "Dispute" (
     CONSTRAINT "Dispute_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Favorite" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "targetType" "FavoriteTargetType" NOT NULL,
+    "targetId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Favorite_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CustomOffer" (
+    "id" TEXT NOT NULL,
+    "conversationId" TEXT NOT NULL,
+    "freelancerId" TEXT NOT NULL,
+    "clientId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "price" DECIMAL(12,2) NOT NULL,
+    "deliveryDays" INTEGER NOT NULL,
+    "revisions" INTEGER NOT NULL DEFAULT 0,
+    "status" "CustomOfferStatus" NOT NULL DEFAULT 'SENT',
+    "expiresAt" TIMESTAMP(3),
+    "respondedAt" TIMESTAMP(3),
+    "orderId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CustomOffer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PromoCode" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "kind" "PromoCodeKind" NOT NULL,
+    "value" DECIMAL(12,2) NOT NULL,
+    "maxRedemptions" INTEGER,
+    "maxPerUser" INTEGER DEFAULT 1,
+    "redemptionCount" INTEGER NOT NULL DEFAULT 0,
+    "startsAt" TIMESTAMP(3),
+    "endsAt" TIMESTAMP(3),
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PromoCodeRedemption" (
+    "id" TEXT NOT NULL,
+    "promoCodeId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "paymentId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PromoCodeRedemption_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StaffMember" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "role" "StaffRole" NOT NULL,
+    "permissions" TEXT[],
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "StaffMember_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ImpersonationSession" (
+    "id" TEXT NOT NULL,
+    "staffId" TEXT NOT NULL,
+    "targetUserId" TEXT NOT NULL,
+    "reason" TEXT,
+    "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endedAt" TIMESTAMP(3),
+
+    CONSTRAINT "ImpersonationSession_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CmsContent" (
+    "id" TEXT NOT NULL,
+    "type" "CmsContentType" NOT NULL,
+    "slug" TEXT NOT NULL,
+    "translations" JSONB NOT NULL,
+    "position" INTEGER NOT NULL DEFAULT 0,
+    "published" BOOLEAN NOT NULL DEFAULT false,
+    "publishedAt" TIMESTAMP(3),
+    "updatedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CmsContent_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "FreelancerProfile_userId_key" ON "FreelancerProfile"("userId");
 
@@ -861,6 +985,51 @@ CREATE INDEX "Dispute_status_createdAt_idx" ON "Dispute"("status", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "Dispute_orderId_idx" ON "Dispute"("orderId");
+
+-- CreateIndex
+CREATE INDEX "Favorite_userId_createdAt_idx" ON "Favorite"("userId", "createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Favorite_userId_targetType_targetId_key" ON "Favorite"("userId", "targetType", "targetId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CustomOffer_orderId_key" ON "CustomOffer"("orderId");
+
+-- CreateIndex
+CREATE INDEX "CustomOffer_conversationId_idx" ON "CustomOffer"("conversationId");
+
+-- CreateIndex
+CREATE INDEX "CustomOffer_freelancerId_status_idx" ON "CustomOffer"("freelancerId", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PromoCode_code_key" ON "PromoCode"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PromoCodeRedemption_paymentId_key" ON "PromoCodeRedemption"("paymentId");
+
+-- CreateIndex
+CREATE INDEX "PromoCodeRedemption_promoCodeId_idx" ON "PromoCodeRedemption"("promoCodeId");
+
+-- CreateIndex
+CREATE INDEX "PromoCodeRedemption_userId_idx" ON "PromoCodeRedemption"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StaffMember_userId_key" ON "StaffMember"("userId");
+
+-- CreateIndex
+CREATE INDEX "StaffMember_role_idx" ON "StaffMember"("role");
+
+-- CreateIndex
+CREATE INDEX "ImpersonationSession_staffId_startedAt_idx" ON "ImpersonationSession"("staffId", "startedAt");
+
+-- CreateIndex
+CREATE INDEX "ImpersonationSession_targetUserId_startedAt_idx" ON "ImpersonationSession"("targetUserId", "startedAt");
+
+-- CreateIndex
+CREATE INDEX "CmsContent_type_published_position_idx" ON "CmsContent"("type", "published", "position");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CmsContent_type_slug_key" ON "CmsContent"("type", "slug");
 
 -- AddForeignKey
 ALTER TABLE "JobCategory" ADD CONSTRAINT "JobCategory_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "JobCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1125,4 +1294,40 @@ ALTER TABLE "Dispute" ADD CONSTRAINT "Dispute_openedById_fkey" FOREIGN KEY ("ope
 
 -- AddForeignKey
 ALTER TABLE "Dispute" ADD CONSTRAINT "Dispute_assignedToId_fkey" FOREIGN KEY ("assignedToId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Favorite" ADD CONSTRAINT "Favorite_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomOffer" ADD CONSTRAINT "CustomOffer_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomOffer" ADD CONSTRAINT "CustomOffer_freelancerId_fkey" FOREIGN KEY ("freelancerId") REFERENCES "FreelancerProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomOffer" ADD CONSTRAINT "CustomOffer_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomOffer" ADD CONSTRAINT "CustomOffer_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "FreelanceOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromoCodeRedemption" ADD CONSTRAINT "PromoCodeRedemption_promoCodeId_fkey" FOREIGN KEY ("promoCodeId") REFERENCES "PromoCode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromoCodeRedemption" ADD CONSTRAINT "PromoCodeRedemption_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromoCodeRedemption" ADD CONSTRAINT "PromoCodeRedemption_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "MarketplacePayment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StaffMember" ADD CONSTRAINT "StaffMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ImpersonationSession" ADD CONSTRAINT "ImpersonationSession_staffId_fkey" FOREIGN KEY ("staffId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ImpersonationSession" ADD CONSTRAINT "ImpersonationSession_targetUserId_fkey" FOREIGN KEY ("targetUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CmsContent" ADD CONSTRAINT "CmsContent_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

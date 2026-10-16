@@ -93,8 +93,15 @@ Not yet implemented — this is a decision to confirm before Phase 1A routing.
 
 ## 4. Database foundation (implemented)
 
-42 models and 21 enums appended to `prisma/schema.prisma`, taking it from 37
-to 79 models. `prisma validate` passes and the client generates.
+49 models and 26 enums appended to `prisma/schema.prisma`, taking it from 37
+to 86 models. `prisma validate` passes and the client generates.
+
+Built in two passes. The first worked from the written brief alone; the
+second followed the specification PDF, which named things the brief's prose
+left implicit: favourites, custom offers sent from inside a conversation,
+promo codes, the four internal staff roles with separate rights, the CMS
+behind the help centre and legal pages, and the phone and company
+verification badges that sit beside identity verification.
 
 Groups: freelancer profile and verification; services with packages, add-ons,
 FAQs, requirements and media; client projects, invites and proposals; orders
@@ -125,6 +132,23 @@ projects; moderation records, reports and disputes.
 - **Add-on name and price are copied onto the order.** Repricing an add-on
   later must not restate a past order's total.
 
+### Three badges, three places
+
+The PDF names *téléphone vérifié*, *identité vérifiée* and *entreprise
+vérifiée*. They are not one flag:
+
+- phone — `User.phoneVerifiedAt`, because it belongs to the account
+- identity — `IdentityVerification`, its own table so the document columns
+  never join a public query by accident
+- company — `Company.registreCommerce` / `nif` / `verifiedAt`, because it is
+  the company that is verified and the same company also hires employees
+
+### Support impersonation leaves a trail
+
+The PDF asks for "se connecter en tant qu'utilisateur pour le support".
+`ImpersonationSession` records who, whom, when and why. A support tool that
+leaves no trace is indistinguishable from an account takeover.
+
 ### Applying it
 
 ```
@@ -134,9 +158,10 @@ npx prisma migrate diff \
 ```
 
 The generated SQL is in `prisma/migrations/pending_freelance/migration.sql`:
-42 `CREATE TABLE`, 21 `CREATE TYPE`, and exactly one change to an existing
-table — `JobCategory ADD COLUMN "parentId" TEXT` (nullable). **Zero** `DROP`
-statements. It is additive and does not touch existing rows.
+49 `CREATE TABLE`, and three nullable columns added to existing tables —
+`JobCategory.parentId`, `User.phoneVerifiedAt`, `Company.nif` (with
+`registreCommerce` and `verifiedAt`). **Zero** `DROP` statements. It is
+additive and does not touch existing rows.
 
 Use the **session pooler on port 5432**. The transaction pooler on 6543
 answers `P1017` for DDL and introspection.
@@ -154,6 +179,30 @@ Two items need a decision before they can be built honestly:
   credits, payments and authorization. Vitest + Supertest needs adding, and
   that is a prerequisite for the credit and payment work rather than a
   follow-up to it.
-- **The PDF specification and both structure diagrams were not supplied.**
-  The brief's own text is detailed enough to build from, but where it defers
-  to the PDF, that detail is absent.
+- **Cross-subdomain auth** — see section 3.
+
+### Deliberately deferred
+
+- **Agency / team accounts** (`offre agence`, 12 000 DZD per month, shared
+  credit pool). Phase 3 in the PDF's own roadmap. `FreelancePlanTier.AGENCY`
+  exists so the plan table needs no migration when the feature arrives, but
+  no team model is built.
+- **Escrow and per-transaction commission.** The PDF marks this an open
+  question for Phase 3. The MVP model is deliberately pay-to-publish, so
+  nothing here holds a client's money.
+
+### Open business decisions, from the PDF
+
+These are recorded as configuration rather than guessed at. Launch defaults
+go in `CreditPack`, `FreelancePlan` and `PlatformSetting`, not in code:
+
+- Do unused credits expire?
+- Refund rule when a paid service is rejected by moderation (the PDF proposes
+  automatic restoration, which is what the ledger is shaped for).
+- VAT on invoices.
+- Whether a portfolio shows phone and email publicly (the PDF proposes hidden
+  by default, visible on Premium).
+- The actual card gateway — SATIM CIB e-paiement or an aggregator. Chargily
+  is already live on the recruitment side and is the obvious first adapter.
+- All prices. The PDF is explicit that they are proposals to test, not market
+  data.

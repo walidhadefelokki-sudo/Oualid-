@@ -859,6 +859,17 @@ model User {
   disputesAssigned       Dispute[]                 @relation("DisputeAssignee")
   moderationActions      ModerationRecord[]        @relation("ModerationActor")
   verificationsReviewed  IdentityVerification[]    @relation("VerificationReviewer")
+  // --- Freelance, second increment -------------------------------------
+  /// "Téléphone vérifié" is one of the three badges the specification names.
+  phoneVerifiedAt        DateTime?
+
+  favorites               Favorite[]
+  customOffersReceived    CustomOffer[]          @relation("CustomOfferClient")
+  promoRedemptions        PromoCodeRedemption[]
+  staffMembership         StaffMember?
+  impersonationsPerformed ImpersonationSession[] @relation("ImpersonationStaff")
+  impersonationsOfMe      ImpersonationSession[] @relation("ImpersonationTarget")
+  cmsEdits                CmsContent[]           @relation("CmsEditor")
 
   @@index([email])
   @@index([role])
@@ -991,6 +1002,12 @@ model Company {
   // --- Freelance marketplace -------------------------------------------
   // An existing employer hires freelancers from the same business account.
   freelanceProjects FreelanceProject[] @relation("ProjectCompany")
+  /// "Entreprise vérifiée (registre de commerce / NIF)" — the third badge.
+  /// Held here rather than on the freelance side because it is the company
+  /// that is verified, and the same company hires employees too.
+  registreCommerce  String?
+  nif               String?
+  verifiedAt        DateTime?
 
   @@index([slug])
 }
@@ -1445,6 +1462,8 @@ enum FreelancePlanTier {
   FREE
   PRO
   PREMIUM
+  /// Phase 3: team profile with shared credits.
+  AGENCY
 }
 
 enum FreelanceSubscriptionStatus {
@@ -1554,6 +1573,7 @@ model FreelancerProfile {
   subscriptions FreelanceSubscription[]
   boosts        Boost[]
   verification  IdentityVerification?
+  customOffers  CustomOffer[]
 
   @@index([categoryId])
   @@index([level])
@@ -1917,6 +1937,8 @@ model FreelanceOrder {
   reviews      FreelanceReview[]
   disputes     Dispute[]
   conversation Conversation?
+  /// Set when this order came from an offer accepted in a conversation.
+  customOffer  CustomOffer?
 
   @@index([clientId, status])
   @@index([freelancerId, status])
@@ -2067,6 +2089,7 @@ model Conversation {
 
   participants ConversationParticipant[]
   messages     Message[]
+  customOffers CustomOffer[]
 
   @@index([updatedAt])
 }
@@ -2336,7 +2359,8 @@ model MarketplacePayment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  invoice MarketplaceInvoice?
+  invoice         MarketplaceInvoice?
+  promoRedemption PromoCodeRedemption?
 
   @@index([userId, status])
   @@index([status, createdAt])
@@ -2545,4 +2569,253 @@ model Dispute {
 
   @@index([status, createdAt])
   @@index([orderId])
+}
+
+//////////////////////////////////////////////////////////
+// FREELANCE — SECOND INCREMENT
+//
+// Added after reading the specification PDF, which names several things the
+// first pass missed: favourites, custom offers sent from a conversation,
+// promo codes, internal staff roles with separate rights, the CMS behind the
+// help centre and legal pages, and the phone and company verification badges
+// that sit beside identity verification.
+//////////////////////////////////////////////////////////
+
+enum FavoriteTargetType {
+  SERVICE
+  FREELANCER
+  PROJECT
+}
+
+enum CustomOfferStatus {
+  SENT
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum PromoCodeKind {
+  PERCENT_OFF
+  AMOUNT_OFF
+  BONUS_CREDITS
+}
+
+/// The four internal roles the specification names, each with its own rights.
+/// Distinct from the public Role enum, which says what kind of account this
+/// is rather than what a member of staff may do.
+enum StaffRole {
+  ADMINISTRATOR
+  MODERATOR
+  FINANCE
+  SUPPORT
+}
+
+enum CmsContentType {
+  LEGAL_PAGE
+  HELP_ARTICLE
+  HOMEPAGE_BANNER
+  EMAIL_TEMPLATE
+  SMS_TEMPLATE
+}
+
+//////////////////////////////////////////////////////////
+// FAVOURITES
+//////////////////////////////////////////////////////////
+
+/// "Services et freelances enregistrés en favoris" — the client area's
+/// Favoris page. One table with a typed target rather than three, because
+/// the page lists them together and nothing differs but the target.
+model Favorite {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  targetType FavoriteTargetType
+  targetId   String
+
+  createdAt DateTime @default(now())
+
+  /// Saving the same thing twice is the same favourite.
+  @@unique([userId, targetType, targetId])
+  @@index([userId, createdAt])
+}
+
+//////////////////////////////////////////////////////////
+// CUSTOM OFFERS
+//////////////////////////////////////////////////////////
+
+/// "Envoi d'offres personnalisées depuis la discussion" — a freelancer
+/// proposes a price and a deadline inside a conversation, and accepting it
+/// creates an order. The third way an order begins, beside a purchased
+/// package and a hired proposal.
+model CustomOffer {
+  id String @id @default(uuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  freelancerId String
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   User   @relation("CustomOfferClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+
+  price        Decimal @db.Decimal(12, 2)
+  deliveryDays Int
+  revisions    Int     @default(0)
+
+  status CustomOfferStatus @default(SENT)
+
+  expiresAt   DateTime?
+  respondedAt DateTime?
+
+  /// Set once accepted, so an offer cannot be turned into two orders.
+  orderId String?         @unique
+  order   FreelanceOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([freelancerId, status])
+}
+
+//////////////////////////////////////////////////////////
+// PROMO CODES
+//////////////////////////////////////////////////////////
+
+model PromoCode {
+  id String @id @default(uuid())
+
+  code String @unique
+
+  kind PromoCodeKind
+
+  /// Read according to `kind`: a percentage, an amount in DZD, or a number
+  /// of bonus credits.
+  value Decimal @db.Decimal(12, 2)
+
+  /// Null means no limit.
+  maxRedemptions  Int?
+  maxPerUser      Int? @default(1)
+  redemptionCount Int  @default(0)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  redemptions PromoCodeRedemption[]
+}
+
+model PromoCodeRedemption {
+  id String @id @default(uuid())
+
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  paymentId String?             @unique
+  payment   MarketplacePayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([promoCodeId])
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////
+// INTERNAL STAFF
+//////////////////////////////////////////////////////////
+
+/// Who on the team may do what. The specification separates administrator,
+/// moderator, finance and support, "chacun avec ses propres droits": a
+/// moderator must not be able to approve a payment.
+///
+/// Permissions are stored as a list of granted capability strings rather than
+/// implied by the role, so a role can be tightened without a migration and
+/// every check reads the same way.
+model StaffMember {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role StaffRole
+
+  /// Capability names such as "moderation.approve", "payments.refund".
+  permissions String[]
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+}
+
+/// "Se connecter en tant qu'utilisateur pour le support". Every impersonation
+/// is a row: who, whom, when, and why. A support tool that leaves no trace is
+/// indistinguishable from an account takeover.
+model ImpersonationSession {
+  id String @id @default(uuid())
+
+  staffId String
+  staff   User   @relation("ImpersonationStaff", fields: [staffId], references: [id], onDelete: Cascade)
+
+  targetUserId String
+  targetUser   User   @relation("ImpersonationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  reason String?
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  @@index([staffId, startedAt])
+  @@index([targetUserId, startedAt])
+}
+
+//////////////////////////////////////////////////////////
+// CMS
+//////////////////////////////////////////////////////////
+
+/// Legal pages, help articles, homepage banners and message templates, all
+/// editable from the back-office. One table with a typed kind: they differ in
+/// where they are shown, not in what they hold.
+///
+/// Bodies are per language, because the legal pages must exist in Arabic and
+/// French and the specification treats that as a requirement rather than a
+/// nicety.
+model CmsContent {
+  id String @id @default(uuid())
+
+  type CmsContentType
+  slug String
+
+  /// { "fr": { "title": "...", "body": "..." }, "ar": { ... } }
+  translations Json
+
+  /// Banners and articles are ordered; pages are not.
+  position Int @default(0)
+
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+
+  updatedById String?
+  updatedBy   User?   @relation("CmsEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, slug])
+  @@index([type, published, position])
 }

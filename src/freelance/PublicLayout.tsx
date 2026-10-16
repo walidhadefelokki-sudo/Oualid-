@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { Briefcase, Globe, Menu, X } from "lucide-react";
+import { Briefcase, Globe, LayoutDashboard, Menu, X } from "lucide-react";
 import { Lang, useI18n } from "./i18n";
 import logoLight from "../assets/logo2-v2.png";
+import { useAuth } from "./auth";
 
 /**
  * The shell around every public marketplace page.
@@ -50,6 +51,7 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
 
 const PublicLayout: React.FC = () => {
   const { t } = useI18n();
+  const { signedIn, loading } = useAuth();
   const [open, setOpen] = useState(false);
 
   const links = (
@@ -95,11 +97,30 @@ const PublicLayout: React.FC = () => {
             <div className="ms-auto flex items-center gap-3">
               <LanguageSwitch />
 
+              {/* Shown only once we know: rendering "Connexion" during the
+                  check and swapping it a moment later reads as a glitch. */}
+              {!loading &&
+                (signedIn ? (
+                  <Link
+                    to="/freelance-espace"
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 bg-[#D4AF37] text-[#0B1E3D] text-xs font-bold"
+                  >
+                    <LayoutDashboard size={14} /> {t("nav.dashboard")}
+                  </Link>
+                ) : (
+                  <a
+                    href="/"
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 border border-white/30 text-xs font-bold text-white hover:bg-white/10"
+                  >
+                    {t("nav.signin")}
+                  </a>
+                ))}
+
               {/* Back to the recruitment site. A full page load on purpose:
                   it is the other application, not another route. */}
               <a
                 href="/"
-                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 hover:text-white"
+                className="hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 hover:text-white"
               >
                 <Briefcase size={14} /> {t("nav.backToJobs")}
               </a>

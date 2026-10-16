@@ -4,6 +4,8 @@ import { I18nProvider, useI18n } from "./i18n";
 import PublicLayout from "./PublicLayout";
 import Home from "./pages/Home";
 import Browse, { Categories } from "./pages/Browse";
+import Workspace from "./pages/Workspace";
+import { AuthProvider } from "./auth";
 
 /**
  * Dar L'Emploi Freelance.
@@ -60,18 +62,24 @@ const Freelancers: React.FC = () => {
 
 const FreelanceApp: React.FC = () => (
   <I18nProvider>
-    <BrowserRouter basename={BASENAME}>
-      <Routes>
-        <Route element={<PublicLayout />}>
-          <Route index element={<Home />} />
-          <Route path="categories" element={<Categories />} />
-          <Route path="recherche" element={<Services />} />
-          <Route path="projets" element={<Projects />} />
-          <Route path="freelances" element={<Freelancers />} />
-          <Route path="*" element={<NotFound />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter basename={BASENAME}>
+        <Routes>
+          <Route element={<PublicLayout />}>
+            <Route index element={<Home />} />
+            <Route path="categories" element={<Categories />} />
+            <Route path="recherche" element={<Services />} />
+            <Route path="projets" element={<Projects />} />
+            <Route path="freelances" element={<Freelancers />} />
+            {/* The freelancer workspace. One route so far: the dashboard,
+                which shows the activation form when the account has no
+                profile yet. */}
+            <Route path="freelance-espace" element={<Workspace />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   </I18nProvider>
 );
 

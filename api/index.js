@@ -3810,6 +3810,290 @@ var deleteMyService = async (req, res, next) => {
   }
 };
 
+// server/controllers/project.controller.ts
+init_prisma();
+import { FreelanceProjectStatus } from "@prisma/client";
+var MIN_TITLE = 10;
+var MIN_DESCRIPTION = 60;
+var assertReadyForReview2 = (p) => {
+  if (p.title.trim().length < MIN_TITLE) {
+    throw new AppError(`Le titre doit faire au moins ${MIN_TITLE} caract\xE8res.`, 400);
+  }
+  if (p.description.trim().length < MIN_DESCRIPTION) {
+    throw new AppError(`La description doit faire au moins ${MIN_DESCRIPTION} caract\xE8res.`, 400);
+  }
+  const min = p.budgetMin == null ? null : Number(p.budgetMin);
+  const max = p.budgetMax == null ? null : Number(p.budgetMax);
+  if (min == null && max == null) {
+    throw new AppError("Indiquez un budget, m\xEAme approximatif.", 400);
+  }
+  if (min != null && max != null && min > max) {
+    throw new AppError("Le budget minimum d\xE9passe le maximum.", 400);
+  }
+};
+var findOwn = (userId, id) => prisma_default.freelanceProject.findFirst({
+  where: { id, clientId: userId },
+  select: { id: true, status: true, title: true }
+});
+var createDraft2 = async (req, res, next) => {
+  try {
+    const title = String(req.body.title ?? "").trim();
+    const project = await prisma_default.freelanceProject.create({
+      data: {
+        clientId: req.user.id,
+        title: title || "Nouveau projet",
+        slug: slugify4(title || "projet"),
+        description: "",
+        status: "DRAFT"
+      },
+      select: { id: true }
+    });
+    res.status(201).json({ success: true, data: { id: project.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMine = async (req, res, next) => {
+  try {
+    const projects = await prisma_default.freelanceProject.findMany({
+      where: { clientId: req.user.id },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        rejectionReason: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        publishedAt: true,
+        updatedAt: true,
+        category: { select: { name: true } },
+        _count: { select: { proposals: true } }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        projects: projects.map((p) => ({
+          ...p,
+          category: p.category?.name ?? null,
+          proposalCount: p._count.proposals
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getMine = async (req, res, next) => {
+  try {
+    const project = await prisma_default.freelanceProject.findFirst({
+      where: { id: req.params.id, clientId: req.user.id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        rejectionReason: true,
+        categoryId: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        skills: { select: { skill: { select: { name: true } } } },
+        _count: { select: { proposals: true } }
+      }
+    });
+    if (!project) return next(new AppError("Projet introuvable.", 404));
+    res.json({
+      success: true,
+      data: {
+        project: {
+          ...project,
+          skills: project.skills.map((s) => s.skill.name),
+          proposalCount: project._count.proposals
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMine = async (req, res, next) => {
+  try {
+    const existing = await findOwn(req.user.id, req.params.id);
+    if (!existing) return next(new AppError("Projet introuvable.", 404));
+    if (existing.status === "PENDING") {
+      return next(new AppError("Ce projet est en cours de validation.", 409));
+    }
+    const {
+      title,
+      description,
+      categoryId,
+      budgetType,
+      budgetMin,
+      budgetMax,
+      deadline,
+      remote,
+      wilaya,
+      visibility,
+      skills
+    } = req.body;
+    await prisma_default.$transaction(async (tx) => {
+      await tx.freelanceProject.update({
+        where: { id: existing.id },
+        data: {
+          ...title !== void 0 ? { title: String(title).trim() || "Nouveau projet" } : {},
+          ...description !== void 0 ? { description: String(description) } : {},
+          ...categoryId !== void 0 ? { categoryId: categoryId || null } : {},
+          ...budgetType !== void 0 ? { budgetType: budgetType === "HOURLY" ? "HOURLY" : "FIXED" } : {},
+          ...budgetMin !== void 0 ? { budgetMin: budgetMin === "" || budgetMin == null ? null : String(Number(budgetMin)) } : {},
+          ...budgetMax !== void 0 ? { budgetMax: budgetMax === "" || budgetMax == null ? null : String(Number(budgetMax)) } : {},
+          ...deadline !== void 0 ? { deadline: deadline ? new Date(deadline) : null } : {},
+          ...remote !== void 0 ? { remote: Boolean(remote) } : {},
+          ...wilaya !== void 0 ? { wilaya: wilaya ? String(wilaya).trim() : null } : {},
+          ...visibility !== void 0 ? {
+            visibility: visibility === "INVITE_ONLY" ? "INVITE_ONLY" : "PUBLIC"
+          } : {}
+        }
+      });
+      if (Array.isArray(skills)) {
+        await tx.projectSkill.deleteMany({ where: { projectId: existing.id } });
+        for (const raw of skills.slice(0, 15)) {
+          const name = String(raw).trim();
+          if (!name) continue;
+          const skill = await tx.skill.upsert({
+            where: { name },
+            update: {},
+            create: { name },
+            select: { id: true }
+          });
+          await tx.projectSkill.create({ data: { projectId: existing.id, skillId: skill.id } });
+        }
+      }
+    });
+    res.json({ success: true, data: { id: existing.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var submitMine = async (req, res, next) => {
+  try {
+    const project = await prisma_default.freelanceProject.findFirst({
+      where: { id: req.params.id, clientId: req.user.id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        budgetMin: true,
+        budgetMax: true,
+        status: true
+      }
+    });
+    if (!project) return next(new AppError("Projet introuvable.", 404));
+    if (project.status === "PENDING") {
+      return next(new AppError("Ce projet est d\xE9j\xE0 en attente de validation.", 409));
+    }
+    if (project.status === "OPEN") {
+      return next(new AppError("Ce projet est d\xE9j\xE0 publi\xE9.", 409));
+    }
+    assertReadyForReview2(project);
+    const claimed = await prisma_default.freelanceProject.updateMany({
+      where: { id: project.id, clientId: req.user.id, status: { in: ["DRAFT", "REJECTED"] } },
+      data: { status: FreelanceProjectStatus.PENDING, rejectionReason: null }
+    });
+    if (claimed.count === 0) {
+      return next(new AppError("Ce projet est d\xE9j\xE0 en attente de validation.", 409));
+    }
+    res.json({ success: true, data: { status: "PENDING" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var closeMine = async (req, res, next) => {
+  try {
+    const done = await prisma_default.freelanceProject.updateMany({
+      where: {
+        id: req.params.id,
+        clientId: req.user.id,
+        status: { in: ["OPEN", "IN_PROGRESS", "PENDING"] }
+      },
+      data: { status: FreelanceProjectStatus.CLOSED }
+    });
+    if (done.count === 0) return next(new AppError("Ce projet ne peut pas \xEAtre cl\xF4tur\xE9.", 409));
+    res.json({ success: true, data: { status: "CLOSED" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteMine = async (req, res, next) => {
+  try {
+    const project = await prisma_default.freelanceProject.findFirst({
+      where: { id: req.params.id, clientId: req.user.id },
+      select: { id: true, status: true, _count: { select: { proposals: true } } }
+    });
+    if (!project) return next(new AppError("Projet introuvable.", 404));
+    if (project._count.proposals > 0) {
+      return next(
+        new AppError(
+          "Ce projet a re\xE7u des propositions et ne peut pas \xEAtre supprim\xE9. Cl\xF4turez-le.",
+          409
+        )
+      );
+    }
+    if (project.status === "PENDING") {
+      return next(new AppError("Ce projet est en cours de validation.", 409));
+    }
+    await prisma_default.freelanceProject.delete({ where: { id: project.id } });
+    res.json({ success: true, data: { id: project.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listProposalsReceived = async (req, res, next) => {
+  try {
+    const project = await findOwn(req.user.id, req.params.id);
+    if (!project) return next(new AppError("Projet introuvable.", 404));
+    const proposals = await prisma_default.proposal.findMany({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        coverLetter: true,
+        price: true,
+        deliveryDays: true,
+        status: true,
+        createdAt: true,
+        freelancer: {
+          select: {
+            username: true,
+            displayName: true,
+            title: true,
+            level: true,
+            identityVerified: true,
+            ratingAverage: true,
+            ratingCount: true,
+            completedOrders: true,
+            wilaya: true
+          }
+        }
+      }
+    });
+    res.json({ success: true, data: { project, proposals } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -3832,6 +4116,14 @@ router4.post("/me/services/:id/submit", protect, submitMyService);
 router4.post("/me/services/:id/pause", protect, pauseMyService);
 router4.post("/me/services/:id/resume", protect, resumeMyService);
 router4.delete("/me/services/:id", protect, deleteMyService);
+router4.post("/me/projects", protect, createDraft2);
+router4.get("/me/projects", protect, listMine);
+router4.get("/me/projects/:id", protect, getMine);
+router4.patch("/me/projects/:id", protect, updateMine);
+router4.post("/me/projects/:id/submit", protect, submitMine);
+router4.post("/me/projects/:id/close", protect, closeMine);
+router4.delete("/me/projects/:id", protect, deleteMine);
+router4.get("/me/projects/:id/proposals", protect, listProposalsReceived);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -7148,6 +7440,106 @@ var listHistory = async (req, res, next) => {
     next(err);
   }
 };
+var listProjectQueue = async (_req, res, next) => {
+  try {
+    const projects = await prisma_default.freelanceProject.findMany({
+      where: { status: "PENDING" },
+      orderBy: { updatedAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        updatedAt: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        category: { select: { name: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        client: { select: { email: true, firstName: true, lastName: true } },
+        company: { select: { name: true } }
+      }
+    });
+    res.json({
+      success: true,
+      data: {
+        projects: projects.map((p) => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          submittedAt: p.updatedAt,
+          budgetType: p.budgetType,
+          budgetMin: p.budgetMin,
+          budgetMax: p.budgetMax,
+          deadline: p.deadline,
+          remote: p.remote,
+          wilaya: p.wilaya,
+          visibility: p.visibility,
+          category: p.category?.name ?? null,
+          skills: p.skills.map((s) => s.skill.name),
+          client: {
+            email: p.client.email,
+            name: p.company?.name ?? [p.client.firstName, p.client.lastName].filter(Boolean).join(" ") ?? null
+          }
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var approveProject = async (req, res, next) => {
+  try {
+    const done = await prisma_default.freelanceProject.updateMany({
+      where: { id: req.params.id, status: "PENDING" },
+      data: { status: "OPEN", publishedAt: /* @__PURE__ */ new Date() }
+    });
+    if (done.count === 0) {
+      return next(new AppError("Ce projet n'est pas en attente de validation.", 409));
+    }
+    await prisma_default.moderationRecord.create({
+      data: {
+        entityType: "project",
+        entityId: req.params.id,
+        state: "APPROVED",
+        moderatorId: req.user.id
+      }
+    });
+    res.json({ success: true, data: { id: req.params.id, status: "OPEN" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var rejectProject = async (req, res, next) => {
+  try {
+    const reason = String(req.body.reason ?? "").trim();
+    if (!reason) {
+      return next(new AppError("Un motif est obligatoire pour refuser un projet.", 400));
+    }
+    const done = await prisma_default.freelanceProject.updateMany({
+      where: { id: req.params.id, status: "PENDING" },
+      data: { status: "REJECTED", rejectionReason: reason }
+    });
+    if (done.count === 0) {
+      return next(new AppError("Ce projet n'est pas en attente de validation.", 409));
+    }
+    await prisma_default.moderationRecord.create({
+      data: {
+        entityType: "project",
+        entityId: req.params.id,
+        state: "REJECTED",
+        reason,
+        moderatorId: req.user.id
+      }
+    });
+    res.json({ success: true, data: { id: req.params.id, status: "REJECTED" } });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/admin.routes.ts
 var router7 = Router7();
@@ -7177,6 +7569,9 @@ router7.get("/freelance/moderation/stats", getQueueStats);
 router7.get("/freelance/moderation/history", listHistory);
 router7.post("/freelance/moderation/services/:id/approve", approveService);
 router7.post("/freelance/moderation/services/:id/reject", rejectService);
+router7.get("/freelance/moderation/projects", listProjectQueue);
+router7.post("/freelance/moderation/projects/:id/approve", approveProject);
+router7.post("/freelance/moderation/projects/:id/reject", rejectProject);
 router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router7.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router7;

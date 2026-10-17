@@ -57,6 +57,7 @@ import categoryService, { JobCategory } from './services/category.service';
 import jobService, { PublicJob } from './services/job.service';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AuthModal from './components/AuthModal';
+import CookieNotice, { openCookiePolicy } from './components/CookieNotice';
 import { translations, Language } from './translations';
 import { WILAYAS, JOB_KEYWORDS } from './constants';
 
@@ -2021,11 +2022,13 @@ export default function App() {
             <div className="flex gap-10">
               <a href="#" className="hover:text-white transition-colors">{language === 'fr' ? 'Confidentialité' : 'الخصوصية'}</a>
               <a href="#" className="hover:text-white transition-colors">{language === 'fr' ? 'Conditions' : 'الشروط'}</a>
-              <a href="#" className="hover:text-white transition-colors">{language === 'fr' ? 'Cookies' : 'ملفات تعريف الارتباط'}</a>
+              <button type="button" onClick={openCookiePolicy} className="hover:text-white transition-colors">{language === 'fr' ? 'Cookies' : 'ملفات تعريف الارتباط'}</button>
             </div>
           </div>
         </div>
       </footer>
+
+      <CookieNotice language={language} />
 
       {/* Domain popup — opened from the "Opportunités par domaine" grid */}
       <DomainModal

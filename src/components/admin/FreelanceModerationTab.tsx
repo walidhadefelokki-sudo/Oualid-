@@ -88,7 +88,9 @@ const StatTile: React.FC<{ label: string; value: number; warn?: boolean }> = ({
 );
 
 const FreelanceModerationTab: React.FC = () => {
+  const [kind, setKind] = useState<"services" | "projects">("services");
   const [items, setItems] = useState<QueueItem[] | null>(null);
+  const [projects, setProjects] = useState<any[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -100,10 +102,12 @@ const FreelanceModerationTab: React.FC = () => {
     Promise.all([
       api.get("/admin/freelance/moderation"),
       api.get("/admin/freelance/moderation/stats"),
+      api.get("/admin/freelance/moderation/projects"),
     ])
-      .then(([q, s]) => {
+      .then(([q, s, pr]) => {
         setItems(q.data.data.services);
         setStats(s.data.data);
+        setProjects(pr.data.data.projects);
       })
       .catch((e) => setError(e?.response?.data?.message || e?.message || "Échec du chargement"));
   };
@@ -169,7 +173,131 @@ const FreelanceModerationTab: React.FC = () => {
         </p>
       )}
 
-      {items === null ? (
+      {/* Two queues, one screen. Services and projects are moderated by the
+          same people and the counts belong side by side. */}
+      <div className="flex gap-1 mb-5">
+        {(
+          [
+            { k: "services", label: "Services", n: items?.length ?? 0 },
+            { k: "projects", label: "Projets clients", n: projects?.length ?? 0 },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.k}
+            onClick={() => setKind(o.k)}
+            className={`rounded-xl px-5 py-2.5 text-sm font-bold border-2 transition-colors ${
+              kind === o.k
+                ? "border-primary bg-primary text-white"
+                : "border-primary/15 text-primary/70"
+            }`}
+          >
+            {o.label}
+            {o.n > 0 && <span className="ms-2 opacity-70">{o.n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {kind === "projects" ? (
+        projects === null ? (
+          <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
+        ) : projects.length === 0 ? (
+          <div className="bg-white rounded-xl p-10 text-center">
+            <Check size={28} className="mx-auto text-emerald-500" />
+            <p className="mt-3 font-semibold text-primary/70">Aucun projet en attente.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {projects.map((p) => (
+              <article key={p.id} className="rounded-xl border-2 border-primary/15 bg-white p-5">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-bold text-primary break-words">{p.title}</h2>
+                    <p className="mt-1 text-xs text-primary/50 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>{p.client.name || p.client.email}</span>
+                      {p.category && <span>{p.category}</span>}
+                      <span>{p.remote ? "à distance" : p.wilaya || "sur site"}</span>
+                      {p.visibility === "INVITE_ONLY" && <span>sur invitation</span>}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-primary/8 text-primary/60">
+                    <Clock size={12} /> {waited(p.submittedAt)}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-sm text-gray-600 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                  {p.description}
+                </p>
+
+                <p className="mt-3 text-sm font-bold text-primary" dir="ltr">
+                  {p.budgetMin ? money(p.budgetMin) : "?"} – {p.budgetMax ? money(p.budgetMax) : "?"}
+                  <span className="ms-2 text-xs font-normal text-primary/50">
+                    {p.budgetType === "HOURLY" ? "horaire" : "forfait"}
+                  </span>
+                </p>
+
+                {p.skills?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {p.skills.map((s: string) => (
+                      <span
+                        key={s}
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary/8 text-primary"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-4 border-t border-primary/10">
+                  <button
+                    onClick={async () => {
+                      setBusyId(p.id);
+                      try {
+                        await api.post(`/admin/freelance/moderation/projects/${p.id}/approve`);
+                        load();
+                      } catch (e: any) {
+                        setError(e?.response?.data?.message || "L'approbation a échoué.");
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }}
+                    disabled={busyId === p.id}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    {busyId === p.id ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Check size={15} />
+                    )}
+                    Approuver
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const why = window.prompt("Motif du refus (visible par le client) :");
+                      if (!why?.trim()) return;
+                      setBusyId(p.id);
+                      try {
+                        await api.post(`/admin/freelance/moderation/projects/${p.id}/reject`, {
+                          reason: why.trim(),
+                        });
+                        load();
+                      } catch (e: any) {
+                        setError(e?.response?.data?.message || "Le refus a échoué.");
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }}
+                    disabled={busyId === p.id}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border-2 border-red-200 text-red-600 text-sm font-bold disabled:opacity-40"
+                  >
+                    <X size={15} /> Refuser
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      ) : items === null ? (
         <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
       ) : items.length === 0 ? (
         <div className="bg-white rounded-xl p-10 text-center">

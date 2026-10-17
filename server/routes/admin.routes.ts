@@ -54,6 +54,9 @@ router.get("/freelance/moderation/stats", freelanceModeration.getQueueStats);
 router.get("/freelance/moderation/history", freelanceModeration.listHistory);
 router.post("/freelance/moderation/services/:id/approve", freelanceModeration.approveService);
 router.post("/freelance/moderation/services/:id/reject", freelanceModeration.rejectService);
+router.get("/freelance/moderation/projects", freelanceModeration.listProjectQueue);
+router.post("/freelance/moderation/projects/:id/approve", freelanceModeration.approveProject);
+router.post("/freelance/moderation/projects/:id/reject", freelanceModeration.rejectProject);
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", adminController.getCorporatePendingPreselections);

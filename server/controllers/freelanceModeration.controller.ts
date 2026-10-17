@@ -184,3 +184,126 @@ export const listHistory = async (req: Request, res: Response, next: NextFunctio
     next(err);
   }
 };
+
+/* -------------------------------------------------------------------------
+ * Projects
+ *
+ * Same queue, different rules. A project costs its client nothing, so there
+ * is no charge to reverse on a refusal — the author fixes it and sends it
+ * back. That is the whole difference, and it is why these are separate
+ * handlers rather than a `type` parameter on the ones above.
+ * --------------------------------------------------------------------- */
+
+export const listProjectQueue = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const projects = await prisma.freelanceProject.findMany({
+      where: { status: "PENDING" },
+      orderBy: { updatedAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        updatedAt: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        category: { select: { name: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        client: { select: { email: true, firstName: true, lastName: true } },
+        company: { select: { name: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        projects: projects.map((p) => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          submittedAt: p.updatedAt,
+          budgetType: p.budgetType,
+          budgetMin: p.budgetMin,
+          budgetMax: p.budgetMax,
+          deadline: p.deadline,
+          remote: p.remote,
+          wilaya: p.wilaya,
+          visibility: p.visibility,
+          category: p.category?.name ?? null,
+          skills: p.skills.map((s) => s.skill.name),
+          client: {
+            email: p.client.email,
+            name:
+              p.company?.name ??
+              [p.client.firstName, p.client.lastName].filter(Boolean).join(" ") ??
+              null,
+          },
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const approveProject = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const done = await prisma.freelanceProject.updateMany({
+      where: { id: req.params.id, status: "PENDING" },
+      data: { status: "OPEN", publishedAt: new Date() },
+    });
+
+    if (done.count === 0) {
+      return next(new AppError("Ce projet n'est pas en attente de validation.", 409));
+    }
+
+    await prisma.moderationRecord.create({
+      data: {
+        entityType: "project",
+        entityId: req.params.id,
+        state: "APPROVED",
+        moderatorId: req.user!.id,
+      },
+    });
+
+    res.json({ success: true, data: { id: req.params.id, status: "OPEN" } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const rejectProject = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reason = String((req.body as { reason?: string }).reason ?? "").trim();
+    if (!reason) {
+      return next(new AppError("Un motif est obligatoire pour refuser un projet.", 400));
+    }
+
+    const done = await prisma.freelanceProject.updateMany({
+      where: { id: req.params.id, status: "PENDING" },
+      data: { status: "REJECTED", rejectionReason: reason },
+    });
+
+    if (done.count === 0) {
+      return next(new AppError("Ce projet n'est pas en attente de validation.", 409));
+    }
+
+    await prisma.moderationRecord.create({
+      data: {
+        entityType: "project",
+        entityId: req.params.id,
+        state: "REJECTED",
+        reason,
+        moderatorId: req.user!.id,
+      },
+    });
+
+    res.json({ success: true, data: { id: req.params.id, status: "REJECTED" } });
+  } catch (err) {
+    next(err);
+  }
+};

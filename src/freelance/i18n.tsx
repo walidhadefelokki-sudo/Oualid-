@@ -64,6 +64,7 @@ const fr: Dict = {
   "footer.help": "Centre d'aide",
   "footer.terms": "Conditions d'utilisation",
   "footer.privacy": "Confidentialité",
+  "footer.cookies": "Cookies",
   "footer.rights": "Tous droits réservés.",
 };
 
@@ -109,6 +110,7 @@ const ar: Dict = {
   "footer.help": "مركز المساعدة",
   "footer.terms": "شروط الاستخدام",
   "footer.privacy": "الخصوصية",
+  "footer.cookies": "ملفات تعريف الارتباط",
   "footer.rights": "جميع الحقوق محفوظة.",
 };
 
@@ -155,6 +157,7 @@ const en: Dict = {
   "footer.help": "Help centre",
   "footer.terms": "Terms of use",
   "footer.privacy": "Privacy",
+  "footer.cookies": "Cookies",
   "footer.rights": "All rights reserved.",
 };
 

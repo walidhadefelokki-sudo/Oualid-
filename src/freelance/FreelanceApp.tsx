@@ -10,6 +10,8 @@ import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import Overview from "./pages/workspace/Overview";
 import ServiceEditor from "./pages/workspace/ServiceEditor";
+import MyProjects from "./pages/client/MyProjects";
+import ProjectEditor from "./pages/client/ProjectEditor";
 import {
   MyCredits,
   MyOrders,
@@ -98,6 +100,12 @@ const FreelanceApp: React.FC = () => (
               <Route path="credits" element={<MyCredits />} />
               <Route path="profil" element={<MyProfile />} />
             </Route>
+
+            {/* Client area. Free, and needing no profile to activate:
+                posting work takes nothing but an account. */}
+            <Route path="client/projets" element={<MyProjects />} />
+            <Route path="client/projets/nouveau" element={<ProjectEditor />} />
+            <Route path="client/projets/:id" element={<ProjectEditor />} />
 
             <Route path="*" element={<NotFound />} />
           </Route>

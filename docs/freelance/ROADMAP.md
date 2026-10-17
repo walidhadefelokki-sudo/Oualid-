@@ -8,7 +8,7 @@ The plan follows the PDF's own three phases. Nothing here is a guess about
 what exists: every "done" line is code in the repository with the test or the
 verification that proved it.
 
-Last updated after the moderation queue. Thirteen commits, none pushed.
+Last updated after client projects. Fourteen commits, none pushed.
 
 ---
 
@@ -43,26 +43,24 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
 | **Plans** | Free / Pro / Premium limits computed and enforced server-side | 14 tests incl. quota rollover and expiry |
 | **Dashboard** | Six sections, all real reads; plan card with usage meters | every tier verified through the endpoint |
 | **Service editor** | Three formulas, draft, submit, pause, resume, delete | full loop verified: draft → charge → approve → public |
+| **Client projects** | Publish free, moderated, public feed, invite-only stays private | refusal, fix, approval, and no client e-mail in the payload |
 | **Moderation** | Admin queue with age, approve, refuse with a reason and refund, decision history | refusal refunded 10 and the resubmission charged again |
 
 ### Not done, in dependency order
 
-1. **Client project publishing.** The feed and the detail page read fine, but
-   nothing can create a project, so the feed is empty by construction and
-   proposals have nothing to answer.
-2. **Proposals.** Submit, withdraw, and the client's side — compare,
+1. **Proposals.** Submit, withdraw, and the client's side — compare,
    shortlist, hire. The credit charge and the quota decision are written and
    tested (`resolveProposalCharge`); the endpoints are not.
-3. **Orders.** Created from a package, a hired proposal or an accepted custom
+2. **Orders.** Created from a package, a hired proposal or an accepted custom
    offer. Milestones, deliveries, revisions, completion.
-4. **Messaging.** Conversations, attachments, custom offers sent from a
+3. **Messaging.** Conversations, attachments, custom offers sent from a
    thread. Real-time is a later refinement — polling is enough to start.
-5. **Reviews.** Only after a completed order, both directions, one public
+4. **Reviews.** Only after a completed order, both directions, one public
    reply.
-6. **Payments.** Credit packs through Chargily, which is already live on the
+5. **Payments.** Credit packs through Chargily, which is already live on the
    recruitment side, plus the CCP/BaridiMob receipt queue a human approves.
    Invoices reuse the existing PDF generator.
-7. **Service media.** Uploads through the existing Supabase storage. Cards
+6. **Service media.** Uploads through the existing Supabase storage. Cards
    currently fall back to an initial.
 
 ### Known gaps in what is done

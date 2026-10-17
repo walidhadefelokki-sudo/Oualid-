@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as freelancePublic from "../controllers/freelancePublic.controller";
 import * as freelancer from "../controllers/freelancer.controller";
 import * as service from "../controllers/service.controller";
+import * as project from "../controllers/project.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -41,5 +42,17 @@ router.post("/me/services/:id/submit", protect, service.submitMyService);
 router.post("/me/services/:id/pause", protect, service.pauseMyService);
 router.post("/me/services/:id/resume", protect, service.resumeMyService);
 router.delete("/me/services/:id", protect, service.deleteMyService);
+
+// Client projects. Free: the platform earns from freelancers, and charging
+// clients to post work would thin out the demand that makes a subscription
+// worth paying for.
+router.post("/me/projects", protect, project.createDraft);
+router.get("/me/projects", protect, project.listMine);
+router.get("/me/projects/:id", protect, project.getMine);
+router.patch("/me/projects/:id", protect, project.updateMine);
+router.post("/me/projects/:id/submit", protect, project.submitMine);
+router.post("/me/projects/:id/close", protect, project.closeMine);
+router.delete("/me/projects/:id", protect, project.deleteMine);
+router.get("/me/projects/:id/proposals", protect, project.listProposalsReceived);
 
 export default router;

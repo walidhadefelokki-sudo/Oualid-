@@ -4,6 +4,7 @@ import { Briefcase, Globe, LayoutDashboard, Menu, X } from "lucide-react";
 import { Lang, useI18n } from "./i18n";
 import logoLight from "../assets/logo2-v2.png";
 import { useAuth } from "./auth";
+import CookieNotice, { openCookiePolicy } from "../components/CookieNotice";
 
 /**
  * The shell around every public marketplace page.
@@ -50,7 +51,7 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 const PublicLayout: React.FC = () => {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { signedIn, loading } = useAuth();
   const [open, setOpen] = useState(false);
 
@@ -67,6 +68,9 @@ const PublicLayout: React.FC = () => {
       </NavLink>
       <NavLink to="/tarifs" className={navClass} onClick={() => setOpen(false)}>
         {t("nav.pricing")}
+      </NavLink>
+      <NavLink to="/client/projets" className={navClass} onClick={() => setOpen(false)}>
+        Publier un projet
       </NavLink>
     </>
   );
@@ -165,6 +169,9 @@ const PublicLayout: React.FC = () => {
               <Link to="/confidentialite" className="hover:text-white">
                 {t("footer.privacy")}
               </Link>
+              <button type="button" onClick={openCookiePolicy} className="hover:text-white">
+                {t("footer.cookies")}
+              </button>
             </nav>
           </div>
           <p className="mt-6 text-xs">
@@ -172,6 +179,8 @@ const PublicLayout: React.FC = () => {
           </p>
         </div>
       </footer>
+
+      <CookieNotice language={lang} />
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Clock, CheckCircle2, ChevronRight, ChevronLeft, MessageCircle,
-  Camera, X, Search, ArrowUpDown, Mail, CalendarClock, Star, XCircle,
+  Camera, X, Search, ArrowUpDown, Mail, CalendarClock, Star, XCircle, ChevronDown, ClipboardList,
   MapPin, Languages as LanguagesIcon, GraduationCap, Wallet, Sparkles,
   TrendingUp, TrendingDown, ShieldCheck, Activity, Lock,
 } from 'lucide-react';
@@ -71,31 +71,6 @@ const STATUS_STYLES: Record<string, string> = {
   Refusé: 'bg-red-50 text-red-600 border-red-100',
 };
 const statusStyle = (s?: string) => STATUS_STYLES[s ?? ''] ?? 'bg-gray-50 text-gray-600 border-gray-100';
-
-function MatchRing({ value = 0, size = 64 }: { value?: number; size?: number }) {
-  const stroke = 6;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(100, value));
-  const color = pct >= 80 ? '#10B981' : pct >= 55 ? ORANGE : '#EF4444';
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="#F1F5F9" strokeWidth={stroke} fill="none" />
-        <motion.circle
-          cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} fill="none"
-          strokeLinecap="round" strokeDasharray={c}
-          initial={{ strokeDashoffset: c }}
-          animate={{ strokeDashoffset: c - (pct / 100) * c }}
-          transition={{ duration: 1, ease: 'easeOut' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-sm font-black" style={{ color: NAVY }}>{pct}%</span>
-      </div>
-    </div>
-  );
-}
 
 function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string }) {
   return (
@@ -179,7 +154,26 @@ function JobCard({ group, onOpen, index }: { group: JobGroup; onOpen: () => void
   );
 }
 
-function CandidateCard({
+function Avatar({ src, name }: { src?: string; name: string }) {
+  // Many applicants have no photo, and a broken <img> shows its alt text
+  // squeezed into the box. Initials instead, for both cases.
+  const [failed, setFailed] = useState(false);
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
+
+  return (
+    <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-gray-50 shadow-sm shrink-0 flex items-center justify-center font-black text-sm text-white" style={{ background: NAVY }}>
+      {src && !failed ? (
+        <img src={src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+      ) : (
+        initials
+      )}
+    </div>
+  );
+}
+
+const iconBtn = 'w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-[1.05] active:scale-95 shrink-0';
+
+function CandidateRow({
   candidate, isRTL, setSelectedCandidateCV, setSelectedPresentationCandidate,
   handleWhatsAppContact, handleInterview, handleHire, handleReject, handleEmail,
   handleShortlist, handleViewQuiz, index,
@@ -199,229 +193,215 @@ function CandidateCard({
   canViewPreselection: boolean;
   onRequestUpgrade: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const skills = candidate.skills ?? [];
   const languages = candidate.languages ?? [];
   const strengths = candidate.strengths ?? [];
   const weaknesses = candidate.weaknesses ?? [];
+  const match = candidate.match ?? 0;
+  const matchColor = match >= 80 ? '#10B981' : match >= 55 ? ORANGE : '#EF4444';
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index, 8) * 0.05, duration: 0.5 }}
-      className={`bg-white rounded-[2.75rem] border border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(23,62,125,0.08)] transition-shadow duration-500 p-8 ${isRTL ? 'text-right' : ''}`}
+      transition={{ delay: Math.min(index, 10) * 0.03, duration: 0.3 }}
+      className={`border-b border-gray-100 last:border-b-0 ${isRTL ? 'text-right' : ''}`}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center gap-5 pb-6 border-b border-gray-50">
-        <div className="relative shrink-0">
-          <div className="w-20 h-20 rounded-[1.75rem] overflow-hidden border-4 border-gray-50 shadow-lg">
-            <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          </div>
-          <div className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-emerald-500 text-white rounded-full flex items-center justify-center border-2 border-white">
-            <CheckCircle2 size={14} />
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-xl font-black tracking-tight" style={{ color: NAVY }}>{candidate.name}</h4>
-            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusStyle(candidate.status)}`}>
-              {candidate.status || 'Statut inconnu'}
-            </span>
-          </div>
-          <p className="text-gray-400 font-bold uppercase tracking-[0.15em] text-[10px] mt-1">{candidate.role}</p>
-        </div>
-
-        <MatchRing value={candidate.match ?? 0} />
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-6">
-        <InfoChip icon={<Activity size={13} />} label="Expérience" value={candidate.exp} />
-        <InfoChip icon={<MapPin size={13} />} label="Localisation" value={candidate.location} />
-        <InfoChip icon={<CalendarClock size={13} />} label="Disponibilité" value={candidate.availability} />
-        <InfoChip icon={<Wallet size={13} />} label="Prétention salariale" value={candidate.salaryExpectation} />
-        <InfoChip icon={<GraduationCap size={13} />} label="Formation" value={candidate.education} />
-        <InfoChip icon={<LanguagesIcon size={13} />} label="Langues" value={languages.length ? languages.join(', ') : undefined} />
-      </div>
-
-      {skills.length > 0 && (
-        <div className="flex flex-wrap gap-2 pb-6">
-          {skills.map((s, i) => (
-            <span key={i} className="px-3 py-1.5 rounded-full text-[10px] font-bold border" style={{ color: NAVY, borderColor: '#E2E8F0', background: '#F8FAFC' }}>
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="rounded-[2rem] p-6 mb-6 border" style={{ background: 'linear-gradient(135deg, #F5F8FF 0%, #FFF7F2 100%)', borderColor: '#EEF2FF' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} style={{ color: ORANGE }} />
-            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: NAVY }}>Analyse IA</span>
-          </div>
-          {typeof candidate.confidence === 'number' && (
-            <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
-              <ShieldCheck size={12} /> Confiance {candidate.confidence}%
-            </span>
-          )}
-        </div>
-
-        {candidate.aiSummary && (
-          <p className="text-xs text-gray-600 leading-relaxed mb-4">{candidate.aiSummary}</p>
-        )}
-
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
-          {strengths.length > 0 && (
-            <div>
-              <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-2">
-                <TrendingUp size={12} /> Points forts
-              </p>
-              <ul className="space-y-1">
-                {strengths.map((s, i) => <li key={i} className="text-[11px] text-gray-600">• {s}</li>)}
-              </ul>
-            </div>
-          )}
-          {weaknesses.length > 0 && (
-            <div>
-              <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-red-500 mb-2">
-                <TrendingDown size={12} /> Points de vigilance
-              </p>
-              <ul className="space-y-1">
-                {weaknesses.map((s, i) => <li key={i} className="text-[11px] text-gray-600">• {s}</li>)}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {candidate.recommendation && (
-          <p className="text-[11px] font-bold rounded-xl px-4 py-3 bg-white/70" style={{ color: NAVY }}>
-            Recommandation IA : {candidate.recommendation}
-          </p>
-        )}
-
-        <div className="flex items-center gap-6 mt-4 pt-4 border-t border-white/60">
-          {typeof candidate.quizScore === 'number' && (
-            <div className="flex-1">
-              <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">
-                <span>Score Quiz</span><span>{candidate.quizScore}%</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-white overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${candidate.quizScore}%`, background: NAVY }} />
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: candidate.hasPresentation ? NAVY : '#CBD5E1' }}>
-            <Camera size={14} /> {candidate.hasPresentation ? 'Présentation orale disponible' : 'Pas de présentation'}
-          </div>
-        </div>
-
-        {candidate.lastActivity && (
-          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-3">
-            Dernière activité : {candidate.lastActivity}
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setSelectedCandidateCV(candidate)}
-          className="flex-1 min-w-[130px] text-white py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-blue-900/10"
-          style={{ background: NAVY }}
-        >
-          Voir le CV
-        </button>
-
-        {canViewOralPresentation ? (
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_5rem_auto] gap-3 lg:gap-4 items-center px-4 sm:px-6 py-4 hover:bg-gray-50/60 transition-colors">
+        {/* Candidate */}
+        <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={() => setSelectedPresentationCandidate(candidate)}
-            className="col-span-1 bg-gradient-to-br from-purple-500 to-pink-500 text-white py-5 rounded-[1.5rem] font-black hover:scale-[1.02] active:scale-95 transition-all duration-500 shadow-xl shadow-purple-500/10 flex items-center justify-center"
-            title="View Oral Presentation"
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-label={open ? 'Masquer les détails' : 'Afficher les détails'}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 shrink-0"
           >
-            <Camera size={20} />
+            <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
           </button>
-        ) : (
-          <button
-            onClick={onRequestUpgrade}
-            className="col-span-1 bg-gray-100 text-gray-400 py-5 rounded-[1.5rem] font-black flex items-center justify-center relative"
-            title="Corporate requis"
-          >
-            <Camera size={20} />
-            <Lock size={11} className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 text-gray-400 shadow-sm" />
-          </button>
-        )}
+          <Avatar src={candidate.avatar} name={candidate.name} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-black truncate" style={{ color: NAVY }}>{candidate.name}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusStyle(candidate.status)}`}>
+                {candidate.status || 'Statut inconnu'}
+              </span>
+            </div>
+            {candidate.role && (
+              <p className="text-gray-400 font-bold uppercase tracking-[0.12em] text-[10px] mt-0.5 truncate">{candidate.role}</p>
+            )}
+          </div>
+        </div>
 
-        {canViewPreselection ? (
+        {/* Location / experience: labelled inline on mobile, columns on desktop */}
+        <div className="flex items-center gap-1.5 text-xs font-bold min-w-0" style={{ color: NAVY }}>
+          <MapPin size={13} className="text-gray-400 shrink-0" />
+          <span className="truncate">{candidate.location || 'Non précisé'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs font-bold min-w-0" style={{ color: NAVY }}>
+          <Activity size={13} className="text-gray-400 shrink-0" />
+          <span className="truncate">{candidate.exp || 'Non précisé'}</span>
+        </div>
+
+        {/* Match */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-black" style={{ color: matchColor }}>{match}%</span>
+          <span className="lg:hidden text-[10px] font-black uppercase tracking-widest text-gray-400">Match IA</span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+          <button
+            onClick={() => setSelectedCandidateCV(candidate)}
+            className="h-9 px-3 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shrink-0"
+            style={{ background: NAVY }}
+          >
+            CV
+          </button>
+
+          {canViewOralPresentation ? (
             <button
-              onClick={() => handleViewQuiz?.(candidate)}
-              className="flex-1 min-w-[130px] py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all border"
-              style={{ color: NAVY, borderColor: '#E2E8F0' }}
+              onClick={() => setSelectedPresentationCandidate(candidate)}
+              title="Présentation orale"
+              className={`${iconBtn} bg-gradient-to-br from-purple-500 to-pink-500 text-white`}
             >
-          Résultats quiz
-        </button>
+              <Camera size={16} />
+            </button>
           ) : (
-            <button
-              onClick={onRequestUpgrade}
-              className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest"
-            >
-              <Lock size={11} />
-              Corporate requis
+            <button onClick={onRequestUpgrade} title="Présentation orale — Corporate requis" className={`${iconBtn} bg-gray-100 text-gray-400 relative`}>
+              <Camera size={16} />
+              <Lock size={10} className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 text-gray-400 shadow-sm" />
             </button>
           )}
-        {/* The candidate's real number. This was hardcoded to
-            +213 555 555 555, so every WhatsApp button opened a chat with the
-            same non-existent contact. Disabled when we have no number rather
-            than opening a broken wa.me link. */}
-        <button
-          onClick={() => candidate.phone && handleWhatsAppContact(candidate.phone, candidate.name)}
-          disabled={!candidate.phone}
-          title={candidate.phone ? 'WhatsApp' : 'Numéro non renseigné'}
-          className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-            candidate.phone
-              ? 'bg-[#25D366] text-white hover:scale-[1.05] active:scale-95 shadow-lg shadow-green-500/10'
-              : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-          }`}
-        >
-          <MessageCircle size={18} />
-        </button>
-        <button
-          onClick={() => handleEmail?.(candidate)}
-          title="Email"
-          className="w-12 h-12 rounded-xl flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all border"
-          style={{ color: NAVY, borderColor: '#E2E8F0' }}
-        >
-          <Mail size={18} />
-        </button>
-        <button
-          onClick={() => handleInterview?.(candidate)}
-          title="Planifier un entretien"
-          className="w-12 h-12 rounded-xl flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all border"
-          style={{ color: ORANGE, borderColor: '#FDE6D6' }}
-        >
-          <CalendarClock size={18} />
-        </button>
-        <button
-          onClick={() => handleShortlist?.(candidate)}
-          title="Présélectionner"
-          className="w-12 h-12 rounded-xl flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all border border-amber-100 text-amber-500"
-        >
-          <Star size={18} />
-        </button>
-        <button
-          onClick={() => handleHire?.(candidate)}
-          title="Embaucher"
-          className="w-12 h-12 rounded-xl flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all bg-emerald-500 text-white shadow-lg shadow-emerald-500/10"
-        >
-          <CheckCircle2 size={18} />
-        </button>
-        <button
-          onClick={() => handleReject?.(candidate)}
-          title="Refuser"
-          className="w-12 h-12 rounded-xl flex items-center justify-center hover:scale-[1.05] active:scale-95 transition-all bg-red-50 text-red-500 border border-red-100"
-        >
-          <XCircle size={18} />
-        </button>
+
+          {canViewPreselection ? (
+            <button onClick={() => handleViewQuiz?.(candidate)} title="Résultats quiz" className={`${iconBtn} border`} style={{ color: NAVY, borderColor: '#E2E8F0' }}>
+              <ClipboardList size={16} />
+            </button>
+          ) : (
+            <button onClick={onRequestUpgrade} title="Résultats quiz — Corporate requis" className={`${iconBtn} bg-gray-100 text-gray-400 relative`}>
+              <ClipboardList size={16} />
+              <Lock size={10} className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 text-gray-400 shadow-sm" />
+            </button>
+          )}
+
+          {/* Disabled without a number rather than opening a broken wa.me link. */}
+          <button
+            onClick={() => candidate.phone && handleWhatsAppContact(candidate.phone, candidate.name)}
+            disabled={!candidate.phone}
+            title={candidate.phone ? 'WhatsApp' : 'Numéro non renseigné'}
+            className={`${iconBtn} ${candidate.phone ? 'bg-[#25D366] text-white' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+          >
+            <MessageCircle size={16} />
+          </button>
+          <button onClick={() => handleEmail?.(candidate)} title="Email" className={`${iconBtn} border`} style={{ color: NAVY, borderColor: '#E2E8F0' }}>
+            <Mail size={16} />
+          </button>
+          <button onClick={() => handleInterview?.(candidate)} title="Planifier un entretien" className={`${iconBtn} border`} style={{ color: ORANGE, borderColor: '#FDE6D6' }}>
+            <CalendarClock size={16} />
+          </button>
+          <button onClick={() => handleShortlist?.(candidate)} title="Présélectionner" className={`${iconBtn} border border-amber-100 text-amber-500`}>
+            <Star size={16} />
+          </button>
+          <button onClick={() => handleHire?.(candidate)} title="Embaucher" className={`${iconBtn} bg-emerald-500 text-white`}>
+            <CheckCircle2 size={16} />
+          </button>
+          <button onClick={() => handleReject?.(candidate)} title="Refuser" className={`${iconBtn} bg-red-50 text-red-500 border border-red-100`}>
+            <XCircle size={16} />
+          </button>
+        </div>
       </div>
-    </motion.div>
+
+      {open && (
+        <div className="px-4 sm:px-6 pb-6 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <InfoChip icon={<CalendarClock size={13} />} label="Disponibilité" value={candidate.availability} />
+            <InfoChip icon={<Wallet size={13} />} label="Prétention salariale" value={candidate.salaryExpectation} />
+            <InfoChip icon={<GraduationCap size={13} />} label="Formation" value={candidate.education} />
+            <InfoChip icon={<LanguagesIcon size={13} />} label="Langues" value={languages.length ? languages.join(', ') : undefined} />
+          </div>
+
+          {skills.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {skills.map((s, i) => (
+                <span key={i} className="px-3 py-1.5 rounded-full text-[10px] font-bold border" style={{ color: NAVY, borderColor: '#E2E8F0', background: '#F8FAFC' }}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-2xl p-5 border" style={{ background: 'linear-gradient(135deg, #F5F8FF 0%, #FFF7F2 100%)', borderColor: '#EEF2FF' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} style={{ color: ORANGE }} />
+                <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: NAVY }}>Analyse IA</span>
+              </div>
+              {typeof candidate.confidence === 'number' && (
+                <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                  <ShieldCheck size={12} /> Confiance {candidate.confidence}%
+                </span>
+              )}
+            </div>
+
+            {candidate.aiSummary && <p className="text-xs text-gray-600 leading-relaxed mb-3">{candidate.aiSummary}</p>}
+
+            {(strengths.length > 0 || weaknesses.length > 0) && (
+              <div className="grid sm:grid-cols-2 gap-4 mb-3">
+                {strengths.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-2">
+                      <TrendingUp size={12} /> Points forts
+                    </p>
+                    <ul className="space-y-1">
+                      {strengths.map((s, i) => <li key={i} className="text-[11px] text-gray-600">• {s}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {weaknesses.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-red-500 mb-2">
+                      <TrendingDown size={12} /> Points de vigilance
+                    </p>
+                    <ul className="space-y-1">
+                      {weaknesses.map((s, i) => <li key={i} className="text-[11px] text-gray-600">• {s}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {candidate.recommendation && (
+              <p className="text-[11px] font-bold rounded-xl px-4 py-3 bg-white/70 mb-3" style={{ color: NAVY }}>
+                Recommandation IA : {candidate.recommendation}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-6">
+              {typeof candidate.quizScore === 'number' && (
+                <div className="flex-1 min-w-[10rem]">
+                  <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                    <span>Score Quiz</span><span>{candidate.quizScore}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${candidate.quizScore}%`, background: NAVY }} />
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: candidate.hasPresentation ? NAVY : '#94A3B8' }}>
+                <Camera size={14} /> {candidate.hasPresentation ? 'Présentation orale disponible' : 'Pas de présentation'}
+              </div>
+              {candidate.lastActivity && (
+                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
+                  Dernière activité : {candidate.lastActivity}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.li>
   );
 }
 
@@ -532,29 +512,38 @@ export default function CandidatesSection({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                {filteredCandidates.map((candidate, i) => (
-                  <CandidateCard
-                    key={candidate.id ?? candidate.name + i}
-                    candidate={candidate}
-                    index={i}
-                    isRTL={isRTL}
-                    setSelectedCandidateCV={setSelectedCandidateCV}
-                    setSelectedPresentationCandidate={setSelectedPresentationCandidate}
-                    handleWhatsAppContact={handleWhatsAppContact}
-                    handleInterview={handleInterview}
-                    handleHire={handleHire}
-                    handleReject={handleReject}
-                    handleEmail={handleEmail}
-                    handleShortlist={handleShortlist}
-                    handleViewQuiz={handleViewQuiz}
-                    canViewOralPresentation={canViewOralPresentation}
-                    canViewPreselection={canViewPreselection}
-                    onRequestUpgrade={onRequestUpgrade}
-                  />
-                ))}
+              <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
+                <div className="hidden lg:grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_5rem_auto] gap-4 px-6 py-3 bg-gray-50/80 border-b border-gray-100 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                  <span className={isRTL ? 'pr-10' : 'pl-10'}>Candidat</span>
+                  <span>Localisation</span>
+                  <span>Expérience</span>
+                  <span>Match IA</span>
+                  <span className="text-end">Actions</span>
+                </div>
+                <ul>
+                  {filteredCandidates.map((candidate, i) => (
+                    <CandidateRow
+                      key={candidate.id ?? candidate.name + i}
+                      candidate={candidate}
+                      index={i}
+                      isRTL={isRTL}
+                      setSelectedCandidateCV={setSelectedCandidateCV}
+                      setSelectedPresentationCandidate={setSelectedPresentationCandidate}
+                      handleWhatsAppContact={handleWhatsAppContact}
+                      handleInterview={handleInterview}
+                      handleHire={handleHire}
+                      handleReject={handleReject}
+                      handleEmail={handleEmail}
+                      handleShortlist={handleShortlist}
+                      handleViewQuiz={handleViewQuiz}
+                      canViewOralPresentation={canViewOralPresentation}
+                      canViewPreselection={canViewPreselection}
+                      onRequestUpgrade={onRequestUpgrade}
+                    />
+                  ))}
+                </ul>
                 {filteredCandidates.length === 0 && (
-                  <div className="col-span-full text-center py-16 text-gray-400 font-medium">
+                  <div className="text-center py-16 text-gray-400 font-medium">
                     Aucun candidat ne correspond à ces critères.
                   </div>
                 )}

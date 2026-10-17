@@ -5,7 +5,7 @@ the existing platform actually is, what the marketplace can reuse, and the
 decisions that the codebase forces.
 
 Status: **Phase 1A, database foundation only.** No marketplace feature is
-implemented yet. The migration in `prisma/migrations/pending_freelance/` has
+implemented yet. The migration in `prisma/migrations/20261017090000_add_freelance_marketplace/` has
 **not** been applied.
 
 ---
@@ -157,7 +157,7 @@ npx prisma migrate diff \
   --to-schema-datamodel prisma/schema.prisma --script
 ```
 
-The generated SQL is in `prisma/migrations/pending_freelance/migration.sql`:
+The generated SQL is in `prisma/migrations/20261017090000_add_freelance_marketplace/migration.sql`:
 49 `CREATE TABLE`, and three nullable columns added to existing tables —
 `JobCategory.parentId`, `User.phoneVerifiedAt`, `Company.nif` (with
 `registreCommerce` and `verifiedAt`). **Zero** `DROP` statements. It is

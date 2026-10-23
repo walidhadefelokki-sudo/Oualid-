@@ -5016,7 +5016,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                             <h3 className="text-xl font-bold text-[#173E7D]">{t('settings_new.helpCenter')}</h3>
                           </div>
                           <article className={`prose prose-blue max-w-none ${isRTL ? 'text-right' : ''}`}>
-                            <h4 className="text-2xl font-bold text-[#173E7D]">{lt("How to use the Dar L'emploi platform", "Comment utiliser la plateforme Dar L'emploi", "كيفية استخدام منصة دار التشغيل")}</h4>
+                            <h4 className="text-2xl font-bold text-[#173E7D]">{lt("How to use the Dar L'emploi platform", "Comment utiliser la plateforme Dar L'emploi", "كيفية استخدام منصة Dar L'emploi")}</h4>
                             <div className="mt-6 space-y-6 text-gray-600">
                               <p>
                                 Bienvenue sur Dar L'emploi, la plateforme leader pour le recrutement en Algérie. 
@@ -5663,7 +5663,7 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                         <div className={`flex items-center justify-between p-6 bg-gray-50 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
                             <div className="font-bold text-[#173E7D]">{lt("Analytics sharing", "Partage de données analytiques", "مشاركة بيانات التحليلات")}</div>
-                            <div className="text-xs text-gray-400">{lt("Help us improve Dar L'emploi with anonymous data", "Aidez-nous à améliorer Dar L'emploi avec des données anonymes", "ساعدنا على تحسين دار التشغيل ببيانات مجهولة")}</div>
+                            <div className="text-xs text-gray-400">{lt("Help us improve Dar L'emploi with anonymous data", "Aidez-nous à améliorer Dar L'emploi avec des données anonymes", "ساعدنا على تحسين Dar L'emploi ببيانات مجهولة")}</div>
                           </div>
                           <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
                             <div className={`absolute ${isRTL ? 'left-1' : 'right-1'} top-1 w-4 h-4 bg-white rounded-full shadow-sm`} />

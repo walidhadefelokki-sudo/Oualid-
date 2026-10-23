@@ -88,7 +88,7 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       error: "Une erreur est survenue lors de l'inscription."
     },
     ar: {
-      title: "انضم إلى دار التشغيل",
+      title: "انضم إلى Dar L'emploi",
       subtitle: "اختر ملفك الشخصي للبدء",
       candidate: "ابحث عن وظيفة",
       candidateDesc: "ابحث عن أفضل الفرص وقم بإدارة طلباتك.",

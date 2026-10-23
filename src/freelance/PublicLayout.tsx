@@ -4,6 +4,7 @@ import { Briefcase, Globe, LayoutDashboard, Menu, X } from "lucide-react";
 import { Lang, useI18n } from "./i18n";
 import logoLight from "../assets/logo2-v2.png";
 import { useAuth } from "./auth";
+import { usePageViews } from "./usePageViews";
 import CookieNotice, { openCookiePolicy } from "../components/CookieNotice";
 
 /**
@@ -53,6 +54,7 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
 const PublicLayout: React.FC = () => {
   const { t, lang } = useI18n();
   const { signedIn, loading } = useAuth();
+  usePageViews();
   const [open, setOpen] = useState(false);
 
   const links = (

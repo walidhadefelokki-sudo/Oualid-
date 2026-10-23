@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import FreelanceApp from './freelance/FreelanceApp.tsx';
 import './index.css';
+import { initAnalytics } from './analytics';
 
 /**
  * Two applications, one bundle.
@@ -18,6 +19,10 @@ import './index.css';
  * the recruitment app authenticates. Moving to the subdomain later changes
  * this one decision and the router's basename, nothing else.
  */
+// Reloads the tag only when consent was already given on a previous
+// visit. With none, or none configured, this does nothing.
+initAnalytics();
+
 const isFreelance = window.location.pathname.startsWith('/freelance');
 
 createRoot(document.getElementById('root')!).render(

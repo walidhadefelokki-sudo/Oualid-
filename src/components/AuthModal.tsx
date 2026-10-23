@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EVENTS, trackEvent } from '../analytics';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
 import api from '../services/api';
@@ -169,6 +170,13 @@ export default function AuthModal({ isOpen, onClose, language, initialRole, init
       });
 
       localStorage.setItem('token', data.token);
+
+      // A KPI, not a person: the role, never the address. This handler only
+      // registers — it posts to /auth/register — so the event is sign_up.
+      trackEvent(EVENTS.signUp, {
+        method: 'password',
+        role: role === 'employer' ? 'recruiter' : 'candidate',
+      });
       onAuthSuccess?.({ token: data.token, user: data.data.user });
       onClose();
     } catch (err: any) {

@@ -99,6 +99,7 @@ import RecruiterPlanCard, {
 import JobOfferCard from './components/JobOfferCard';
 import applicationService from './services/application.service';
 import { shareJobLink } from './utils/shareJob';
+import { trackPageView } from './analytics';
 
 function TierLockedScreen({
   title,
@@ -294,6 +295,18 @@ export default function App() {
   );
   const [loginRole, setLoginRole] = useState<'user' | 'employer'>('user');
   const [language, setLanguage] = useState<Language>('fr');
+
+  /* Page views for the recruitment app.
+   *
+   * It navigates by this `view` string rather than by URL, so GA4's own
+   * page_view — which fires once when the tag loads — would record the entry
+   * URL and nothing after it. Reported here instead, on each change, so the
+   * daily traffic figure counts screens people actually reached.
+   *
+   * Does nothing until analytics is configured and consented to. */
+  useEffect(() => {
+    trackPageView(view === 'dashboard' ? '/dashboard' : '/');
+  }, [view]);
 
   // Must come after `language`: toCardJob reads it to localise the contract
   // type and format salaries, so mapping any earlier throws a temporal-dead-

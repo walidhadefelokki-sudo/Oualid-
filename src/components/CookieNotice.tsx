@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Cookie, X } from 'lucide-react';
+import { Consent, denyConsent, grantConsent, isConfigured, readConsent } from '../analytics';
 
 /**
  * Cookie notice and cookie policy, shared by the recruitment app and the
@@ -47,6 +48,17 @@ const TEXT: Record<
     control: string;
     contactTitle: string;
     contact: string;
+    /* Shown only when a GA4 measurement id is configured. With none, the
+       site really does set no analytics cookies and the notice says so. */
+    analyticsBanner: string;
+    accept: string;
+    refuse: string;
+    analyticsTitle: string;
+    analytics: string;
+    choiceGranted: string;
+    choiceDenied: string;
+    changeChoice: string;
+    analyticsItems: Item[];
   }
 > = {
   fr: {
@@ -81,6 +93,21 @@ const TEXT: Record<
       "Vous pouvez supprimer ou bloquer les cookies et le stockage local dans les réglages de votre navigateur. Vous serez alors déconnecté et certaines fonctions, comme la connexion, ne fonctionneront plus.",
     contactTitle: 'Contact',
     contact: 'Pour toute question : contact@darlemploi.dz',
+    analyticsBanner:
+      "Nous utilisons des cookies essentiels au fonctionnement du site, et — avec votre accord — des cookies de mesure d'audience (Google Analytics) pour comprendre comment la plateforme est utilisée.",
+    accept: 'Accepter',
+    refuse: 'Refuser',
+    analyticsTitle: "Mesure d'audience",
+    analytics:
+      "Si vous l'acceptez, nous utilisons Google Analytics pour compter les visites et comprendre quelles pages servent le plus. Ces cookies ne sont déposés qu'après votre accord : si vous refusez, le script n'est jamais chargé. Vous pouvez changer d'avis à tout moment depuis cette page.",
+    choiceGranted: 'Vous avez accepté la mesure d\'audience.',
+    choiceDenied: 'Vous avez refusé la mesure d\'audience. Aucun cookie Google Analytics n\'est déposé.',
+    changeChoice: 'Changer mon choix',
+    analyticsItems: [
+      { name: '_ga', kind: 'Cookie', purpose: "Distinguer les visiteurs, sans les identifier.", duration: '2 ans' },
+      { name: '_ga_*', kind: 'Cookie', purpose: 'Maintenir l\'état de la session de mesure.', duration: '2 ans' },
+      { name: 'analyticsConsent', kind: 'Stockage local', purpose: 'Mémoriser votre choix pour ne plus vous le redemander.', duration: "Jusqu'à ce que vous le changiez" },
+    ],
   },
   ar: {
     banner:
@@ -114,6 +141,21 @@ const TEXT: Record<
       'يمكنك حذف أو حظر ملفات تعريف الارتباط والتخزين المحلي من إعدادات متصفحك. سيتم حينها تسجيل خروجك ولن تعمل بعض الوظائف مثل تسجيل الدخول.',
     contactTitle: 'اتصل بنا',
     contact: 'لأي سؤال: contact@darlemploi.dz',
+    analyticsBanner:
+      'نستخدم ملفات ضرورية لعمل الموقع، و — بموافقتك — ملفات قياس الزيارات (Google Analytics) لفهم كيفية استخدام المنصة.',
+    accept: 'أوافق',
+    refuse: 'أرفض',
+    analyticsTitle: 'قياس الزيارات',
+    analytics:
+      'إذا وافقت، نستخدم Google Analytics لعدّ الزيارات ومعرفة الصفحات الأكثر فائدة. لا تُحفظ هذه الملفات إلا بعد موافقتك: إذا رفضت، لا يُحمَّل النص البرمجي إطلاقًا. يمكنك تغيير رأيك في أي وقت من هذه الصفحة.',
+    choiceGranted: 'لقد وافقت على قياس الزيارات.',
+    choiceDenied: 'لقد رفضت قياس الزيارات. لا تُحفظ أي ملفات تعريف من Google Analytics.',
+    changeChoice: 'تغيير اختياري',
+    analyticsItems: [
+      { name: '_ga', kind: 'ملف تعريف', purpose: 'التمييز بين الزوار دون تحديد هويتهم.', duration: 'سنتان' },
+      { name: '_ga_*', kind: 'ملف تعريف', purpose: 'حفظ حالة جلسة القياس.', duration: 'سنتان' },
+      { name: 'analyticsConsent', kind: 'تخزين محلي', purpose: 'تذكّر اختيارك حتى لا نسألك مرة أخرى.', duration: 'حتى تغيّره' },
+    ],
   },
   en: {
     banner:
@@ -147,6 +189,21 @@ const TEXT: Record<
       'You can delete or block cookies and local storage in your browser settings. You will then be signed out, and features such as sign-in will stop working.',
     contactTitle: 'Contact',
     contact: 'Questions: contact@darlemploi.dz',
+    analyticsBanner:
+      'We use cookies that the site needs to work and — with your agreement — analytics cookies (Google Analytics) to understand how the platform is used.',
+    accept: 'Accept',
+    refuse: 'Refuse',
+    analyticsTitle: 'Analytics',
+    analytics:
+      'If you accept, we use Google Analytics to count visits and see which pages are most useful. These cookies are set only after you agree: refuse and the script is never loaded. You can change your mind at any time from this page.',
+    choiceGranted: 'You accepted analytics.',
+    choiceDenied: 'You refused analytics. No Google Analytics cookie is set.',
+    changeChoice: 'Change my choice',
+    analyticsItems: [
+      { name: '_ga', kind: 'Cookie', purpose: 'Tell visitors apart, without identifying them.', duration: '2 years' },
+      { name: '_ga_*', kind: 'Cookie', purpose: 'Keep the measurement session state.', duration: '2 years' },
+      { name: 'analyticsConsent', kind: 'Local storage', purpose: 'Remember your choice so we stop asking.', duration: 'Until you change it' },
+    ],
   },
 };
 
@@ -161,10 +218,16 @@ const readSeen = () => {
 const CookieNotice: React.FC<{ language: NoticeLang }> = ({ language }) => {
   const [showBanner, setShowBanner] = useState(() => !readSeen());
   const [policyOpen, setPolicyOpen] = useState(false);
+  const [consent, setConsent] = useState<Consent>(readConsent);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const tx = TEXT[language] ?? TEXT.fr;
   const dir = language === 'ar' ? 'rtl' : 'ltr';
+
+  /* With no measurement id configured the site genuinely sets no analytics
+     cookies, so there is nothing to consent to and the original wording is
+     true. The choice appears only once analytics is actually switched on. */
+  const analyticsOffered = isConfigured();
 
   useEffect(() => {
     const open = () => setPolicyOpen(true);
@@ -180,13 +243,31 @@ const CookieNotice: React.FC<{ language: NoticeLang }> = ({ language }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [policyOpen]);
 
-  const acknowledge = () => {
+  const dismiss = () => {
     setShowBanner(false);
     try {
       localStorage.setItem(SEEN_KEY, '1');
     } catch {
       // Hidden for this visit even if it cannot be remembered.
     }
+  };
+
+  /* With no measurement id configured the site genuinely sets no analytics
+   * cookies, so there is nothing to consent to and the banner stays what it
+   * was: one acknowledgement, and text that is true. The choice appears only
+   * when analytics is actually switched on. */
+  const acknowledge = () => dismiss();
+
+  const accept = () => {
+    grantConsent();
+    setConsent('granted');
+    dismiss();
+  };
+
+  const refuse = () => {
+    denyConsent();
+    setConsent('denied');
+    dismiss();
   };
 
   return (
@@ -199,7 +280,9 @@ const CookieNotice: React.FC<{ language: NoticeLang }> = ({ language }) => {
           className="fixed inset-x-4 bottom-4 z-[150] mx-auto max-w-3xl rounded-2xl bg-[#0B1E3D] text-white shadow-2xl border border-white/10 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
         >
           <Cookie size={28} className="text-[#F68D58] shrink-0 hidden sm:block" aria-hidden="true" />
-          <p className="text-sm leading-relaxed text-white/80 flex-1">{tx.banner}</p>
+          <p className="text-sm leading-relaxed text-white/80 flex-1">
+            {analyticsOffered ? tx.analyticsBanner : tx.banner}
+          </p>
           <div className="flex gap-3 shrink-0">
             <button
               type="button"
@@ -208,13 +291,32 @@ const CookieNotice: React.FC<{ language: NoticeLang }> = ({ language }) => {
             >
               {tx.more}
             </button>
-            <button
-              type="button"
-              onClick={acknowledge}
-              className="px-5 py-2 rounded-xl text-sm font-bold bg-[#F68D58] text-white hover:bg-[#e57a45] transition-colors"
-            >
-              {tx.ok}
-            </button>
+            {analyticsOffered ? (
+              <>
+                <button
+                  type="button"
+                  onClick={refuse}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-white/80 hover:text-white border border-white/20 hover:border-white/40 transition-colors"
+                >
+                  {tx.refuse}
+                </button>
+                <button
+                  type="button"
+                  onClick={accept}
+                  className="px-5 py-2 rounded-xl text-sm font-bold bg-[#F68D58] text-white hover:bg-[#e57a45] transition-colors"
+                >
+                  {tx.accept}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={acknowledge}
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-[#F68D58] text-white hover:bg-[#e57a45] transition-colors"
+              >
+                {tx.ok}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -278,7 +380,32 @@ const CookieNotice: React.FC<{ language: NoticeLang }> = ({ language }) => {
               </table>
             </div>
 
-            <Section title={tx.noTrackingTitle}>{tx.noTracking}</Section>
+            {/* "No tracking" is only true while analytics is off. When it is
+                on, this section replaces it and carries the live choice,
+                because a policy that contradicts the code is worse than none. */}
+            {analyticsOffered ? (
+              <Section title={tx.analyticsTitle}>
+                {tx.analytics}
+                <span className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-[#173E7D]">
+                    {consent === 'granted'
+                      ? tx.choiceGranted
+                      : consent === 'denied'
+                        ? tx.choiceDenied
+                        : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={consent === 'granted' ? refuse : accept}
+                    className="px-4 py-2 rounded-lg border-2 border-[#173E7D]/20 text-[#173E7D] text-sm font-bold"
+                  >
+                    {consent === 'granted' ? tx.refuse : tx.accept}
+                  </button>
+                </span>
+              </Section>
+            ) : (
+              <Section title={tx.noTrackingTitle}>{tx.noTracking}</Section>
+            )}
             <Section title={tx.thirdTitle}>{tx.third}</Section>
             <Section title={tx.controlTitle}>{tx.control}</Section>
             <Section title={tx.contactTitle}>{tx.contact}</Section>

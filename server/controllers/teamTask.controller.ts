@@ -56,6 +56,8 @@ export const getBoard = async (req: Request, res: Response, next: NextFunction) 
           memberId: true,
           title: true,
           note: true,
+          priority: true,
+          dueDate: true,
           done: true,
           doneAt: true,
           position: true,
@@ -75,7 +77,10 @@ export const getBoard = async (req: Request, res: Response, next: NextFunction) 
         const own = byMember.get(m.id) ?? [];
         return {
           member: m,
-          tasks: own,
+          tasks: own.map((t) => ({
+            ...t,
+            dueDate: t.dueDate ? asIsoDate(t.dueDate) : null,
+          })),
           total: own.length,
           done: own.filter((t) => t.done).length,
         };
@@ -245,12 +250,73 @@ export const createTask = async (req: Request, res: Response, next: NextFunction
  * `doneAt` follows `done` rather than being sent by the caller: it records
  * when the box was ticked, and a client clock is not evidence of that.
  */
+/** Everything about one task, for the detail panel. */
+export const getTask = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const task = await prisma.teamTask.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        memberId: true,
+        title: true,
+        note: true,
+        priority: true,
+        dueDate: true,
+        done: true,
+        doneAt: true,
+        position: true,
+        weekStart: true,
+        createdAt: true,
+        updatedAt: true,
+        member: { select: { id: true, name: true } },
+        createdBy: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    if (!task) return next(new AppError("Tâche introuvable.", 404));
+
+    res.json({
+      success: true,
+      data: {
+        task: {
+          ...task,
+          weekStart: asIsoDate(task.weekStart),
+          dueDate: task.dueDate ? asIsoDate(task.dueDate) : null,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const PRIORITIES = ["LOW", "NORMAL", "HIGH"] as const;
+
 export const updateTask = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, note, done, memberId, position } = req.body as Record<string, unknown>;
+    const { title, note, done, memberId, position, priority, dueDate } = req.body as Record<
+      string,
+      unknown
+    >;
 
     if (title !== undefined && !String(title).trim()) {
       return next(new AppError("La tâche ne peut pas être vide.", 400));
+    }
+    if (priority !== undefined && !PRIORITIES.includes(priority as never)) {
+      return next(new AppError("Priorité inconnue.", 400));
+    }
+
+    /* A deadline is read as a plain date at UTC midnight, matching how the
+     * column is stored. Parsing it in the server's local timezone would move
+     * it a day for anyone not in that timezone. */
+    let due: Date | null | undefined;
+    if (dueDate !== undefined) {
+      if (!dueDate) due = null;
+      else if (typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+        due = new Date(`${dueDate}T00:00:00Z`);
+      } else {
+        return next(new AppError("Date d'échéance invalide.", 400));
+      }
     }
 
     const task = await prisma.teamTask.update({
@@ -260,6 +326,8 @@ export const updateTask = async (req: Request, res: Response, next: NextFunction
         ...(note !== undefined ? { note: note ? String(note).trim() : null } : {}),
         ...(memberId !== undefined ? { memberId: String(memberId) } : {}),
         ...(position !== undefined ? { position: Number(position) } : {}),
+        ...(priority !== undefined ? { priority: priority as never } : {}),
+        ...(due !== undefined ? { dueDate: due } : {}),
         ...(done !== undefined
           ? { done: Boolean(done), doneAt: done ? new Date() : null }
           : {}),
@@ -269,13 +337,18 @@ export const updateTask = async (req: Request, res: Response, next: NextFunction
         memberId: true,
         title: true,
         note: true,
+        priority: true,
+        dueDate: true,
         done: true,
         doneAt: true,
         position: true,
       },
     });
 
-    res.json({ success: true, data: { task } });
+    res.json({
+      success: true,
+      data: { task: { ...task, dueDate: task.dueDate ? asIsoDate(task.dueDate) : null } },
+    });
   } catch (err) {
     next(err);
   }

@@ -67,6 +67,7 @@ router.post("/team/members", teamTask.createMember);
 router.patch("/team/members/:id", teamTask.updateMember);
 router.delete("/team/members/:id", teamTask.deleteMember);
 router.post("/team/tasks", teamTask.createTask);
+router.get("/team/tasks/:id", teamTask.getTask);
 router.patch("/team/tasks/:id", teamTask.updateTask);
 router.delete("/team/tasks/:id", teamTask.deleteTask);
 

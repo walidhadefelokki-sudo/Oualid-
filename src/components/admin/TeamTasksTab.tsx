@@ -8,8 +8,10 @@ import {
   Trash2,
   UserPlus,
   X,
+  FileText,
 } from "lucide-react";
 import api from "../../services/api";
+import TaskDetailModal from "./TaskDetailModal";
 
 /**
  * The team's weekly to-do board.
@@ -36,6 +38,8 @@ interface Task {
   memberId: string;
   title: string;
   note: string | null;
+  priority: "LOW" | "NORMAL" | "HIGH";
+  dueDate: string | null;
   done: boolean;
   doneAt: string | null;
   position: number;
@@ -62,6 +66,17 @@ const thisMonday = (): string => {
   utc.setUTCDate(utc.getUTCDate() - ((utc.getUTCDay() + 6) % 7));
   return utc.toISOString().slice(0, 10);
 };
+
+/** Today as YYYY-MM-DD, for comparing against a plain date. */
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** "26 oct." — enough to judge a deadline at a glance. */
+const shortDate = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 
 const shift = (week: string, days: number): string => {
   const d = new Date(`${week}T00:00:00Z`);
@@ -90,6 +105,7 @@ const TeamTasksTab: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [addingMember, setAddingMember] = useState(false);
   const [memberForm, setMemberForm] = useState({ name: "", role: "" });
 
@@ -320,19 +336,50 @@ const TeamTasksTab: React.FC = () => {
                       id={`t-${task.id}`}
                       className="mt-0.5 w-4 h-4 accent-primary cursor-pointer shrink-0"
                     />
-                    <label
-                      htmlFor={`t-${task.id}`}
-                      className={`flex-1 min-w-0 text-sm cursor-pointer break-words ${
+                    {/* The title opens the details rather than toggling the
+                        box: the checkbox is right there for that, and a label
+                        that does both makes reading a task risk ticking it. */}
+                    <button
+                      type="button"
+                      onClick={() => setOpenTaskId(task.id)}
+                      className={`flex-1 min-w-0 text-start text-sm break-words ${
                         task.done ? "line-through text-primary/35" : "text-gray-700"
                       }`}
                     >
                       {task.title}
-                      {task.note && (
-                        <span className="block text-[11px] text-primary/40 mt-0.5">
-                          {task.note}
+
+                      {(task.priority !== "NORMAL" || task.dueDate || task.note) && (
+                        <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {task.priority === "HIGH" && (
+                            <span className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-red-50 text-red-600">
+                              Haute
+                            </span>
+                          )}
+                          {task.priority === "LOW" && (
+                            <span className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                              Basse
+                            </span>
+                          )}
+                          {task.dueDate && (
+                            <span
+                              dir="ltr"
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                !task.done && task.dueDate < todayIso()
+                                  ? "bg-red-50 text-red-600"
+                                  : "bg-primary/8 text-primary/60"
+                              }`}
+                            >
+                              {shortDate(task.dueDate)}
+                            </span>
+                          )}
+                          {task.note && (
+                            <span className="text-[10px] text-primary/35">
+                              <FileText size={10} className="inline" />
+                            </span>
+                          )}
                         </span>
                       )}
-                    </label>
+                    </button>
                     <button
                       onClick={() => removeTask(task.id)}
                       aria-label="Supprimer"
@@ -389,6 +436,19 @@ const TeamTasksTab: React.FC = () => {
             Reporter les tâches non terminées
           </button>
         </div>
+      )}
+
+      {openTaskId && board && (
+        <TaskDetailModal
+          taskId={openTaskId}
+          members={board.columns.map((c) => c.member)}
+          onClose={() => setOpenTaskId(null)}
+          onSaved={() => load()}
+          onDeleted={() => {
+            setOpenTaskId(null);
+            load();
+          }}
+        />
       )}
 
       {addingMember && (

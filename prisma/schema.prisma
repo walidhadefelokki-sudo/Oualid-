@@ -2849,6 +2849,12 @@ model CmsContent {
 // splits someone's work across two columns is worse than no board.
 //////////////////////////////////////////////////////////
 
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
 model TeamMember {
   id String @id @default(uuid())
 
@@ -2882,6 +2888,13 @@ model TeamTask {
 
   title String
   note  String?
+
+  priority TaskPriority @default(NORMAL)
+
+  /// When it is due. A plain date: a deadline is a day, not an instant,
+  /// and storing an hour invites a task to look late in one timezone and
+  /// not in another.
+  dueDate DateTime? @db.Date
 
   /// The Monday of the week this belongs to, as a plain date.
   ///

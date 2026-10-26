@@ -7573,6 +7573,8 @@ var getBoard = async (req, res, next) => {
           memberId: true,
           title: true,
           note: true,
+          priority: true,
+          dueDate: true,
           done: true,
           doneAt: true,
           position: true
@@ -7588,7 +7590,10 @@ var getBoard = async (req, res, next) => {
       const own = byMember.get(m.id) ?? [];
       return {
         member: m,
-        tasks: own,
+        tasks: own.map((t) => ({
+          ...t,
+          dueDate: t.dueDate ? asIsoDate(t.dueDate) : null
+        })),
         total: own.length,
         done: own.filter((t) => t.done).length
       };
@@ -7719,11 +7724,60 @@ var createTask = async (req, res, next) => {
     next(err);
   }
 };
+var getTask = async (req, res, next) => {
+  try {
+    const task = await prisma_default.teamTask.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        memberId: true,
+        title: true,
+        note: true,
+        priority: true,
+        dueDate: true,
+        done: true,
+        doneAt: true,
+        position: true,
+        weekStart: true,
+        createdAt: true,
+        updatedAt: true,
+        member: { select: { id: true, name: true } },
+        createdBy: { select: { firstName: true, lastName: true, email: true } }
+      }
+    });
+    if (!task) return next(new AppError("T\xE2che introuvable.", 404));
+    res.json({
+      success: true,
+      data: {
+        task: {
+          ...task,
+          weekStart: asIsoDate(task.weekStart),
+          dueDate: task.dueDate ? asIsoDate(task.dueDate) : null
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var PRIORITIES = ["LOW", "NORMAL", "HIGH"];
 var updateTask = async (req, res, next) => {
   try {
-    const { title, note, done, memberId, position } = req.body;
+    const { title, note, done, memberId, position, priority, dueDate } = req.body;
     if (title !== void 0 && !String(title).trim()) {
       return next(new AppError("La t\xE2che ne peut pas \xEAtre vide.", 400));
+    }
+    if (priority !== void 0 && !PRIORITIES.includes(priority)) {
+      return next(new AppError("Priorit\xE9 inconnue.", 400));
+    }
+    let due;
+    if (dueDate !== void 0) {
+      if (!dueDate) due = null;
+      else if (typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+        due = /* @__PURE__ */ new Date(`${dueDate}T00:00:00Z`);
+      } else {
+        return next(new AppError("Date d'\xE9ch\xE9ance invalide.", 400));
+      }
     }
     const task = await prisma_default.teamTask.update({
       where: { id: req.params.id },
@@ -7732,6 +7786,8 @@ var updateTask = async (req, res, next) => {
         ...note !== void 0 ? { note: note ? String(note).trim() : null } : {},
         ...memberId !== void 0 ? { memberId: String(memberId) } : {},
         ...position !== void 0 ? { position: Number(position) } : {},
+        ...priority !== void 0 ? { priority } : {},
+        ...due !== void 0 ? { dueDate: due } : {},
         ...done !== void 0 ? { done: Boolean(done), doneAt: done ? /* @__PURE__ */ new Date() : null } : {}
       },
       select: {
@@ -7739,12 +7795,17 @@ var updateTask = async (req, res, next) => {
         memberId: true,
         title: true,
         note: true,
+        priority: true,
+        dueDate: true,
         done: true,
         doneAt: true,
         position: true
       }
     });
-    res.json({ success: true, data: { task } });
+    res.json({
+      success: true,
+      data: { task: { ...task, dueDate: task.dueDate ? asIsoDate(task.dueDate) : null } }
+    });
   } catch (err) {
     next(err);
   }
@@ -7831,6 +7892,7 @@ router7.post("/team/members", createMember);
 router7.patch("/team/members/:id", updateMember);
 router7.delete("/team/members/:id", deleteMember);
 router7.post("/team/tasks", createTask);
+router7.get("/team/tasks/:id", getTask);
 router7.patch("/team/tasks/:id", updateTask);
 router7.delete("/team/tasks/:id", deleteTask);
 router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);

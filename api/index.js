@@ -7541,6 +7541,258 @@ var rejectProject = async (req, res, next) => {
   }
 };
 
+// server/controllers/teamTask.controller.ts
+init_prisma();
+var mondayOf = (d) => {
+  const copy = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const offset = (copy.getUTCDay() + 6) % 7;
+  copy.setUTCDate(copy.getUTCDate() - offset);
+  return copy;
+};
+var weekFrom = (raw) => {
+  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const parsed = /* @__PURE__ */ new Date(`${raw}T00:00:00Z`);
+    if (!Number.isNaN(parsed.getTime())) return mondayOf(parsed);
+  }
+  return mondayOf(/* @__PURE__ */ new Date());
+};
+var asIsoDate = (d) => d.toISOString().slice(0, 10);
+var getBoard = async (req, res, next) => {
+  try {
+    const weekStart = weekFrom(req.query.week);
+    const [members, tasks] = await Promise.all([
+      prisma_default.teamMember.findMany({
+        orderBy: [{ position: "asc" }, { name: "asc" }],
+        select: { id: true, name: true, role: true, active: true, position: true }
+      }),
+      prisma_default.teamTask.findMany({
+        where: { weekStart },
+        orderBy: [{ done: "asc" }, { position: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          memberId: true,
+          title: true,
+          note: true,
+          done: true,
+          doneAt: true,
+          position: true
+        }
+      })
+    ]);
+    const byMember = /* @__PURE__ */ new Map();
+    for (const t of tasks) {
+      if (!byMember.has(t.memberId)) byMember.set(t.memberId, []);
+      byMember.get(t.memberId).push(t);
+    }
+    const columns = members.filter((m) => m.active || byMember.has(m.id)).map((m) => {
+      const own = byMember.get(m.id) ?? [];
+      return {
+        member: m,
+        tasks: own,
+        total: own.length,
+        done: own.filter((t) => t.done).length
+      };
+    });
+    res.json({
+      success: true,
+      data: {
+        weekStart: asIsoDate(weekStart),
+        columns,
+        total: tasks.length,
+        done: tasks.filter((t) => t.done).length
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMembers = async (_req, res, next) => {
+  try {
+    const members = await prisma_default.teamMember.findMany({
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        active: true,
+        position: true,
+        user: { select: { email: true } }
+      }
+    });
+    res.json({ success: true, data: { members } });
+  } catch (err) {
+    next(err);
+  }
+};
+var createMember = async (req, res, next) => {
+  try {
+    const { name, role, userId } = req.body;
+    const clean2 = String(name ?? "").trim();
+    if (!clean2) return next(new AppError("Le nom est obligatoire.", 400));
+    const count = await prisma_default.teamMember.count();
+    const member = await prisma_default.teamMember.create({
+      data: {
+        name: clean2,
+        role: role ? String(role).trim() : null,
+        userId: userId ? String(userId) : null,
+        position: count
+      },
+      select: { id: true, name: true, role: true, active: true, position: true }
+    });
+    res.status(201).json({ success: true, data: { member } });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateMember = async (req, res, next) => {
+  try {
+    const { name, role, active, position } = req.body;
+    if (name !== void 0 && !String(name).trim()) {
+      return next(new AppError("Le nom ne peut pas \xEAtre vide.", 400));
+    }
+    const member = await prisma_default.teamMember.update({
+      where: { id: req.params.id },
+      data: {
+        ...name !== void 0 ? { name: String(name).trim() } : {},
+        ...role !== void 0 ? { role: role ? String(role).trim() : null } : {},
+        ...active !== void 0 ? { active: Boolean(active) } : {},
+        ...position !== void 0 ? { position: Number(position) } : {}
+      },
+      select: { id: true, name: true, role: true, active: true, position: true }
+    });
+    res.json({ success: true, data: { member } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteMember = async (req, res, next) => {
+  try {
+    const tasks = await prisma_default.teamTask.count({ where: { memberId: req.params.id } });
+    if (tasks > 0) {
+      return next(
+        new AppError(
+          `Ce membre a ${tasks} t\xE2che(s) enregistr\xE9e(s). D\xE9sactivez-le plut\xF4t que de le supprimer.`,
+          409
+        )
+      );
+    }
+    await prisma_default.teamMember.delete({ where: { id: req.params.id } });
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var createTask = async (req, res, next) => {
+  try {
+    const { memberId, title, note, week } = req.body;
+    const clean2 = String(title ?? "").trim();
+    if (!clean2) return next(new AppError("La t\xE2che ne peut pas \xEAtre vide.", 400));
+    if (!memberId) return next(new AppError("Choisissez un membre.", 400));
+    const member = await prisma_default.teamMember.findUnique({
+      where: { id: String(memberId) },
+      select: { id: true }
+    });
+    if (!member) return next(new AppError("Membre introuvable.", 404));
+    const weekStart = weekFrom(week);
+    const count = await prisma_default.teamTask.count({ where: { memberId: member.id, weekStart } });
+    const task = await prisma_default.teamTask.create({
+      data: {
+        memberId: member.id,
+        title: clean2,
+        note: note ? String(note).trim() : null,
+        weekStart,
+        position: count,
+        createdById: req.user.id
+      },
+      select: {
+        id: true,
+        memberId: true,
+        title: true,
+        note: true,
+        done: true,
+        doneAt: true,
+        position: true
+      }
+    });
+    res.status(201).json({ success: true, data: { task, weekStart: asIsoDate(weekStart) } });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateTask = async (req, res, next) => {
+  try {
+    const { title, note, done, memberId, position } = req.body;
+    if (title !== void 0 && !String(title).trim()) {
+      return next(new AppError("La t\xE2che ne peut pas \xEAtre vide.", 400));
+    }
+    const task = await prisma_default.teamTask.update({
+      where: { id: req.params.id },
+      data: {
+        ...title !== void 0 ? { title: String(title).trim() } : {},
+        ...note !== void 0 ? { note: note ? String(note).trim() : null } : {},
+        ...memberId !== void 0 ? { memberId: String(memberId) } : {},
+        ...position !== void 0 ? { position: Number(position) } : {},
+        ...done !== void 0 ? { done: Boolean(done), doneAt: done ? /* @__PURE__ */ new Date() : null } : {}
+      },
+      select: {
+        id: true,
+        memberId: true,
+        title: true,
+        note: true,
+        done: true,
+        doneAt: true,
+        position: true
+      }
+    });
+    res.json({ success: true, data: { task } });
+  } catch (err) {
+    next(err);
+  }
+};
+var deleteTask = async (req, res, next) => {
+  try {
+    await prisma_default.teamTask.delete({ where: { id: req.params.id } });
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) {
+    next(err);
+  }
+};
+var carryOver = async (req, res, next) => {
+  try {
+    const from = weekFrom(req.body.week);
+    const to = new Date(from);
+    to.setUTCDate(to.getUTCDate() + 7);
+    const pending = await prisma_default.teamTask.findMany({
+      where: { weekStart: from, done: false },
+      select: { memberId: true, title: true, note: true, position: true }
+    });
+    if (pending.length === 0) {
+      return res.json({ success: true, data: { copied: 0, weekStart: asIsoDate(to) } });
+    }
+    const existing = await prisma_default.teamTask.findMany({
+      where: { weekStart: to },
+      select: { memberId: true, title: true }
+    });
+    const seen = new Set(existing.map((t) => `${t.memberId}::${t.title}`));
+    const fresh = pending.filter((t) => !seen.has(`${t.memberId}::${t.title}`));
+    if (fresh.length > 0) {
+      await prisma_default.teamTask.createMany({
+        data: fresh.map((t) => ({
+          memberId: t.memberId,
+          title: t.title,
+          note: t.note,
+          weekStart: to,
+          position: t.position,
+          createdById: req.user.id
+        }))
+      });
+    }
+    res.json({ success: true, data: { copied: fresh.length, weekStart: asIsoDate(to) } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router7 = Router7();
 router7.use(protect);
@@ -7572,6 +7824,15 @@ router7.post("/freelance/moderation/services/:id/reject", rejectService);
 router7.get("/freelance/moderation/projects", listProjectQueue);
 router7.post("/freelance/moderation/projects/:id/approve", approveProject);
 router7.post("/freelance/moderation/projects/:id/reject", rejectProject);
+router7.get("/team/board", getBoard);
+router7.post("/team/carry-over", carryOver);
+router7.get("/team/members", listMembers);
+router7.post("/team/members", createMember);
+router7.patch("/team/members/:id", updateMember);
+router7.delete("/team/members/:id", deleteMember);
+router7.post("/team/tasks", createTask);
+router7.patch("/team/tasks/:id", updateTask);
+router7.delete("/team/tasks/:id", deleteTask);
 router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router7.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router7;

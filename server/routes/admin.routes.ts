@@ -4,6 +4,7 @@ import * as adminManage from "../controllers/adminManage.controller";
 import * as schedule from "../controllers/schedule.controller";
 import * as adminEmail from "../controllers/adminEmail.controller";
 import * as freelanceModeration from "../controllers/freelanceModeration.controller";
+import * as teamTask from "../controllers/teamTask.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 
@@ -57,6 +58,17 @@ router.post("/freelance/moderation/services/:id/reject", freelanceModeration.rej
 router.get("/freelance/moderation/projects", freelanceModeration.listProjectQueue);
 router.post("/freelance/moderation/projects/:id/approve", freelanceModeration.approveProject);
 router.post("/freelance/moderation/projects/:id/reject", freelanceModeration.rejectProject);
+
+// The team's weekly board. A week is identified by its Monday.
+router.get("/team/board", teamTask.getBoard);
+router.post("/team/carry-over", teamTask.carryOver);
+router.get("/team/members", teamTask.listMembers);
+router.post("/team/members", teamTask.createMember);
+router.patch("/team/members/:id", teamTask.updateMember);
+router.delete("/team/members/:id", teamTask.deleteMember);
+router.post("/team/tasks", teamTask.createTask);
+router.patch("/team/tasks/:id", teamTask.updateTask);
+router.delete("/team/tasks/:id", teamTask.deleteTask);
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", adminController.getCorporatePendingPreselections);

@@ -879,6 +879,10 @@ model User {
   /// apart rather than counting them as candidates who never applied.
   signupSource String @default("JOBS")
 
+  // --- Team tasks --------------------------------------------------------
+  teamMembership   TeamMember? @relation("TeamMemberUser")
+  teamTasksCreated TeamTask[]  @relation("TeamTaskAuthor")
+
   @@index([email])
   @@index([role])
 }
@@ -2833,4 +2837,70 @@ model CmsContent {
 
   @@unique([type, slug])
   @@index([type, published, position])
+}
+
+//////////////////////////////////////////////////////////
+// TEAM TASKS
+//
+// The team's weekly to-do list, one column per person.
+//
+// Members are a roster rather than a name typed onto each task: typing it
+// each time produces "Salah" and "salah" as two people, and a board that
+// splits someone's work across two columns is worse than no board.
+//////////////////////////////////////////////////////////
+
+model TeamMember {
+  id String @id @default(uuid())
+
+  name String
+  /// What they do, shown under the name. Free text, not a permission.
+  role String?
+
+  /// Set when the member also has a platform account. Optional, because the
+  /// team includes people who never sign in to the site.
+  userId String? @unique
+  user   User?   @relation("TeamMemberUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Someone who has left keeps their past weeks but takes no new tasks.
+  active Boolean @default(true)
+
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks TeamTask[]
+
+  @@index([active, position])
+}
+
+model TeamTask {
+  id String @id @default(uuid())
+
+  memberId String
+  member   TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  title String
+  note  String?
+
+  /// The Monday of the week this belongs to, as a plain date.
+  ///
+  /// A date, not a timestamp: a week is the same week in Algiers whatever
+  /// hour it is read at, and storing midnight in some timezone is how a task
+  /// ends up in the previous week for half the team.
+  weekStart DateTime @db.Date
+
+  done   Boolean   @default(false)
+  doneAt DateTime?
+
+  position Int @default(0)
+
+  createdById String?
+  createdBy   User?   @relation("TeamTaskAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([weekStart])
+  @@index([memberId, weekStart])
 }

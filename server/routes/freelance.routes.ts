@@ -6,6 +6,7 @@ import * as project from "../controllers/project.controller";
 import * as proposal from "../controllers/proposal.controller";
 import * as order from "../controllers/order.controller";
 import * as review from "../controllers/review.controller";
+import * as portfolio from "../controllers/portfolio.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -22,6 +23,7 @@ router.get("/projects/by-slug/:slug", freelancePublic.getProject);
 router.get("/services/by-slug/:slug", freelancePublic.getService);
 router.get("/freelancers/:username", freelancePublic.getFreelancer);
 router.get("/freelancers/:username/reviews", review.listPublicReviews);
+router.get("/portfolio/:username", portfolio.getPublicPortfolio);
 router.get("/freelancers", freelancePublic.listFreelancers);
 router.get("/pricing", freelancePublic.listPricing);
 
@@ -84,5 +86,13 @@ router.post("/me/orders/:id/cancel", protect, order.cancelOrder);
 router.get("/me/orders/:id/review", protect, review.getReviewState);
 router.post("/me/orders/:id/review", protect, review.leaveReview);
 router.post("/me/reviews/:id/reply", protect, review.replyToReview);
+
+// The mini-portfolio editor.
+router.get("/me/portfolio", protect, portfolio.getMyPortfolio);
+router.patch("/me/portfolio", protect, portfolio.updateSettings);
+router.put("/me/portfolio/sections", protect, portfolio.saveSections);
+router.post("/me/portfolio/projects", protect, portfolio.addProject);
+router.patch("/me/portfolio/projects/:id", protect, portfolio.updateProject);
+router.delete("/me/portfolio/projects/:id", protect, portfolio.removeProject);
 
 export default router;

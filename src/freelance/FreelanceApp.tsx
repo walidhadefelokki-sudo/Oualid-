@@ -16,6 +16,8 @@ import ProjectEditor from "./pages/client/ProjectEditor";
 import ProjectDetail from "./pages/ProjectDetail";
 import ServiceDetail from "./pages/ServiceDetail";
 import FreelancerProfile from "./pages/FreelancerProfile";
+import Portfolio from "./pages/Portfolio";
+import PortfolioEditor from "./pages/workspace/PortfolioEditor";
 import Pricing from "./pages/Pricing";
 import {
   MyCredits,
@@ -78,7 +80,9 @@ const Freelancers: React.FC = () => {
 
 const HandleRoute: React.FC = () => {
   const { handle } = useParams<{ handle: string }>();
-  return handle?.startsWith("@") ? <FreelancerProfile /> : <NotFound />;
+  // The portfolio when one is published, the plain profile otherwise. One
+  // address either way, which is what makes it worth printing on a CV.
+  return handle?.startsWith("@") ? <Portfolio /> : <NotFound />;
 };
 
 const FreelanceApp: React.FC = () => (
@@ -116,6 +120,7 @@ const FreelanceApp: React.FC = () => (
               <Route path="commandes/:id" element={<OrderDetail />} />
               <Route path="credits" element={<MyCredits />} />
               <Route path="profil" element={<MyProfile />} />
+              <Route path="portfolio" element={<PortfolioEditor />} />
             </Route>
 
             {/* Client area. Free, and needing no profile to activate:

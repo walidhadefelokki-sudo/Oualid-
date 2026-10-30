@@ -5217,6 +5217,491 @@ var listPublicReviews = async (req, res, next) => {
   }
 };
 
+// server/controllers/portfolio.controller.ts
+init_prisma();
+
+// server/services/portfolio.service.ts
+init_prisma();
+init_plans_service();
+import { Prisma as Prisma3 } from "@prisma/client";
+var PortfolioError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "PortfolioError";
+  }
+};
+var TEMPLATES = ["default", "minimal", "editorial", "bold"];
+var DEFAULT_SECTIONS = [
+  "HEADER",
+  "ABOUT",
+  "SKILLS",
+  "FEATURED_PROJECTS",
+  "SERVICES",
+  "EXPERIENCE",
+  "EDUCATION",
+  "CERTIFICATES",
+  "REVIEWS",
+  "CONTACT"
+];
+var MAX_FEATURED = 3;
+var getOrCreate = async (freelancerId) => {
+  const existing = await prisma_default.portfolio.findUnique({ where: { freelancerId } });
+  if (existing) return existing;
+  try {
+    return await prisma_default.portfolio.create({ data: { freelancerId } });
+  } catch (err) {
+    if (err instanceof Prisma3.PrismaClientKnownRequestError && err.code === "P2002") {
+      const p = await prisma_default.portfolio.findUnique({ where: { freelancerId } });
+      if (p) return p;
+    }
+    throw err;
+  }
+};
+var sectionsFor = async (portfolioId) => {
+  const saved = await prisma_default.portfolioSection.findMany({
+    where: { portfolioId },
+    orderBy: { position: "asc" }
+  });
+  const byType = new Map(saved.map((s) => [s.type, s]));
+  return DEFAULT_SECTIONS.map((type, i) => {
+    const row = byType.get(type);
+    return {
+      type,
+      visible: row?.visible ?? true,
+      position: row?.position ?? i,
+      content: row?.content ?? null
+    };
+  }).sort((a, b) => a.position - b.position);
+};
+var updateSettings = async (freelancerId, input) => {
+  const portfolio = await getOrCreate(freelancerId);
+  const entitlements = await plans_service_default.getEntitlements(freelancerId);
+  if (input.template !== void 0) {
+    if (!TEMPLATES.includes(input.template)) {
+      throw new PortfolioError("Mod\xE8le inconnu.");
+    }
+    if (input.template !== "default" && entitlements.tier === "FREE") {
+      throw new PortfolioError(
+        "Les autres mod\xE8les sont r\xE9serv\xE9s aux formules Pro et Premium.",
+        403
+      );
+    }
+  }
+  if (input.accentColor !== void 0 && !/^#[0-9a-fA-F]{6}$/.test(input.accentColor)) {
+    throw new PortfolioError("Couleur invalide.");
+  }
+  return prisma_default.portfolio.update({
+    where: { id: portfolio.id },
+    data: {
+      ...input.template !== void 0 ? { template: input.template } : {},
+      ...input.accentColor !== void 0 ? { accentColor: input.accentColor } : {},
+      ...input.fontFamily !== void 0 ? { fontFamily: input.fontFamily } : {},
+      ...input.defaultLanguage !== void 0 ? { defaultLanguage: input.defaultLanguage } : {},
+      ...input.seoTitle !== void 0 ? { seoTitle: input.seoTitle?.trim() || null } : {},
+      ...input.seoDescription !== void 0 ? { seoDescription: input.seoDescription?.trim() || null } : {},
+      ...input.published !== void 0 ? { published: input.published, publishedAt: input.published ? /* @__PURE__ */ new Date() : null } : {}
+    }
+  });
+};
+var saveSections = async (freelancerId, sections) => {
+  const portfolio = await getOrCreate(freelancerId);
+  const known = sections.filter(
+    (s) => DEFAULT_SECTIONS.includes(s.type)
+  );
+  await prisma_default.$transaction(
+    known.map(
+      (s, i) => prisma_default.portfolioSection.upsert({
+        where: {
+          portfolioId_type: {
+            portfolioId: portfolio.id,
+            type: s.type
+          }
+        },
+        update: {
+          visible: s.visible !== false,
+          position: i,
+          content: s.content ?? void 0
+        },
+        create: {
+          portfolioId: portfolio.id,
+          type: s.type,
+          visible: s.visible !== false,
+          position: i,
+          content: s.content ?? void 0
+        }
+      })
+    )
+  );
+  return sectionsFor(portfolio.id);
+};
+var isAllowedVideo = (url) => /^https:\/\/(www\.)?(youtube\.com|youtu\.be|vimeo\.com)\//.test(url);
+var assertVideoAllowed = async (freelancerId, videoUrl) => {
+  if (!videoUrl) return;
+  if (!isAllowedVideo(videoUrl)) {
+    throw new PortfolioError("Seuls les liens YouTube et Vimeo sont accept\xE9s.");
+  }
+  const entitlements = await plans_service_default.getEntitlements(freelancerId);
+  if (entitlements.tier === "FREE") {
+    throw new PortfolioError(
+      "Les vid\xE9os dans les r\xE9alisations sont r\xE9serv\xE9es aux formules Pro et Premium.",
+      403
+    );
+  }
+};
+var addProject = async (freelancerId, input) => {
+  if (!input.title?.trim()) throw new PortfolioError("Le titre est obligatoire.");
+  const portfolio = await getOrCreate(freelancerId);
+  const entitlements = await plans_service_default.getEntitlements(freelancerId);
+  const count = await prisma_default.portfolioProject.count({ where: { portfolioId: portfolio.id } });
+  if (entitlements.maxPortfolioProjects !== null && count >= entitlements.maxPortfolioProjects) {
+    throw new PortfolioError(
+      `La formule ${entitlements.planName} permet ${entitlements.maxPortfolioProjects} r\xE9alisations. Supprimez-en une ou changez de formule.`,
+      403
+    );
+  }
+  await assertVideoAllowed(freelancerId, input.videoUrl);
+  if (input.featured) await assertFeaturedRoom(portfolio.id);
+  return prisma_default.portfolioProject.create({
+    data: {
+      portfolioId: portfolio.id,
+      title: input.title.trim(),
+      description: input.description?.trim() || null,
+      categoryId: input.categoryId || null,
+      role: input.role?.trim() || null,
+      tools: Array.isArray(input.tools) ? input.tools.map(String).slice(0, 12) : [],
+      clientName: input.clientName?.trim() || null,
+      externalUrl: input.externalUrl?.trim() || null,
+      videoUrl: input.videoUrl?.trim() || null,
+      completedAt: input.completedAt ? new Date(input.completedAt) : null,
+      featured: Boolean(input.featured),
+      position: count
+    }
+  });
+};
+var assertFeaturedRoom = async (portfolioId, excludeId) => {
+  const featured = await prisma_default.portfolioProject.count({
+    where: { portfolioId, featured: true, ...excludeId ? { id: { not: excludeId } } : {} }
+  });
+  if (featured >= MAX_FEATURED) {
+    throw new PortfolioError(
+      `Trois r\xE9alisations peuvent \xEAtre mises \xE0 la une. Retirez-en une d'abord.`
+    );
+  }
+};
+var updateProject = async (freelancerId, projectId, input) => {
+  const portfolio = await getOrCreate(freelancerId);
+  const existing = await prisma_default.portfolioProject.findFirst({
+    where: { id: projectId, portfolioId: portfolio.id },
+    select: { id: true, featured: true }
+  });
+  if (!existing) throw new PortfolioError("R\xE9alisation introuvable.", 404);
+  if (input.videoUrl !== void 0) await assertVideoAllowed(freelancerId, input.videoUrl);
+  if (input.featured && !existing.featured) await assertFeaturedRoom(portfolio.id, projectId);
+  return prisma_default.portfolioProject.update({
+    where: { id: existing.id },
+    data: {
+      ...input.title !== void 0 ? { title: input.title.trim() } : {},
+      ...input.description !== void 0 ? { description: input.description?.trim() || null } : {},
+      ...input.categoryId !== void 0 ? { categoryId: input.categoryId || null } : {},
+      ...input.role !== void 0 ? { role: input.role?.trim() || null } : {},
+      ...input.tools !== void 0 ? { tools: (input.tools ?? []).map(String).slice(0, 12) } : {},
+      ...input.clientName !== void 0 ? { clientName: input.clientName?.trim() || null } : {},
+      ...input.externalUrl !== void 0 ? { externalUrl: input.externalUrl?.trim() || null } : {},
+      ...input.videoUrl !== void 0 ? { videoUrl: input.videoUrl?.trim() || null } : {},
+      ...input.completedAt !== void 0 ? { completedAt: input.completedAt ? new Date(input.completedAt) : null } : {},
+      ...input.featured !== void 0 ? { featured: Boolean(input.featured) } : {}
+    }
+  });
+};
+var removeProject = async (freelancerId, projectId) => {
+  const portfolio = await getOrCreate(freelancerId);
+  const done = await prisma_default.portfolioProject.deleteMany({
+    where: { id: projectId, portfolioId: portfolio.id }
+  });
+  if (done.count === 0) throw new PortfolioError("R\xE9alisation introuvable.", 404);
+  return { id: projectId };
+};
+var publicPage = async (username) => {
+  const freelancer = await prisma_default.freelancerProfile.findUnique({
+    where: { username },
+    select: {
+      id: true,
+      userId: true,
+      username: true,
+      displayName: true,
+      title: true,
+      bio: true,
+      wilaya: true,
+      hourlyRate: true,
+      availability: true,
+      level: true,
+      identityVerified: true,
+      ratingAverage: true,
+      ratingCount: true,
+      completedOrders: true,
+      languages: true,
+      createdAt: true,
+      skills: { select: { skill: { select: { name: true } } } },
+      user: { select: { avatar: { select: { url: true } } } },
+      portfolio: {
+        select: {
+          id: true,
+          published: true,
+          template: true,
+          accentColor: true,
+          fontFamily: true,
+          defaultLanguage: true,
+          seoTitle: true,
+          seoDescription: true,
+          cover: { select: { url: true } },
+          projects: {
+            orderBy: [{ featured: "desc" }, { position: "asc" }],
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              role: true,
+              tools: true,
+              clientName: true,
+              externalUrl: true,
+              videoUrl: true,
+              completedAt: true,
+              featured: true,
+              category: { select: { name: true } },
+              cover: { select: { url: true } },
+              media: { orderBy: { position: "asc" }, select: { file: { select: { url: true } } } }
+            }
+          }
+        }
+      }
+    }
+  });
+  if (!freelancer?.portfolio?.published) return null;
+  const now = /* @__PURE__ */ new Date();
+  const [services, reviews, entitlements] = await Promise.all([
+    prisma_default.serviceListing.findMany({
+      where: {
+        freelancerId: freelancer.id,
+        status: "PUBLISHED",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+      },
+      orderBy: { publishedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        media: { take: 1, orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        packages: { orderBy: { price: "asc" }, take: 1, select: { price: true } }
+      }
+    }),
+    prisma_default.freelanceReview.findMany({
+      where: { targetId: freelancer.userId, state: "APPROVED" },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        author: { select: { firstName: true } }
+      }
+    }),
+    plans_service_default.getEntitlements(freelancer.id)
+  ]);
+  const sections = await sectionsFor(freelancer.portfolio.id);
+  prisma_default.portfolio.update({ where: { id: freelancer.portfolio.id }, data: { views: { increment: 1 } } }).catch(() => {
+  });
+  return {
+    freelancer: {
+      username: freelancer.username,
+      displayName: freelancer.displayName,
+      title: freelancer.title,
+      bio: freelancer.bio,
+      wilaya: freelancer.wilaya,
+      hourlyRate: freelancer.hourlyRate,
+      availability: freelancer.availability,
+      level: freelancer.level,
+      verified: freelancer.identityVerified,
+      rating: freelancer.ratingAverage,
+      ratingCount: freelancer.ratingCount,
+      completedOrders: freelancer.completedOrders,
+      languages: freelancer.languages,
+      memberSince: freelancer.createdAt,
+      skills: freelancer.skills.map((s) => s.skill.name),
+      avatarUrl: freelancer.user.avatar?.url ?? null
+    },
+    theme: {
+      template: freelancer.portfolio.template,
+      accentColor: freelancer.portfolio.accentColor,
+      fontFamily: freelancer.portfolio.fontFamily,
+      defaultLanguage: freelancer.portfolio.defaultLanguage,
+      coverUrl: freelancer.portfolio.cover?.url ?? null
+    },
+    seo: {
+      title: freelancer.portfolio.seoTitle,
+      description: freelancer.portfolio.seoDescription
+    },
+    sections,
+    projects: freelancer.portfolio.projects.map((p) => ({
+      ...p,
+      coverUrl: p.cover?.url ?? null,
+      gallery: p.media.map((m) => m.file.url)
+    })),
+    services: services.map((s) => ({
+      id: s.id,
+      title: s.title,
+      slug: s.slug,
+      coverUrl: s.media[0]?.file.url ?? null,
+      startingPrice: s.packages[0]?.price ?? null
+    })),
+    reviews,
+    /* "Réalisé avec Dar L'emploi" is removed only on a plan that pays for
+     * it. Decided here, not in the page, so the page cannot simply omit it. */
+    showBranding: !entitlements.removableBranding
+  };
+};
+var portfolio_service_default = {
+  getOrCreate,
+  sectionsFor,
+  updateSettings,
+  saveSections,
+  addProject,
+  updateProject,
+  removeProject,
+  publicPage,
+  TEMPLATES,
+  PortfolioError
+};
+
+// server/controllers/portfolio.controller.ts
+init_plans_service();
+var asHttpError5 = (err) => err instanceof PortfolioError ? new AppError(err.message, err.status) : err;
+var requireFreelancer2 = async (userId) => {
+  const profile = await prisma_default.freelancerProfile.findUnique({
+    where: { userId },
+    select: { id: true, username: true }
+  });
+  if (!profile) throw new AppError("Aucun profil freelance pour ce compte.", 404);
+  return profile;
+};
+var getMyPortfolio = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    const portfolio = await portfolio_service_default.getOrCreate(profile.id);
+    const [sections, projects, entitlements] = await Promise.all([
+      portfolio_service_default.sectionsFor(portfolio.id),
+      prisma_default.portfolioProject.findMany({
+        where: { portfolioId: portfolio.id },
+        orderBy: [{ featured: "desc" }, { position: "asc" }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          role: true,
+          tools: true,
+          clientName: true,
+          externalUrl: true,
+          videoUrl: true,
+          completedAt: true,
+          featured: true,
+          cover: { select: { url: true } }
+        }
+      }),
+      plans_service_default.getEntitlements(profile.id)
+    ]);
+    res.json({
+      success: true,
+      data: {
+        username: profile.username,
+        portfolio: {
+          published: portfolio.published,
+          template: portfolio.template,
+          accentColor: portfolio.accentColor,
+          fontFamily: portfolio.fontFamily,
+          defaultLanguage: portfolio.defaultLanguage,
+          seoTitle: portfolio.seoTitle,
+          seoDescription: portfolio.seoDescription,
+          views: portfolio.views
+        },
+        sections,
+        projects,
+        limits: {
+          maxProjects: entitlements.maxPortfolioProjects,
+          usedProjects: projects.length,
+          allTemplates: entitlements.tier !== "FREE",
+          video: entitlements.tier !== "FREE",
+          removableBranding: entitlements.removableBranding,
+          customSubdomain: entitlements.customSubdomain,
+          planName: entitlements.planName,
+          /* Statistics are a paid feature; the free plan sees the page but
+           * not the numbers. */
+          stats: entitlements.stats
+        }
+      }
+    });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var updateSettings2 = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    const updated = await portfolio_service_default.updateSettings(profile.id, req.body ?? {});
+    res.json({ success: true, data: { portfolio: updated } });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var saveSections2 = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    const { sections } = req.body;
+    if (!Array.isArray(sections)) return next(new AppError("Sections manquantes.", 400));
+    const saved = await portfolio_service_default.saveSections(profile.id, sections);
+    res.json({ success: true, data: { sections: saved } });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var addProject2 = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    const project = await portfolio_service_default.addProject(profile.id, req.body ?? {});
+    res.status(201).json({ success: true, data: { project } });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var updateProject2 = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    const project = await portfolio_service_default.updateProject(profile.id, req.params.id, req.body ?? {});
+    res.json({ success: true, data: { project } });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var removeProject2 = async (req, res, next) => {
+  try {
+    const profile = await requireFreelancer2(req.user.id);
+    res.json({ success: true, data: await portfolio_service_default.removeProject(profile.id, req.params.id) });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+var getPublicPortfolio = async (req, res, next) => {
+  try {
+    const page = await portfolio_service_default.publicPage(req.params.username);
+    if (!page) {
+      return res.status(404).json({ success: false, message: "Portfolio introuvable." });
+    }
+    res.json({ success: true, data: page });
+  } catch (err) {
+    next(asHttpError5(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -5226,6 +5711,7 @@ router4.get("/projects/by-slug/:slug", getProject);
 router4.get("/services/by-slug/:slug", getService);
 router4.get("/freelancers/:username", getFreelancer);
 router4.get("/freelancers/:username/reviews", listPublicReviews);
+router4.get("/portfolio/:username", getPublicPortfolio);
 router4.get("/freelancers", listFreelancers);
 router4.get("/pricing", listPricing);
 router4.get("/me/activation", protect, getActivationDraft);
@@ -5266,6 +5752,12 @@ router4.post("/me/orders/:id/cancel", protect, cancelOrder);
 router4.get("/me/orders/:id/review", protect, getReviewState);
 router4.post("/me/orders/:id/review", protect, leaveReview);
 router4.post("/me/reviews/:id/reply", protect, replyToReview);
+router4.get("/me/portfolio", protect, getMyPortfolio);
+router4.patch("/me/portfolio", protect, updateSettings2);
+router4.put("/me/portfolio/sections", protect, saveSections2);
+router4.post("/me/portfolio/projects", protect, addProject2);
+router4.patch("/me/portfolio/projects/:id", protect, updateProject2);
+router4.delete("/me/portfolio/projects/:id", protect, removeProject2);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -8431,7 +8923,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError5 = (err) => {
+var asHttpError6 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -8528,7 +9020,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError5(err));
+    next(asHttpError6(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -8537,7 +9029,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError5(err));
+    next(asHttpError6(err));
   }
 };
 var listHistory = async (req, res, next) => {

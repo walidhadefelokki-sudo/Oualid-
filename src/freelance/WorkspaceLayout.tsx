@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Coins,
+  Layout,
   LayoutDashboard,
   Package,
   Send,
@@ -37,6 +38,7 @@ const ITEMS = [
   { to: "/freelance-espace/propositions", icon: Send, label: "Mes propositions" },
   { to: "/freelance-espace/commandes", icon: ShoppingBag, label: "Commandes" },
   { to: "/freelance-espace/credits", icon: Coins, label: "Crédits" },
+  { to: "/freelance-espace/portfolio", icon: Layout, label: "Mini portfolio" },
   { to: "/freelance-espace/profil", icon: Settings, label: "Profil" },
 ];
 

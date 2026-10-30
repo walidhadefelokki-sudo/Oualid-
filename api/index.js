@@ -603,8 +603,8 @@ var sendEmail = async (to, subject, html, options = {}) => {
       console.log(`Mail to ${to} sent via ${smtpHost}: ${info.messageId}`);
       return true;
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      const senderRejected = /Verification failed for|No Such User Here|Sender address rejected|\b550\b/i.test(detail);
+      const detail2 = error instanceof Error ? error.message : String(error);
+      const senderRejected = /Verification failed for|No Such User Here|Sender address rejected|\b550\b/i.test(detail2);
       if (senderRejected && requested !== FROM_ADDRESS && FROM_ADDRESS) {
         console.warn(
           `Sender ${requested} was rejected by ${smtpHost} \u2014 it is not a mailbox on this domain. Retrying as ${FROM_ADDRESS}. Fix EMAIL_FROM_REGISTER / EMAIL_FROM_INFO.`
@@ -4521,6 +4521,275 @@ var decideProposal = async (req, res, next) => {
   }
 };
 
+// server/services/order.service.ts
+init_prisma();
+import { FreelanceOrderStatus } from "@prisma/client";
+var OrderError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "OrderError";
+  }
+};
+var sideOf = async (orderId, userId) => {
+  const order = await prisma_default.freelanceOrder.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      clientId: true,
+      freelancerId: true,
+      freelancer: { select: { userId: true } }
+    }
+  });
+  if (!order) throw new OrderError("Commande introuvable.", 404);
+  const side = order.clientId === userId ? "client" : order.freelancer.userId === userId ? "freelancer" : null;
+  if (!side) throw new OrderError("Commande introuvable.", 404);
+  return { order, side };
+};
+var eventFor = (orderId, actorId, from, to, note) => prisma_default.orderEvent.create({
+  data: { orderId, actorId, fromStatus: from, toStatus: to, note: note ?? null }
+});
+var start = async (orderId, userId) => {
+  const { order, side } = await sideOf(orderId, userId);
+  if (side !== "freelancer") throw new OrderError("Seul le freelance peut d\xE9marrer.", 403);
+  if (order.status !== "CREATED") throw new OrderError("Cette commande a d\xE9j\xE0 d\xE9marr\xE9.", 409);
+  const [updated] = await prisma_default.$transaction([
+    prisma_default.freelanceOrder.update({
+      where: { id: order.id },
+      data: { status: FreelanceOrderStatus.IN_PROGRESS },
+      select: { id: true, status: true }
+    }),
+    eventFor(order.id, userId, order.status, FreelanceOrderStatus.IN_PROGRESS)
+  ]);
+  return updated;
+};
+var deliver = async (orderId, userId, message, fileIds = []) => {
+  const { order, side } = await sideOf(orderId, userId);
+  if (side !== "freelancer") throw new OrderError("Seul le freelance peut livrer.", 403);
+  if (!["CREATED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(order.status)) {
+    throw new OrderError("Cette commande n'attend pas de livraison.", 409);
+  }
+  const attempt = await prisma_default.orderDelivery.count({ where: { orderId: order.id } });
+  const [, delivery] = await prisma_default.$transaction([
+    prisma_default.freelanceOrder.update({
+      where: { id: order.id },
+      data: { status: FreelanceOrderStatus.DELIVERED }
+    }),
+    prisma_default.orderDelivery.create({
+      data: {
+        orderId: order.id,
+        message: message?.trim() || null,
+        attempt: attempt + 1,
+        files: fileIds.length ? { create: fileIds.map((fileId) => ({ fileId })) } : void 0
+      },
+      select: { id: true, attempt: true, createdAt: true }
+    }),
+    eventFor(order.id, userId, order.status, FreelanceOrderStatus.DELIVERED)
+  ]);
+  return delivery;
+};
+var requestRevision = async (orderId, userId, reason) => {
+  const { order, side } = await sideOf(orderId, userId);
+  if (side !== "client") throw new OrderError("Seul le client peut demander une r\xE9vision.", 403);
+  if (order.status !== "DELIVERED") {
+    throw new OrderError("Aucune livraison \xE0 r\xE9viser.", 409);
+  }
+  if (!reason?.trim()) {
+    throw new OrderError("Indiquez ce qui doit \xEAtre revu.");
+  }
+  const latest = await prisma_default.orderDelivery.findFirst({
+    where: { orderId: order.id },
+    orderBy: { attempt: "desc" },
+    select: { id: true }
+  });
+  await prisma_default.$transaction([
+    prisma_default.freelanceOrder.update({
+      where: { id: order.id },
+      data: { status: FreelanceOrderStatus.REVISION_REQUESTED }
+    }),
+    ...latest ? [
+      prisma_default.orderDelivery.update({
+        where: { id: latest.id },
+        data: { revisionRequested: true, revisionNote: reason.trim() }
+      })
+    ] : [],
+    eventFor(
+      order.id,
+      userId,
+      order.status,
+      FreelanceOrderStatus.REVISION_REQUESTED,
+      reason.trim()
+    )
+  ]);
+  return { status: FreelanceOrderStatus.REVISION_REQUESTED };
+};
+var accept = async (orderId, userId) => {
+  const { order, side } = await sideOf(orderId, userId);
+  if (side !== "client") throw new OrderError("Seul le client peut cl\xF4turer.", 403);
+  if (order.status !== "DELIVERED") {
+    throw new OrderError("Cette commande n'a pas \xE9t\xE9 livr\xE9e.", 409);
+  }
+  const now = /* @__PURE__ */ new Date();
+  const latest = await prisma_default.orderDelivery.findFirst({
+    where: { orderId: order.id },
+    orderBy: { attempt: "desc" },
+    select: { id: true }
+  });
+  const [updated] = await prisma_default.$transaction([
+    prisma_default.freelanceOrder.update({
+      where: { id: order.id },
+      data: { status: FreelanceOrderStatus.COMPLETED, completedAt: now },
+      select: { id: true, status: true, completedAt: true, projectId: true }
+    }),
+    ...latest ? [prisma_default.orderDelivery.update({ where: { id: latest.id }, data: { acceptedAt: now } })] : [],
+    prisma_default.freelancerProfile.update({
+      where: { id: order.freelancerId },
+      data: { completedOrders: { increment: 1 } }
+    }),
+    eventFor(order.id, userId, order.status, FreelanceOrderStatus.COMPLETED)
+  ]);
+  if (updated.projectId) {
+    await prisma_default.freelanceProject.updateMany({
+      where: { id: updated.projectId, status: "IN_PROGRESS" },
+      data: { status: "COMPLETED" }
+    });
+  }
+  return updated;
+};
+var cancel = async (orderId, userId, reason) => {
+  const { order } = await sideOf(orderId, userId);
+  if (!["CREATED", "IN_PROGRESS"].includes(order.status)) {
+    throw new OrderError(
+      "Cette commande a d\xE9j\xE0 une livraison. Ouvrez un litige plut\xF4t que de l'annuler.",
+      409
+    );
+  }
+  if (!reason?.trim()) throw new OrderError("Indiquez le motif de l'annulation.");
+  await prisma_default.$transaction([
+    prisma_default.freelanceOrder.update({
+      where: { id: order.id },
+      data: { status: FreelanceOrderStatus.CANCELLED }
+    }),
+    eventFor(order.id, userId, order.status, FreelanceOrderStatus.CANCELLED, reason.trim())
+  ]);
+  return { status: FreelanceOrderStatus.CANCELLED };
+};
+var detail = async (orderId, userId) => {
+  const { side } = await sideOf(orderId, userId);
+  const order = await prisma_default.freelanceOrder.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      reference: true,
+      status: true,
+      agreedPrice: true,
+      currency: true,
+      deliveryDueAt: true,
+      createdAt: true,
+      completedAt: true,
+      service: { select: { title: true, slug: true } },
+      package: { select: { tier: true, name: true, revisions: true } },
+      project: { select: { title: true, slug: true } },
+      client: { select: { firstName: true, lastName: true } },
+      freelancer: { select: { username: true, displayName: true } },
+      addons: { select: { name: true, price: true } },
+      deliveries: {
+        orderBy: { attempt: "desc" },
+        select: {
+          id: true,
+          message: true,
+          attempt: true,
+          revisionRequested: true,
+          revisionNote: true,
+          acceptedAt: true,
+          createdAt: true,
+          files: { select: { file: { select: { url: true, fileName: true } } } }
+        }
+      },
+      events: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          fromStatus: true,
+          toStatus: true,
+          note: true,
+          createdAt: true,
+          actor: { select: { firstName: true, lastName: true } }
+        }
+      }
+    }
+  });
+  return {
+    side,
+    order: {
+      ...order,
+      clientName: [order.client.firstName, order.client.lastName].filter(Boolean).join(" ") || null,
+      deliveries: order.deliveries.map((d) => ({
+        ...d,
+        files: d.files.map((f) => f.file)
+      }))
+    }
+  };
+};
+var order_service_default = { start, deliver, requestRevision, accept, cancel, detail, sideOf, OrderError };
+
+// server/controllers/order.controller.ts
+var asHttpError3 = (err) => err instanceof OrderError ? new AppError(err.message, err.status) : err;
+var getOrder = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await order_service_default.detail(req.params.id, req.user.id) });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+var startOrder = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await order_service_default.start(req.params.id, req.user.id) });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+var deliverOrder = async (req, res, next) => {
+  try {
+    const { message, fileIds } = req.body;
+    const delivery = await order_service_default.deliver(
+      req.params.id,
+      req.user.id,
+      String(message ?? ""),
+      Array.isArray(fileIds) ? fileIds.map(String).slice(0, 20) : []
+    );
+    res.status(201).json({ success: true, data: { delivery } });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+var requestRevision2 = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const result = await order_service_default.requestRevision(req.params.id, req.user.id, String(reason ?? ""));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+var acceptOrder = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await order_service_default.accept(req.params.id, req.user.id) });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+var cancelOrder = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const result = await order_service_default.cancel(req.params.id, req.user.id, String(reason ?? ""));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -4557,6 +4826,12 @@ router4.post("/me/proposals", protect, submitProposal);
 router4.post("/me/proposals/:id/withdraw", protect, withdrawProposal);
 router4.get("/me/received-proposals/:id", protect, getProposalForClient);
 router4.post("/me/received-proposals/:id/decide", protect, decideProposal);
+router4.get("/me/orders/:id", protect, getOrder);
+router4.post("/me/orders/:id/start", protect, startOrder);
+router4.post("/me/orders/:id/deliver", protect, deliverOrder);
+router4.post("/me/orders/:id/revision", protect, requestRevision2);
+router4.post("/me/orders/:id/accept", protect, acceptOrder);
+router4.post("/me/orders/:id/cancel", protect, cancelOrder);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -7509,7 +7784,7 @@ var readBody = (body) => {
 var listSchedules = async (req, res, next) => {
   try {
     const { from, to, type, status } = req.query;
-    const start = from ? new Date(from) : null;
+    const start2 = from ? new Date(from) : null;
     const end = to ? new Date(to) : null;
     const events = await prisma_default.scheduleEvent.findMany({
       where: {
@@ -7517,7 +7792,7 @@ var listSchedules = async (req, res, next) => {
         status: status ? status : void 0,
         // Overlap, not containment: a meeting that begins in the previous
         // month and runs into this one still belongs on this month's grid.
-        ...start && end ? { startsAt: { lte: end }, endsAt: { gte: start } } : {}
+        ...start2 && end ? { startsAt: { lte: end }, endsAt: { gte: start2 } } : {}
       },
       orderBy: { startsAt: "asc" },
       take: 500,
@@ -7722,7 +7997,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError3 = (err) => {
+var asHttpError4 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -7819,7 +8094,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError3(err));
+    next(asHttpError4(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -7828,7 +8103,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError3(err));
+    next(asHttpError4(err));
   }
 };
 var listHistory = async (req, res, next) => {
@@ -8922,15 +9197,15 @@ var createCheckout = async (input) => {
   } catch (err) {
     if (err instanceof AppError) throw err;
     const status = err?.response?.status;
-    const detail = err?.response?.data;
-    console.error("Chargily checkout failed:", status, detail ?? err?.message);
+    const detail2 = err?.response?.data;
+    console.error("Chargily checkout failed:", status, detail2 ?? err?.message);
     if (status === 401) {
       throw new AppError(
         `Le paiement en ligne est mal configur\xE9 (cl\xE9 Chargily refus\xE9e, mode \xAB ${MODE} \xBB). Contactez le support.`,
         502
       );
     }
-    const reason = typeof detail?.message === "string" ? detail.message : typeof detail?.error === "string" ? detail.error : null;
+    const reason = typeof detail2?.message === "string" ? detail2.message : typeof detail2?.error === "string" ? detail2.error : null;
     throw new AppError(
       reason ? `Le paiement n'a pas pu \xEAtre cr\xE9\xE9 : ${reason}` : "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
       502

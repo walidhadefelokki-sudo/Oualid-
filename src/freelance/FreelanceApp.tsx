@@ -10,6 +10,7 @@ import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import Overview from "./pages/workspace/Overview";
 import ServiceEditor from "./pages/workspace/ServiceEditor";
+import OrderDetail from "./pages/workspace/OrderDetail";
 import MyProjects from "./pages/client/MyProjects";
 import ProjectEditor from "./pages/client/ProjectEditor";
 import ProjectDetail from "./pages/ProjectDetail";
@@ -99,6 +100,7 @@ const FreelanceApp: React.FC = () => (
               <Route path="services/:id" element={<ServiceEditor />} />
               <Route path="propositions" element={<MyProposals />} />
               <Route path="commandes" element={<MyOrders />} />
+              <Route path="commandes/:id" element={<OrderDetail />} />
               <Route path="credits" element={<MyCredits />} />
               <Route path="profil" element={<MyProfile />} />
             </Route>

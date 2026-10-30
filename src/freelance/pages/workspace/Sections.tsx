@@ -189,7 +189,11 @@ export const MyOrders: React.FC = () => {
       ) : (
         <div className="space-y-3">
           {data.map((o) => (
-            <div key={o.id} className={`${card} p-4 flex flex-wrap items-center gap-4`}>
+            <Link
+              key={o.id}
+              to={`/freelance-espace/commandes/${o.id}`}
+              className={`${card} p-4 flex flex-wrap items-center gap-4 hover:border-[#173E7D]/40 transition-colors`}
+            >
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-[#173E7D] break-words">
                   {o.service?.title ?? o.project?.title ?? o.reference}
@@ -204,7 +208,7 @@ export const MyOrders: React.FC = () => {
               </div>
               <Price value={o.agreedPrice} currency={o.currency} />
               <Status value={o.status} />
-            </div>
+            </Link>
           ))}
         </div>
       )}

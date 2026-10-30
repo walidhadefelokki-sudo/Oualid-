@@ -4,6 +4,7 @@ import * as freelancer from "../controllers/freelancer.controller";
 import * as service from "../controllers/service.controller";
 import * as project from "../controllers/project.controller";
 import * as proposal from "../controllers/proposal.controller";
+import * as order from "../controllers/order.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -64,5 +65,14 @@ router.post("/me/proposals", protect, proposal.submitProposal);
 router.post("/me/proposals/:id/withdraw", protect, proposal.withdrawProposal);
 router.get("/me/received-proposals/:id", protect, proposal.getProposalForClient);
 router.post("/me/received-proposals/:id/decide", protect, proposal.decideProposal);
+
+// Orders. The service decides who may do what; both parties share these
+// routes and are told apart by the order they are a party to.
+router.get("/me/orders/:id", protect, order.getOrder);
+router.post("/me/orders/:id/start", protect, order.startOrder);
+router.post("/me/orders/:id/deliver", protect, order.deliverOrder);
+router.post("/me/orders/:id/revision", protect, order.requestRevision);
+router.post("/me/orders/:id/accept", protect, order.acceptOrder);
+router.post("/me/orders/:id/cancel", protect, order.cancelOrder);
 
 export default router;

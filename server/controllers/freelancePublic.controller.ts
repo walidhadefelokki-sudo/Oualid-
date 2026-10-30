@@ -423,3 +423,73 @@ export const listPricing = async (_req: Request, res: Response, next: NextFuncti
     next(err);
   }
 };
+
+/**
+ * One public project, by slug.
+ *
+ * Only an open, public project is served here. An invitation-only one is
+ * private to the freelancers invited to it, and this endpoint has no viewer
+ * to check against — the authenticated eligibility call does that.
+ *
+ * The client is named, never contacted: no e-mail, no phone. The platform
+ * is where the conversation happens.
+ */
+export const getProject = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const project = await prisma.freelanceProject.findFirst({
+      where: { slug: req.params.slug, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        status: true,
+        publishedAt: true,
+        category: { select: { name: true, slug: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        _count: { select: { proposals: true } },
+        client: { select: { firstName: true, lastName: true, createdAt: true } },
+        company: { select: { name: true, logo: { select: { url: true } } } },
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Projet introuvable." });
+    }
+
+    if (project.visibility === "INVITE_ONLY") {
+      return res.status(403).json({
+        success: false,
+        message: "Ce projet est réservé aux freelances invités.",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        project: {
+          ...project,
+          skills: project.skills.map((s) => s.skill.name),
+          proposalCount: project._count.proposals,
+          client: {
+            name:
+              project.company?.name ??
+              [project.client.firstName, project.client.lastName].filter(Boolean).join(" ") ??
+              null,
+            logoUrl: project.company?.logo?.url ?? null,
+            memberSince: project.client.createdAt,
+          },
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

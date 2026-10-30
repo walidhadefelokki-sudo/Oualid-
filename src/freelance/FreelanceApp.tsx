@@ -12,6 +12,7 @@ import Overview from "./pages/workspace/Overview";
 import ServiceEditor from "./pages/workspace/ServiceEditor";
 import MyProjects from "./pages/client/MyProjects";
 import ProjectEditor from "./pages/client/ProjectEditor";
+import ProjectDetail from "./pages/ProjectDetail";
 import {
   MyCredits,
   MyOrders,
@@ -82,6 +83,7 @@ const FreelanceApp: React.FC = () => (
             <Route path="recherche" element={<Services />} />
             <Route path="projets" element={<Projects />} />
             <Route path="freelances" element={<Freelancers />} />
+            <Route path="projet/:slug" element={<ProjectDetail />} />
 
             <Route path="connexion" element={<SignIn mode="signin" />} />
             <Route path="inscription" element={<SignIn mode="signup" />} />

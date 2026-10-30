@@ -27,6 +27,200 @@ var init_prisma = __esm({
   }
 });
 
+// server/services/credits.service.ts
+var credits_service_exports = {};
+__export(credits_service_exports, {
+  InsufficientCreditsError: () => InsufficientCreditsError,
+  default: () => credits_service_default,
+  getBalance: () => getBalance,
+  getCreditCosts: () => getCreditCosts,
+  getOrCreateWallet: () => getOrCreateWallet,
+  grant: () => grant,
+  history: () => history,
+  move: () => move,
+  refundFor: () => refundFor,
+  spend: () => spend
+});
+import { CreditEntryType, Prisma } from "@prisma/client";
+var InsufficientCreditsError, getOrCreateWallet, getBalance, move, spend, grant, refundFor, history, getCreditCosts, credits_service_default;
+var init_credits_service = __esm({
+  "server/services/credits.service.ts"() {
+    init_prisma();
+    InsufficientCreditsError = class extends Error {
+      constructor(required, available) {
+        super(`Insufficient credits: ${required} required, ${available} available`);
+        this.required = required;
+        this.available = available;
+        this.name = "InsufficientCreditsError";
+      }
+    };
+    getOrCreateWallet = async (userId, tx = prisma_default) => {
+      const existing = await tx.creditWallet.findUnique({ where: { userId } });
+      if (existing) return existing;
+      try {
+        return await tx.creditWallet.create({ data: { userId } });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          const wallet = await tx.creditWallet.findUnique({ where: { userId } });
+          if (wallet) return wallet;
+        }
+        throw err;
+      }
+    };
+    getBalance = async (userId) => {
+      const wallet = await prisma_default.creditWallet.findUnique({
+        where: { userId },
+        select: { balance: true }
+      });
+      return wallet?.balance ?? 0;
+    };
+    move = async (input) => {
+      const { userId, delta, type, idempotencyKey, referenceType, referenceId, note, createdById } = input;
+      if (!Number.isInteger(delta)) throw new Error("Credit delta must be a whole number");
+      if (delta === 0) throw new Error("Credit delta must not be zero");
+      if (idempotencyKey) {
+        const seen = await prisma_default.creditLedgerEntry.findUnique({
+          where: { idempotencyKey },
+          select: { id: true, balanceAfter: true }
+        });
+        if (seen) return { balance: seen.balanceAfter, entryId: seen.id, replayed: true };
+      }
+      try {
+        return await prisma_default.$transaction(
+          async (tx) => {
+            const wallet = await getOrCreateWallet(userId, tx);
+            const next = wallet.balance + delta;
+            if (next < 0) throw new InsufficientCreditsError(Math.abs(delta), wallet.balance);
+            const entry = await tx.creditLedgerEntry.create({
+              data: {
+                walletId: wallet.id,
+                type,
+                delta,
+                balanceAfter: next,
+                idempotencyKey,
+                referenceType,
+                referenceId,
+                note,
+                createdById
+              },
+              select: { id: true }
+            });
+            await tx.creditWallet.update({
+              where: { id: wallet.id },
+              data: { balance: next }
+            });
+            return { balance: next, entryId: entry.id, replayed: false };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        );
+      } catch (err) {
+        if (idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          const winner = await prisma_default.creditLedgerEntry.findUnique({
+            where: { idempotencyKey },
+            select: { id: true, balanceAfter: true }
+          });
+          if (winner) return { balance: winner.balanceAfter, entryId: winner.id, replayed: true };
+        }
+        throw err;
+      }
+    };
+    spend = async (input) => {
+      if (input.amount <= 0) throw new Error("Spend amount must be positive");
+      return move({ ...input, delta: -input.amount });
+    };
+    grant = async (input) => {
+      if (input.amount <= 0) throw new Error("Grant amount must be positive");
+      return move({ ...input, delta: input.amount });
+    };
+    refundFor = async (referenceType, referenceId, note) => {
+      const original = await prisma_default.creditLedgerEntry.findFirst({
+        where: { referenceType, referenceId, delta: { lt: 0 } },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, delta: true, wallet: { select: { userId: true } } }
+      });
+      if (!original) return null;
+      return grant({
+        userId: original.wallet.userId,
+        amount: Math.abs(original.delta),
+        type: CreditEntryType.REFUND,
+        // Derived from the entry being refunded, so a second attempt to refund
+        // the same spend is a replay rather than a second payout.
+        idempotencyKey: `refund:${original.id}`,
+        referenceType,
+        referenceId,
+        note
+      });
+    };
+    history = async (userId, page = 1, pageSize = 25) => {
+      const wallet = await prisma_default.creditWallet.findUnique({
+        where: { userId },
+        select: { id: true, balance: true }
+      });
+      if (!wallet) return { balance: 0, entries: [], total: 0, page, pageSize, totalPages: 1 };
+      const [total, entries] = await Promise.all([
+        prisma_default.creditLedgerEntry.count({ where: { walletId: wallet.id } }),
+        prisma_default.creditLedgerEntry.findMany({
+          where: { walletId: wallet.id },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: {
+            id: true,
+            type: true,
+            delta: true,
+            balanceAfter: true,
+            note: true,
+            referenceType: true,
+            referenceId: true,
+            createdAt: true
+          }
+        })
+      ]);
+      return {
+        balance: wallet.balance,
+        entries,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      };
+    };
+    getCreditCosts = async () => {
+      const keys = [
+        "freelance.credits.servicePublication",
+        "freelance.credits.proposal",
+        "freelance.service.durationDays",
+        "freelance.trial.services",
+        "freelance.trial.proposals"
+      ];
+      const rows = await prisma_default.platformSetting.findMany({ where: { key: { in: keys } } });
+      const read = (key, fallback) => {
+        const raw = rows.find((r) => r.key === key)?.value;
+        const n = typeof raw === "number" ? raw : Number(raw);
+        return Number.isFinite(n) ? n : fallback;
+      };
+      return {
+        servicePublication: read("freelance.credits.servicePublication", 10),
+        proposal: read("freelance.credits.proposal", 2),
+        serviceDurationDays: read("freelance.service.durationDays", 30),
+        trialServices: read("freelance.trial.services", 1),
+        trialProposals: read("freelance.trial.proposals", 5)
+      };
+    };
+    credits_service_default = {
+      getOrCreateWallet,
+      getBalance,
+      move,
+      spend,
+      grant,
+      refundFor,
+      history,
+      getCreditCosts,
+      InsufficientCreditsError
+    };
+  }
+});
+
 // server/services/plans.service.ts
 var plans_service_exports = {};
 __export(plans_service_exports, {
@@ -2820,188 +3014,64 @@ var listPricing = async (_req, res, next) => {
     next(err);
   }
 };
+var getProject = async (req, res, next) => {
+  try {
+    const project = await prisma_default.freelanceProject.findFirst({
+      where: { slug: req.params.slug, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        budgetType: true,
+        budgetMin: true,
+        budgetMax: true,
+        deadline: true,
+        remote: true,
+        wilaya: true,
+        visibility: true,
+        status: true,
+        publishedAt: true,
+        category: { select: { name: true, slug: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        _count: { select: { proposals: true } },
+        client: { select: { firstName: true, lastName: true, createdAt: true } },
+        company: { select: { name: true, logo: { select: { url: true } } } }
+      }
+    });
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Projet introuvable." });
+    }
+    if (project.visibility === "INVITE_ONLY") {
+      return res.status(403).json({
+        success: false,
+        message: "Ce projet est r\xE9serv\xE9 aux freelances invit\xE9s."
+      });
+    }
+    res.json({
+      success: true,
+      data: {
+        project: {
+          ...project,
+          skills: project.skills.map((s) => s.skill.name),
+          proposalCount: project._count.proposals,
+          client: {
+            name: project.company?.name ?? [project.client.firstName, project.client.lastName].filter(Boolean).join(" ") ?? null,
+            logoUrl: project.company?.logo?.url ?? null,
+            memberSince: project.client.createdAt
+          }
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/controllers/freelancer.controller.ts
 init_prisma();
 import { CreditEntryType as CreditEntryType2 } from "@prisma/client";
-
-// server/services/credits.service.ts
-init_prisma();
-import { CreditEntryType, Prisma } from "@prisma/client";
-var InsufficientCreditsError = class extends Error {
-  constructor(required, available) {
-    super(`Insufficient credits: ${required} required, ${available} available`);
-    this.required = required;
-    this.available = available;
-    this.name = "InsufficientCreditsError";
-  }
-};
-var getOrCreateWallet = async (userId, tx = prisma_default) => {
-  const existing = await tx.creditWallet.findUnique({ where: { userId } });
-  if (existing) return existing;
-  try {
-    return await tx.creditWallet.create({ data: { userId } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const wallet = await tx.creditWallet.findUnique({ where: { userId } });
-      if (wallet) return wallet;
-    }
-    throw err;
-  }
-};
-var getBalance = async (userId) => {
-  const wallet = await prisma_default.creditWallet.findUnique({
-    where: { userId },
-    select: { balance: true }
-  });
-  return wallet?.balance ?? 0;
-};
-var move = async (input) => {
-  const { userId, delta, type, idempotencyKey, referenceType, referenceId, note, createdById } = input;
-  if (!Number.isInteger(delta)) throw new Error("Credit delta must be a whole number");
-  if (delta === 0) throw new Error("Credit delta must not be zero");
-  if (idempotencyKey) {
-    const seen = await prisma_default.creditLedgerEntry.findUnique({
-      where: { idempotencyKey },
-      select: { id: true, balanceAfter: true }
-    });
-    if (seen) return { balance: seen.balanceAfter, entryId: seen.id, replayed: true };
-  }
-  try {
-    return await prisma_default.$transaction(
-      async (tx) => {
-        const wallet = await getOrCreateWallet(userId, tx);
-        const next = wallet.balance + delta;
-        if (next < 0) throw new InsufficientCreditsError(Math.abs(delta), wallet.balance);
-        const entry = await tx.creditLedgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            type,
-            delta,
-            balanceAfter: next,
-            idempotencyKey,
-            referenceType,
-            referenceId,
-            note,
-            createdById
-          },
-          select: { id: true }
-        });
-        await tx.creditWallet.update({
-          where: { id: wallet.id },
-          data: { balance: next }
-        });
-        return { balance: next, entryId: entry.id, replayed: false };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
-  } catch (err) {
-    if (idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const winner = await prisma_default.creditLedgerEntry.findUnique({
-        where: { idempotencyKey },
-        select: { id: true, balanceAfter: true }
-      });
-      if (winner) return { balance: winner.balanceAfter, entryId: winner.id, replayed: true };
-    }
-    throw err;
-  }
-};
-var spend = async (input) => {
-  if (input.amount <= 0) throw new Error("Spend amount must be positive");
-  return move({ ...input, delta: -input.amount });
-};
-var grant = async (input) => {
-  if (input.amount <= 0) throw new Error("Grant amount must be positive");
-  return move({ ...input, delta: input.amount });
-};
-var refundFor = async (referenceType, referenceId, note) => {
-  const original = await prisma_default.creditLedgerEntry.findFirst({
-    where: { referenceType, referenceId, delta: { lt: 0 } },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, delta: true, wallet: { select: { userId: true } } }
-  });
-  if (!original) return null;
-  return grant({
-    userId: original.wallet.userId,
-    amount: Math.abs(original.delta),
-    type: CreditEntryType.REFUND,
-    // Derived from the entry being refunded, so a second attempt to refund
-    // the same spend is a replay rather than a second payout.
-    idempotencyKey: `refund:${original.id}`,
-    referenceType,
-    referenceId,
-    note
-  });
-};
-var history = async (userId, page = 1, pageSize = 25) => {
-  const wallet = await prisma_default.creditWallet.findUnique({
-    where: { userId },
-    select: { id: true, balance: true }
-  });
-  if (!wallet) return { balance: 0, entries: [], total: 0, page, pageSize, totalPages: 1 };
-  const [total, entries] = await Promise.all([
-    prisma_default.creditLedgerEntry.count({ where: { walletId: wallet.id } }),
-    prisma_default.creditLedgerEntry.findMany({
-      where: { walletId: wallet.id },
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        type: true,
-        delta: true,
-        balanceAfter: true,
-        note: true,
-        referenceType: true,
-        referenceId: true,
-        createdAt: true
-      }
-    })
-  ]);
-  return {
-    balance: wallet.balance,
-    entries,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize))
-  };
-};
-var getCreditCosts = async () => {
-  const keys = [
-    "freelance.credits.servicePublication",
-    "freelance.credits.proposal",
-    "freelance.service.durationDays",
-    "freelance.trial.services",
-    "freelance.trial.proposals"
-  ];
-  const rows = await prisma_default.platformSetting.findMany({ where: { key: { in: keys } } });
-  const read = (key, fallback) => {
-    const raw = rows.find((r) => r.key === key)?.value;
-    const n = typeof raw === "number" ? raw : Number(raw);
-    return Number.isFinite(n) ? n : fallback;
-  };
-  return {
-    servicePublication: read("freelance.credits.servicePublication", 10),
-    proposal: read("freelance.credits.proposal", 2),
-    serviceDurationDays: read("freelance.service.durationDays", 30),
-    trialServices: read("freelance.trial.services", 1),
-    trialProposals: read("freelance.trial.proposals", 5)
-  };
-};
-var credits_service_default = {
-  getOrCreateWallet,
-  getBalance,
-  move,
-  spend,
-  grant,
-  refundFor,
-  history,
-  getCreditCosts,
-  InsufficientCreditsError
-};
-
-// server/controllers/freelancer.controller.ts
+init_credits_service();
 init_plans_service();
 var slugifyUsername = (raw) => raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 30);
 var uniqueUsername = async (base) => {
@@ -3405,8 +3475,9 @@ init_prisma();
 
 // server/services/servicePublication.service.ts
 init_prisma();
-import { CreditEntryType as CreditEntryType3, ServiceStatus } from "@prisma/client";
+init_credits_service();
 init_plans_service();
+import { CreditEntryType as CreditEntryType3, ServiceStatus } from "@prisma/client";
 var ServiceValidationError = class extends Error {
   constructor(message) {
     super(message);
@@ -3560,6 +3631,7 @@ var servicePublication_service_default = { submitForReview, approve, reject, slu
 
 // server/controllers/service.controller.ts
 init_plans_service();
+init_credits_service();
 var TIERS = ["BASIC", "STANDARD", "PREMIUM"];
 var requireProfile = async (userId) => {
   const profile = await prisma_default.freelancerProfile.findUnique({
@@ -4094,11 +4166,367 @@ var listProposalsReceived = async (req, res, next) => {
   }
 };
 
+// server/controllers/proposal.controller.ts
+init_prisma();
+
+// server/services/proposal.service.ts
+init_prisma();
+init_credits_service();
+init_plans_service();
+import { CreditEntryType as CreditEntryType4, ProposalStatus } from "@prisma/client";
+var ProposalError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "ProposalError";
+  }
+};
+var submit = async (input) => {
+  const { projectId, freelancerId, userId, coverLetter, price, deliveryDays } = input;
+  if (!coverLetter?.trim()) throw new ProposalError("La lettre de motivation est obligatoire.");
+  if (coverLetter.trim().length < 40) {
+    throw new ProposalError("La lettre de motivation doit faire au moins 40 caract\xE8res.");
+  }
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new ProposalError("Indiquez un prix sup\xE9rieur \xE0 z\xE9ro.");
+  }
+  if (!Number.isInteger(deliveryDays) || deliveryDays <= 0) {
+    throw new ProposalError("Indiquez un d\xE9lai en jours.");
+  }
+  const project = await prisma_default.freelanceProject.findUnique({
+    where: { id: projectId },
+    select: { id: true, status: true, visibility: true, clientId: true, title: true }
+  });
+  if (!project) throw new ProposalError("Projet introuvable.", 404);
+  if (project.status !== "OPEN") {
+    throw new ProposalError("Ce projet n'accepte plus de propositions.", 409);
+  }
+  const freelancer = await prisma_default.freelancerProfile.findUnique({
+    where: { id: freelancerId },
+    select: { userId: true }
+  });
+  if (!freelancer) throw new ProposalError("Profil freelance introuvable.", 404);
+  if (project.clientId === freelancer.userId) {
+    throw new ProposalError("Vous ne pouvez pas r\xE9pondre \xE0 votre propre projet.", 403);
+  }
+  if (project.visibility === "INVITE_ONLY") {
+    const invited = await prisma_default.projectInvite.findUnique({
+      where: { projectId_freelancerId: { projectId, freelancerId } },
+      select: { projectId: true }
+    });
+    if (!invited) throw new ProposalError("Ce projet est sur invitation uniquement.", 403);
+  }
+  const existing = await prisma_default.proposal.findUnique({
+    where: { projectId_freelancerId: { projectId, freelancerId } },
+    select: { id: true, status: true }
+  });
+  if (existing) {
+    throw new ProposalError("Vous avez d\xE9j\xE0 r\xE9pondu \xE0 ce projet.", 409);
+  }
+  const charge = await plans_service_default.resolveProposalCharge(freelancerId);
+  const costs = await credits_service_default.getCreditCosts();
+  if (charge.method === "credits") {
+    const balance = await credits_service_default.getBalance(userId);
+    if (balance < costs.proposal) {
+      throw new credits_service_default.InsufficientCreditsError(costs.proposal, balance);
+    }
+  }
+  let proposal;
+  try {
+    proposal = await prisma_default.proposal.create({
+      data: {
+        projectId,
+        freelancerId,
+        coverLetter: coverLetter.trim(),
+        price: String(price),
+        deliveryDays
+      },
+      select: { id: true, status: true, createdAt: true }
+    });
+  } catch (err) {
+    throw new ProposalError("Vous avez d\xE9j\xE0 r\xE9pondu \xE0 ce projet.", 409);
+  }
+  try {
+    if (charge.method === "quota") {
+      await plans_service_default.consumeProposalQuota(charge.subscriptionId);
+      return { proposal, charged: "quota", balance: await credits_service_default.getBalance(userId) };
+    }
+    const spent = await credits_service_default.spend({
+      userId,
+      amount: costs.proposal,
+      type: CreditEntryType4.PROPOSAL_SUBMISSION,
+      idempotencyKey: `proposal:${proposal.id}`,
+      referenceType: "proposal",
+      referenceId: proposal.id,
+      note: `Proposition : ${project.title.slice(0, 60)}`
+    });
+    return { proposal, charged: "credits", balance: spent.balance };
+  } catch (err) {
+    await prisma_default.proposal.delete({ where: { id: proposal.id } }).catch(() => {
+    });
+    throw err;
+  }
+};
+var withdraw = async (proposalId, freelancerId) => {
+  const done = await prisma_default.proposal.updateMany({
+    where: {
+      id: proposalId,
+      freelancerId,
+      status: { in: ["SENT", "VIEWED", "SHORTLISTED"] }
+    },
+    data: { status: ProposalStatus.WITHDRAWN, decidedAt: /* @__PURE__ */ new Date() }
+  });
+  if (done.count === 0) {
+    throw new ProposalError("Cette proposition ne peut plus \xEAtre retir\xE9e.", 409);
+  }
+  return { status: ProposalStatus.WITHDRAWN };
+};
+var markViewed = async (proposalId, clientId) => {
+  await prisma_default.proposal.updateMany({
+    where: {
+      id: proposalId,
+      status: ProposalStatus.SENT,
+      project: { clientId }
+    },
+    data: { status: ProposalStatus.VIEWED, viewedAt: /* @__PURE__ */ new Date() }
+  });
+};
+var decide = async (proposalId, clientId, decision) => {
+  const proposal = await prisma_default.proposal.findFirst({
+    where: { id: proposalId, project: { clientId } },
+    select: {
+      id: true,
+      status: true,
+      price: true,
+      deliveryDays: true,
+      freelancerId: true,
+      project: { select: { id: true, status: true, title: true } }
+    }
+  });
+  if (!proposal) throw new ProposalError("Proposition introuvable.", 404);
+  if (proposal.status === "WITHDRAWN") {
+    throw new ProposalError("Cette proposition a \xE9t\xE9 retir\xE9e.", 409);
+  }
+  if (decision !== "SELECTED") {
+    const updated = await prisma_default.proposal.update({
+      where: { id: proposal.id },
+      data: {
+        status: decision,
+        ...decision === "SHORTLISTED" ? { shortlistedAt: /* @__PURE__ */ new Date() } : {},
+        ...decision === "REJECTED" ? { decidedAt: /* @__PURE__ */ new Date() } : {}
+      },
+      select: { id: true, status: true }
+    });
+    return { proposal: updated, order: null };
+  }
+  const reference = `PRJ-${Date.now().toString(36).toUpperCase()}`;
+  const [, , , order] = await prisma_default.$transaction([
+    prisma_default.proposal.update({
+      where: { id: proposal.id },
+      data: { status: ProposalStatus.SELECTED, decidedAt: /* @__PURE__ */ new Date() }
+    }),
+    prisma_default.proposal.updateMany({
+      where: {
+        projectId: proposal.project.id,
+        id: { not: proposal.id },
+        status: { in: ["SENT", "VIEWED", "SHORTLISTED"] }
+      },
+      data: { status: ProposalStatus.REJECTED, decidedAt: /* @__PURE__ */ new Date() }
+    }),
+    prisma_default.freelanceProject.update({
+      where: { id: proposal.project.id },
+      data: { status: "IN_PROGRESS" }
+    }),
+    prisma_default.freelanceOrder.create({
+      data: {
+        reference,
+        clientId,
+        freelancerId: proposal.freelancerId,
+        projectId: proposal.project.id,
+        agreedPrice: proposal.price,
+        deliveryDueAt: new Date(Date.now() + proposal.deliveryDays * 864e5),
+        status: "CREATED"
+      },
+      select: { id: true, reference: true, status: true }
+    })
+  ]);
+  return { proposal: { id: proposal.id, status: ProposalStatus.SELECTED }, order };
+};
+var proposal_service_default = { submit, withdraw, markViewed, decide, ProposalError };
+
+// server/controllers/proposal.controller.ts
+init_credits_service();
+var asHttpError2 = (err) => {
+  if (err instanceof ProposalError) return new AppError(err.message, err.status);
+  if (err instanceof InsufficientCreditsError) {
+    return new AppError(
+      `Cr\xE9dits insuffisants : ${err.required} requis, ${err.available} disponibles.`,
+      402
+    );
+  }
+  return err;
+};
+var requireFreelancer = async (userId) => {
+  const profile = await prisma_default.freelancerProfile.findUnique({
+    where: { userId },
+    select: { id: true }
+  });
+  if (!profile) throw new AppError("Aucun profil freelance pour ce compte.", 404);
+  return profile.id;
+};
+var submitProposal = async (req, res, next) => {
+  try {
+    const freelancerId = await requireFreelancer(req.user.id);
+    const { projectId, coverLetter, price, deliveryDays } = req.body;
+    const result = await proposal_service_default.submit({
+      projectId: String(projectId ?? ""),
+      freelancerId,
+      userId: req.user.id,
+      coverLetter: String(coverLetter ?? ""),
+      price: Number(price),
+      deliveryDays: Math.trunc(Number(deliveryDays))
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var withdrawProposal = async (req, res, next) => {
+  try {
+    const freelancerId = await requireFreelancer(req.user.id);
+    const result = await proposal_service_default.withdraw(req.params.id, freelancerId);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var getProposalEligibility = async (req, res, next) => {
+  try {
+    const profile = await prisma_default.freelancerProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { id: true }
+    });
+    if (!profile) {
+      return res.json({
+        success: true,
+        data: { canPropose: false, reason: "no-profile" }
+      });
+    }
+    const project = await prisma_default.freelanceProject.findUnique({
+      where: { id: req.params.projectId },
+      select: { id: true, status: true, visibility: true, clientId: true }
+    });
+    if (!project) return next(new AppError("Projet introuvable.", 404));
+    const existing = await prisma_default.proposal.findUnique({
+      where: { projectId_freelancerId: { projectId: project.id, freelancerId: profile.id } },
+      select: { id: true, status: true }
+    });
+    const plans = await Promise.resolve().then(() => (init_plans_service(), plans_service_exports));
+    const creditsService = await Promise.resolve().then(() => (init_credits_service(), credits_service_exports));
+    const [charge, costs, balance, entitlements] = await Promise.all([
+      plans.resolveProposalCharge(profile.id),
+      creditsService.getCreditCosts(),
+      creditsService.getBalance(req.user.id),
+      plans.getEntitlements(profile.id)
+    ]);
+    const invited = project.visibility === "PUBLIC" ? true : Boolean(
+      await prisma_default.projectInvite.findUnique({
+        where: { projectId_freelancerId: { projectId: project.id, freelancerId: profile.id } },
+        select: { projectId: true }
+      })
+    );
+    const reason = existing ? "already-proposed" : project.clientId === req.user.id ? "own-project" : project.status !== "OPEN" ? "closed" : !invited ? "not-invited" : charge.method === "credits" && balance < costs.proposal ? "insufficient-credits" : null;
+    res.json({
+      success: true,
+      data: {
+        canPropose: reason === null,
+        reason,
+        existing,
+        method: charge.method,
+        creditCost: costs.proposal,
+        balance,
+        proposalsRemaining: entitlements.proposalsRemaining,
+        planName: entitlements.planName
+      }
+    });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var getProposalForClient = async (req, res, next) => {
+  try {
+    await proposal_service_default.markViewed(req.params.id, req.user.id);
+    const proposal = await prisma_default.proposal.findFirst({
+      where: { id: req.params.id, project: { clientId: req.user.id } },
+      select: {
+        id: true,
+        coverLetter: true,
+        price: true,
+        deliveryDays: true,
+        status: true,
+        createdAt: true,
+        viewedAt: true,
+        shortlistedAt: true,
+        project: { select: { id: true, title: true, status: true } },
+        freelancer: {
+          select: {
+            username: true,
+            displayName: true,
+            title: true,
+            bio: true,
+            level: true,
+            identityVerified: true,
+            ratingAverage: true,
+            ratingCount: true,
+            completedOrders: true,
+            wilaya: true,
+            hourlyRate: true,
+            languages: true,
+            skills: { select: { skill: { select: { name: true } } } }
+            // The address is deliberately absent: the client talks to the
+            // freelancer through the platform, and a proposal is not a
+            // reason to hand over a contact detail.
+          }
+        }
+      }
+    });
+    if (!proposal) return next(new AppError("Proposition introuvable.", 404));
+    res.json({
+      success: true,
+      data: {
+        proposal: {
+          ...proposal,
+          freelancer: {
+            ...proposal.freelancer,
+            skills: proposal.freelancer.skills.map((s) => s.skill.name)
+          }
+        }
+      }
+    });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+var DECISIONS = ["SHORTLISTED", "REJECTED", "SELECTED"];
+var decideProposal = async (req, res, next) => {
+  try {
+    const { decision } = req.body;
+    if (!DECISIONS.includes(decision)) {
+      return next(new AppError("D\xE9cision inconnue.", 400));
+    }
+    const result = await proposal_service_default.decide(req.params.id, req.user.id, decision);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError2(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
 router4.get("/services", listServices);
 router4.get("/projects", listProjects);
+router4.get("/projects/by-slug/:slug", getProject);
 router4.get("/freelancers", listFreelancers);
 router4.get("/pricing", listPricing);
 router4.get("/me/activation", protect, getActivationDraft);
@@ -4124,6 +4552,11 @@ router4.post("/me/projects/:id/submit", protect, submitMine);
 router4.post("/me/projects/:id/close", protect, closeMine);
 router4.delete("/me/projects/:id", protect, deleteMine);
 router4.get("/me/projects/:id/proposals", protect, listProposalsReceived);
+router4.get("/projects/:projectId/eligibility", protect, getProposalEligibility);
+router4.post("/me/proposals", protect, submitProposal);
+router4.post("/me/proposals/:id/withdraw", protect, withdrawProposal);
+router4.get("/me/received-proposals/:id", protect, getProposalForClient);
+router4.post("/me/received-proposals/:id/decide", protect, decideProposal);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -7289,7 +7722,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError2 = (err) => {
+var asHttpError3 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -7386,7 +7819,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError2(err));
+    next(asHttpError3(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -7395,7 +7828,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError2(err));
+    next(asHttpError3(err));
   }
 };
 var listHistory = async (req, res, next) => {

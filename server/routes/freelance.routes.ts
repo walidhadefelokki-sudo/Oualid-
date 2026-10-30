@@ -3,6 +3,7 @@ import * as freelancePublic from "../controllers/freelancePublic.controller";
 import * as freelancer from "../controllers/freelancer.controller";
 import * as service from "../controllers/service.controller";
 import * as project from "../controllers/project.controller";
+import * as proposal from "../controllers/proposal.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -15,6 +16,7 @@ const router = Router();
 router.get("/categories", freelancePublic.listCategories);
 router.get("/services", freelancePublic.listServices);
 router.get("/projects", freelancePublic.listProjects);
+router.get("/projects/by-slug/:slug", freelancePublic.getProject);
 router.get("/freelancers", freelancePublic.listFreelancers);
 router.get("/pricing", freelancePublic.listPricing);
 
@@ -54,5 +56,13 @@ router.post("/me/projects/:id/submit", protect, project.submitMine);
 router.post("/me/projects/:id/close", protect, project.closeMine);
 router.delete("/me/projects/:id", protect, project.deleteMine);
 router.get("/me/projects/:id/proposals", protect, project.listProposalsReceived);
+
+// Proposals, from both sides. The freelancer sends and withdraws; the
+// client reads one in full and decides on it.
+router.get("/projects/:projectId/eligibility", protect, proposal.getProposalEligibility);
+router.post("/me/proposals", protect, proposal.submitProposal);
+router.post("/me/proposals/:id/withdraw", protect, proposal.withdrawProposal);
+router.get("/me/received-proposals/:id", protect, proposal.getProposalForClient);
+router.post("/me/received-proposals/:id/decide", protect, proposal.decideProposal);
 
 export default router;

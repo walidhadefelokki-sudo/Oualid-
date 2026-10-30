@@ -7,6 +7,7 @@ import * as proposal from "../controllers/proposal.controller";
 import * as order from "../controllers/order.controller";
 import * as review from "../controllers/review.controller";
 import * as portfolio from "../controllers/portfolio.controller";
+import * as payment from "../controllers/marketplacePayment.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -24,6 +25,11 @@ router.get("/services/by-slug/:slug", freelancePublic.getService);
 router.get("/freelancers/:username", freelancePublic.getFreelancer);
 router.get("/freelancers/:username/reviews", review.listPublicReviews);
 router.get("/portfolio/:username", portfolio.getPublicPortfolio);
+
+// The gateway posts here. Unauthenticated by nature — the signature over
+// the raw bytes is what proves it came from Chargily.
+router.post("/payments/webhook", payment.webhook);
+router.get("/payments/options", payment.getPurchaseOptions);
 router.get("/freelancers", freelancePublic.listFreelancers);
 router.get("/pricing", freelancePublic.listPricing);
 
@@ -94,5 +100,11 @@ router.put("/me/portfolio/sections", protect, portfolio.saveSections);
 router.post("/me/portfolio/projects", protect, portfolio.addProject);
 router.patch("/me/portfolio/projects/:id", protect, portfolio.updateProject);
 router.delete("/me/portfolio/projects/:id", protect, portfolio.removeProject);
+
+// Buying credits.
+router.post("/me/payments", protect, payment.startPurchase);
+router.get("/me/payments", protect, payment.listMyPayments);
+router.get("/me/payments/:id", protect, payment.getPayment);
+router.post("/me/payments/:id/receipt", protect, payment.attachReceipt);
 
 export default router;

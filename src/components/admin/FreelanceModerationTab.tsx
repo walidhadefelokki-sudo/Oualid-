@@ -88,9 +88,10 @@ const StatTile: React.FC<{ label: string; value: number; warn?: boolean }> = ({
 );
 
 const FreelanceModerationTab: React.FC = () => {
-  const [kind, setKind] = useState<"services" | "projects">("services");
+  const [kind, setKind] = useState<"services" | "projects" | "payments">("services");
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [projects, setProjects] = useState<any[] | null>(null);
+  const [payments, setPayments] = useState<any[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -103,11 +104,13 @@ const FreelanceModerationTab: React.FC = () => {
       api.get("/admin/freelance/moderation"),
       api.get("/admin/freelance/moderation/stats"),
       api.get("/admin/freelance/moderation/projects"),
+      api.get("/admin/freelance/payments/pending"),
     ])
-      .then(([q, s, pr]) => {
+      .then(([q, s, pr, pay]) => {
         setItems(q.data.data.services);
         setStats(s.data.data);
         setProjects(pr.data.data.projects);
+        setPayments(pay.data.data.payments);
       })
       .catch((e) => setError(e?.response?.data?.message || e?.message || "Échec du chargement"));
   };
@@ -180,6 +183,7 @@ const FreelanceModerationTab: React.FC = () => {
           [
             { k: "services", label: "Services", n: items?.length ?? 0 },
             { k: "projects", label: "Projets clients", n: projects?.length ?? 0 },
+            { k: "payments", label: "Virements", n: payments?.length ?? 0 },
           ] as const
         ).map((o) => (
           <button
@@ -197,7 +201,108 @@ const FreelanceModerationTab: React.FC = () => {
         ))}
       </div>
 
-      {kind === "projects" ? (
+      {kind === "payments" ? (
+        payments === null ? (
+          <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
+        ) : payments.length === 0 ? (
+          <div className="bg-white rounded-xl p-10 text-center">
+            <Check size={28} className="mx-auto text-emerald-500" />
+            <p className="mt-3 font-semibold text-primary/70">Aucun virement en attente.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {payments.map((p) => (
+              <article key={p.id} className="rounded-xl border-2 border-primary/15 bg-white p-5">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-bold text-primary" dir="ltr">
+                      {p.reference}
+                    </h2>
+                    <p className="mt-1 text-xs text-primary/50 flex flex-wrap gap-x-3 gap-y-1">
+                      <span className="break-all">{p.user.email}</span>
+                      <span>
+                        {p.creditPack?.name} · {p.creditPack?.credits} crédits
+                      </span>
+                      <span>{p.method}</span>
+                    </p>
+                  </div>
+                  <span className="font-bold text-primary" dir="ltr">
+                    {money(p.amount)}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-primary/8 text-primary/60">
+                    <Clock size={12} /> {waited(p.createdAt)}
+                  </span>
+                </div>
+
+                {/* The receipt is the whole point of the queue: approving
+                    without looking at one is granting credits because
+                    somebody said so. */}
+                {p.receipt ? (
+                  <a
+                    href={p.receipt.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="mt-3 inline-block text-sm font-bold text-primary underline"
+                  >
+                    Voir le reçu
+                  </a>
+                ) : (
+                  <p className="mt-3 text-sm text-amber-700">
+                    Aucun reçu déposé — l'approbation sera refusée.
+                  </p>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-4 border-t border-primary/10">
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Créditer ${p.creditPack?.credits} crédits ?`)) return;
+                      setBusyId(p.id);
+                      try {
+                        await api.post(`/admin/freelance/payments/${p.id}/approve`);
+                        load();
+                      } catch (e: any) {
+                        setError(e?.response?.data?.message || "L'approbation a échoué.");
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }}
+                    disabled={busyId === p.id || !p.receipt}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    {busyId === p.id ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Check size={15} />
+                    )}
+                    Approuver et créditer
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const why = window.prompt("Motif du refus (visible par l'acheteur) :");
+                      if (!why?.trim()) return;
+                      setBusyId(p.id);
+                      try {
+                        await api.post(`/admin/freelance/payments/${p.id}/reject`, {
+                          reason: why.trim(),
+                        });
+                        load();
+                      } catch (e: any) {
+                        setError(e?.response?.data?.message || "Le refus a échoué.");
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }}
+                    disabled={busyId === p.id}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border-2 border-red-200 text-red-600 text-sm font-bold disabled:opacity-40"
+                  >
+                    <X size={15} /> Refuser
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      ) : kind === "projects" ? (
         projects === null ? (
           <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
         ) : projects.length === 0 ? (

@@ -4458,7 +4458,7 @@ var decide = async (proposalId, clientId, decision) => {
     });
     return { proposal: updated, order: null };
   }
-  const reference = `PRJ-${Date.now().toString(36).toUpperCase()}`;
+  const reference2 = `PRJ-${Date.now().toString(36).toUpperCase()}`;
   const [, , , order] = await prisma_default.$transaction([
     prisma_default.proposal.update({
       where: { id: proposal.id },
@@ -4478,7 +4478,7 @@ var decide = async (proposalId, clientId, decision) => {
     }),
     prisma_default.freelanceOrder.create({
       data: {
-        reference,
+        reference: reference2,
         clientId,
         freelancerId: proposal.freelancerId,
         projectId: proposal.project.id,
@@ -5702,6 +5702,504 @@ var getPublicPortfolio = async (req, res, next) => {
   }
 };
 
+// server/controllers/marketplacePayment.controller.ts
+init_prisma();
+
+// server/services/marketplacePayment.service.ts
+init_prisma();
+init_credits_service();
+import { CreditEntryType as CreditEntryType5, MarketplacePaymentStatus, Prisma as Prisma4 } from "@prisma/client";
+var PaymentError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "PaymentError";
+  }
+};
+var reference = () => `DL-${Date.now().toString(36).toUpperCase()}`;
+var MANUAL_METHODS = ["CCP_TRANSFER", "BARIDIMOB", "BANK_TRANSFER"];
+var settle = async (paymentId) => {
+  const payment = await prisma_default.marketplacePayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      amount: true,
+      creditPack: { select: { id: true, name: true, credits: true } }
+    }
+  });
+  if (!payment) throw new PaymentError("Paiement introuvable.", 404);
+  if (!payment.creditPack) {
+    throw new PaymentError("Ce paiement ne correspond \xE0 aucun pack de cr\xE9dits.", 409);
+  }
+  const claimed = await prisma_default.marketplacePayment.updateMany({
+    where: { id: payment.id, status: { not: MarketplacePaymentStatus.PAID } },
+    data: { status: MarketplacePaymentStatus.PAID, paidAt: /* @__PURE__ */ new Date() }
+  });
+  if (claimed.count === 0) {
+    return { granted: false, balance: await credits_service_default.getBalance(payment.userId) };
+  }
+  const granted = await credits_service_default.grant({
+    userId: payment.userId,
+    amount: payment.creditPack.credits,
+    type: CreditEntryType5.PURCHASE,
+    idempotencyKey: `payment:${payment.id}`,
+    referenceType: "payment",
+    referenceId: payment.id,
+    note: `Achat : ${payment.creditPack.name}`
+  });
+  await issueInvoice(payment.id);
+  return { granted: !granted.replayed, balance: granted.balance };
+};
+var issueInvoice = async (paymentId) => {
+  const existing = await prisma_default.marketplaceInvoice.findUnique({
+    where: { paymentId },
+    select: { id: true }
+  });
+  if (existing) return;
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const countThisYear = await prisma_default.marketplaceInvoice.count({
+    where: { number: { startsWith: `${year}-` } }
+  });
+  try {
+    await prisma_default.marketplaceInvoice.create({
+      data: {
+        paymentId,
+        number: `${year}-${String(countThisYear + 1).padStart(5, "0")}`
+      }
+    });
+  } catch (err) {
+    if (err instanceof Prisma4.PrismaClientKnownRequestError && err.code === "P2002") {
+      await prisma_default.marketplaceInvoice.create({
+        data: {
+          paymentId,
+          number: `${year}-${String(countThisYear + 2).padStart(5, "0")}`
+        }
+      }).catch(() => {
+      });
+      return;
+    }
+    throw err;
+  }
+};
+var startPurchase = async (userId, creditPackId, method) => {
+  const pack = await prisma_default.creditPack.findFirst({
+    where: { id: creditPackId, active: true },
+    select: { id: true, name: true, credits: true, price: true, currency: true }
+  });
+  if (!pack) throw new PaymentError("Pack introuvable ou indisponible.", 404);
+  const isManual = MANUAL_METHODS.includes(method);
+  const isCard = method === "CHARGILY_CIB" || method === "CHARGILY_EDAHABIA";
+  if (!isManual && !isCard) throw new PaymentError("Moyen de paiement inconnu.");
+  const payment = await prisma_default.marketplacePayment.create({
+    data: {
+      reference: reference(),
+      userId,
+      creditPackId: pack.id,
+      // Read from the pack, never from the request: a client-supplied
+      // amount is the price the buyer would like to pay.
+      amount: pack.price,
+      currency: pack.currency,
+      method,
+      status: isManual ? MarketplacePaymentStatus.AWAITING_REVIEW : MarketplacePaymentStatus.PENDING
+    },
+    select: { id: true, reference: true, amount: true, currency: true, status: true }
+  });
+  return { payment, pack, isManual };
+};
+var attachCheckout = async (paymentId, checkoutId) => prisma_default.marketplacePayment.update({
+  where: { id: paymentId },
+  data: { providerCheckoutId: checkoutId },
+  select: { id: true }
+});
+var handleWebhook = async (checkoutId, paid, payload) => {
+  const nothing = {
+    matched: false,
+    settled: false,
+    granted: false,
+    balance: null
+  };
+  const payment = await prisma_default.marketplacePayment.findUnique({
+    where: { providerCheckoutId: checkoutId },
+    select: { id: true, status: true }
+  });
+  if (!payment) return nothing;
+  await prisma_default.marketplacePayment.update({
+    where: { id: payment.id },
+    data: { providerPayload: payload }
+  });
+  if (!paid) {
+    await prisma_default.marketplacePayment.updateMany({
+      where: { id: payment.id, status: { not: MarketplacePaymentStatus.PAID } },
+      data: { status: MarketplacePaymentStatus.FAILED }
+    });
+    return { ...nothing, matched: true };
+  }
+  const result = await settle(payment.id);
+  return { matched: true, settled: true, granted: result.granted, balance: result.balance };
+};
+var attachReceipt = async (paymentId, userId, fileId) => {
+  const payment = await prisma_default.marketplacePayment.findFirst({
+    where: { id: paymentId, userId },
+    select: { id: true, status: true, method: true }
+  });
+  if (!payment) throw new PaymentError("Paiement introuvable.", 404);
+  if (payment.status === "PAID") throw new PaymentError("Ce paiement est d\xE9j\xE0 r\xE9gl\xE9.", 409);
+  if (!MANUAL_METHODS.includes(payment.method)) {
+    throw new PaymentError("Ce paiement ne se r\xE8gle pas par virement.", 409);
+  }
+  return prisma_default.marketplacePayment.update({
+    where: { id: payment.id },
+    data: { receiptId: fileId, status: MarketplacePaymentStatus.AWAITING_REVIEW },
+    select: { id: true, status: true }
+  });
+};
+var approveManual = async (paymentId, adminId) => {
+  const payment = await prisma_default.marketplacePayment.findUnique({
+    where: { id: paymentId },
+    select: { id: true, status: true, receiptId: true, method: true }
+  });
+  if (!payment) throw new PaymentError("Paiement introuvable.", 404);
+  if (payment.status === "PAID") throw new PaymentError("Ce paiement est d\xE9j\xE0 r\xE9gl\xE9.", 409);
+  if (!MANUAL_METHODS.includes(payment.method)) {
+    throw new PaymentError("Ce paiement n'est pas un virement.", 409);
+  }
+  if (!payment.receiptId) {
+    throw new PaymentError("Aucun re\xE7u n'a \xE9t\xE9 d\xE9pos\xE9 pour ce paiement.", 409);
+  }
+  await prisma_default.marketplacePayment.update({
+    where: { id: payment.id },
+    data: { reviewedById: adminId, reviewedAt: /* @__PURE__ */ new Date() }
+  });
+  return settle(payment.id);
+};
+var rejectManual = async (paymentId, adminId, reason) => {
+  if (!reason?.trim()) throw new PaymentError("Un motif est obligatoire.");
+  const done = await prisma_default.marketplacePayment.updateMany({
+    where: { id: paymentId, status: { not: MarketplacePaymentStatus.PAID } },
+    data: {
+      status: MarketplacePaymentStatus.REJECTED,
+      rejectionReason: reason.trim(),
+      reviewedById: adminId,
+      reviewedAt: /* @__PURE__ */ new Date()
+    }
+  });
+  if (done.count === 0) {
+    throw new PaymentError("Ce paiement ne peut plus \xEAtre refus\xE9.", 409);
+  }
+  return { status: MarketplacePaymentStatus.REJECTED };
+};
+var historyFor = async (userId) => prisma_default.marketplacePayment.findMany({
+  where: { userId },
+  orderBy: { createdAt: "desc" },
+  take: 50,
+  select: {
+    id: true,
+    reference: true,
+    amount: true,
+    currency: true,
+    method: true,
+    status: true,
+    rejectionReason: true,
+    paidAt: true,
+    createdAt: true,
+    creditPack: { select: { name: true, credits: true } },
+    invoice: { select: { number: true, issuedAt: true } }
+  }
+});
+var pendingReceipts = async () => prisma_default.marketplacePayment.findMany({
+  where: { status: MarketplacePaymentStatus.AWAITING_REVIEW },
+  orderBy: { createdAt: "asc" },
+  select: {
+    id: true,
+    reference: true,
+    amount: true,
+    currency: true,
+    method: true,
+    createdAt: true,
+    receipt: { select: { url: true, fileName: true } },
+    creditPack: { select: { name: true, credits: true } },
+    user: { select: { email: true, firstName: true, lastName: true } }
+  }
+});
+var marketplacePayment_service_default = {
+  startPurchase,
+  attachCheckout,
+  handleWebhook,
+  attachReceipt,
+  approveManual,
+  rejectManual,
+  settle,
+  historyFor,
+  pendingReceipts,
+  PaymentError
+};
+
+// server/services/chargily.service.ts
+import crypto7 from "crypto";
+import axios from "axios";
+var MODE = (process.env.CHARGILY_MODE?.trim() || "test").toLowerCase();
+var API_BASE = MODE === "live" ? "https://pay.chargily.net/api/v2" : "https://pay.chargily.net/test/api/v2";
+var readKey = () => {
+  const raw = process.env.CHARGILY_SECRET_KEY ?? "";
+  return raw.trim().replace(/^["']|["']$/g, "").trim();
+};
+var secretKey = () => {
+  const key = readKey();
+  if (!key) {
+    throw new AppError(
+      "Le paiement en ligne n'est pas configur\xE9. Contactez le support.",
+      503
+    );
+  }
+  return key;
+};
+var keyPrefix = readKey().slice(0, 8);
+if (keyPrefix) {
+  const keyIsLive = keyPrefix.startsWith("live_");
+  if (MODE === "live" && !keyIsLive) {
+    console.error(
+      "CHARGILY_MODE=live but CHARGILY_SECRET_KEY is a test key. Every payment will be rejected."
+    );
+  } else if (MODE !== "live" && keyIsLive) {
+    console.error(
+      "CHARGILY_SECRET_KEY is a LIVE key but CHARGILY_MODE is not live. Real cards will not be charged."
+    );
+  }
+}
+var isChargilyConfigured = () => Boolean(readKey());
+var createCheckout = async (input) => {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    throw new AppError("Invalid amount.", 400);
+  }
+  try {
+    const { data } = await axios.post(
+      `${API_BASE}/checkouts`,
+      {
+        amount: input.amount,
+        currency: "dzd",
+        success_url: input.successUrl,
+        failure_url: input.failureUrl,
+        description: input.description,
+        locale: input.locale ?? "fr",
+        metadata: input.metadata
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey()}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 15e3
+      }
+    );
+    if (!data?.id || !data?.checkout_url) {
+      throw new AppError("Chargily returned an unexpected response.", 502);
+    }
+    return {
+      id: data.id,
+      url: data.checkout_url,
+      amount: data.amount,
+      status: data.status
+    };
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const status = err?.response?.status;
+    const detail2 = err?.response?.data;
+    console.error("Chargily checkout failed:", status, detail2 ?? err?.message);
+    if (status === 401) {
+      throw new AppError(
+        `Le paiement en ligne est mal configur\xE9 (cl\xE9 Chargily refus\xE9e, mode \xAB ${MODE} \xBB). Contactez le support.`,
+        502
+      );
+    }
+    const reason = typeof detail2?.message === "string" ? detail2.message : typeof detail2?.error === "string" ? detail2.error : null;
+    throw new AppError(
+      reason ? `Le paiement n'a pas pu \xEAtre cr\xE9\xE9 : ${reason}` : "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
+      502
+    );
+  }
+};
+var verifyWebhookSignature = (rawBody, signature2) => {
+  if (!signature2) return false;
+  const key = readKey();
+  if (!key) return false;
+  const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(signature2, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto7.timingSafeEqual(a, b);
+};
+
+// server/controllers/marketplacePayment.controller.ts
+var asHttpError6 = (err) => err instanceof PaymentError ? new AppError(err.message, err.status) : err;
+var APP_URL2 = () => process.env.APP_URL || "https://www.darlemploi.dz";
+var getPurchaseOptions = async (_req, res, next) => {
+  try {
+    const packs = await prisma_default.creditPack.findMany({
+      where: { active: true },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, credits: true, price: true, currency: true }
+    });
+    const settings = await prisma_default.platformSetting.findMany({
+      where: { key: { in: ["freelance.payment.ccp", "freelance.payment.baridimob"] } }
+    });
+    const read = (key) => settings.find((s) => s.key === key)?.value ?? null;
+    res.json({
+      success: true,
+      data: {
+        packs,
+        // Whether the card route is actually usable, rather than a button
+        // that fails once pressed.
+        cardAvailable: isChargilyConfigured(),
+        transfer: {
+          ccp: read("freelance.payment.ccp"),
+          baridimob: read("freelance.payment.baridimob")
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var startPurchase2 = async (req, res, next) => {
+  try {
+    const { creditPackId, method } = req.body;
+    if (!creditPackId) return next(new AppError("Choisissez un pack.", 400));
+    const { payment, pack, isManual } = await marketplacePayment_service_default.startPurchase(
+      req.user.id,
+      String(creditPackId),
+      String(method ?? "CHARGILY_CIB")
+    );
+    if (isManual) {
+      return res.status(201).json({
+        success: true,
+        data: { payment, checkoutUrl: null, instructions: true }
+      });
+    }
+    if (!isChargilyConfigured()) {
+      return next(
+        new AppError(
+          "Le paiement par carte n'est pas disponible. Choisissez le virement CCP ou BaridiMob.",
+          503
+        )
+      );
+    }
+    const checkout = await createCheckout({
+      // Chargily takes whole dinars.
+      amount: Math.round(Number(payment.amount)),
+      successUrl: `${APP_URL2()}/freelance/paiement/${payment.id}`,
+      failureUrl: `${APP_URL2()}/freelance/paiement/${payment.id}`,
+      description: `${pack.name} \u2014 Dar L'emploi Freelance`,
+      locale: "fr",
+      metadata: { marketplacePaymentId: payment.id }
+    });
+    await marketplacePayment_service_default.attachCheckout(payment.id, checkout.id);
+    res.status(201).json({
+      success: true,
+      data: { payment, checkoutUrl: checkout.url, instructions: false }
+    });
+  } catch (err) {
+    next(asHttpError6(err));
+  }
+};
+var webhook = async (req, res) => {
+  const signature2 = req.get("signature") ?? req.get("x-signature") ?? void 0;
+  const raw = req.rawBody;
+  if (!raw || !verifyWebhookSignature(raw, signature2)) {
+    console.warn("Marketplace webhook: bad or missing signature, ignoring.");
+    return res.status(400).json({ success: false, message: "Invalid signature." });
+  }
+  const event = req.body;
+  const checkoutId = event?.data?.id;
+  if (!checkoutId) return res.status(200).json({ success: true });
+  try {
+    const paid = event.type === "checkout.paid" || event.data?.status === "paid";
+    await marketplacePayment_service_default.handleWebhook(checkoutId, paid, event);
+  } catch (err) {
+    console.error("Marketplace webhook failed:", err);
+  }
+  res.status(200).json({ success: true });
+};
+var getPayment = async (req, res, next) => {
+  try {
+    const payment = await prisma_default.marketplacePayment.findFirst({
+      where: { id: req.params.id, userId: req.user.id },
+      select: {
+        id: true,
+        reference: true,
+        amount: true,
+        currency: true,
+        method: true,
+        status: true,
+        rejectionReason: true,
+        paidAt: true,
+        createdAt: true,
+        receipt: { select: { url: true } },
+        creditPack: { select: { name: true, credits: true } },
+        invoice: { select: { number: true, issuedAt: true } }
+      }
+    });
+    if (!payment) return next(new AppError("Paiement introuvable.", 404));
+    res.json({ success: true, data: { payment } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listMyPayments = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: { payments: await marketplacePayment_service_default.historyFor(req.user.id) } });
+  } catch (err) {
+    next(err);
+  }
+};
+var attachReceipt2 = async (req, res, next) => {
+  try {
+    const { fileId } = req.body;
+    if (!fileId) return next(new AppError("Aucun re\xE7u fourni.", 400));
+    const result = await marketplacePayment_service_default.attachReceipt(
+      req.params.id,
+      req.user.id,
+      String(fileId)
+    );
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(asHttpError6(err));
+  }
+};
+var listPendingReceipts = async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: { payments: await marketplacePayment_service_default.pendingReceipts() } });
+  } catch (err) {
+    next(err);
+  }
+};
+var approveReceipt = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: await marketplacePayment_service_default.approveManual(req.params.id, req.user.id)
+    });
+  } catch (err) {
+    next(asHttpError6(err));
+  }
+};
+var rejectReceipt = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    res.json({
+      success: true,
+      data: await marketplacePayment_service_default.rejectManual(
+        req.params.id,
+        req.user.id,
+        String(reason ?? "")
+      )
+    });
+  } catch (err) {
+    next(asHttpError6(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -5712,6 +6210,8 @@ router4.get("/services/by-slug/:slug", getService);
 router4.get("/freelancers/:username", getFreelancer);
 router4.get("/freelancers/:username/reviews", listPublicReviews);
 router4.get("/portfolio/:username", getPublicPortfolio);
+router4.post("/payments/webhook", webhook);
+router4.get("/payments/options", getPurchaseOptions);
 router4.get("/freelancers", listFreelancers);
 router4.get("/pricing", listPricing);
 router4.get("/me/activation", protect, getActivationDraft);
@@ -5758,6 +6258,10 @@ router4.put("/me/portfolio/sections", protect, saveSections2);
 router4.post("/me/portfolio/projects", protect, addProject2);
 router4.patch("/me/portfolio/projects/:id", protect, updateProject2);
 router4.delete("/me/portfolio/projects/:id", protect, removeProject2);
+router4.post("/me/payments", protect, startPurchase2);
+router4.get("/me/payments", protect, listMyPayments);
+router4.get("/me/payments/:id", protect, getPayment);
+router4.post("/me/payments/:id/receipt", protect, attachReceipt2);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -7084,7 +7588,7 @@ import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
 
 // server/services/cvFile.service.ts
-import axios from "axios";
+import axios2 from "axios";
 var SUPABASE_URL_SCHEME = "supabase://cvs/";
 var isPrivatelyStored = (asset) => asset.provider === "supabase";
 var getCvAccessUrl = async (asset) => {
@@ -7103,7 +7607,7 @@ var getCvBuffer = async (asset) => {
     }
     return downloadCvObject(asset.publicId);
   }
-  const response = await axios.get(asset.url, {
+  const response = await axios2.get(asset.url, {
     responseType: "arraybuffer"
   });
   return Buffer.from(response.data);
@@ -8923,7 +9427,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError6 = (err) => {
+var asHttpError7 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -9020,7 +9524,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError6(err));
+    next(asHttpError7(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -9029,7 +9533,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError6(err));
+    next(asHttpError7(err));
   }
 };
 var listHistory = async (req, res, next) => {
@@ -9529,6 +10033,9 @@ router7.post("/team/tasks", createTask);
 router7.get("/team/tasks/:id", getTask);
 router7.patch("/team/tasks/:id", updateTask);
 router7.delete("/team/tasks/:id", deleteTask);
+router7.get("/freelance/payments/pending", listPendingReceipts);
+router7.post("/freelance/payments/:id/approve", approveReceipt);
+router7.post("/freelance/payments/:id/reject", rejectReceipt);
 router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
 router7.post("/preselections/:applicationId", adminPreselect);
 var admin_routes_default = router7;
@@ -10052,101 +10559,6 @@ var requirePack = (packId) => {
     throw new AppError("Unknown pack.", 400);
   }
   return pack;
-};
-
-// server/services/chargily.service.ts
-import crypto7 from "crypto";
-import axios2 from "axios";
-var MODE = (process.env.CHARGILY_MODE?.trim() || "test").toLowerCase();
-var API_BASE = MODE === "live" ? "https://pay.chargily.net/api/v2" : "https://pay.chargily.net/test/api/v2";
-var readKey = () => {
-  const raw = process.env.CHARGILY_SECRET_KEY ?? "";
-  return raw.trim().replace(/^["']|["']$/g, "").trim();
-};
-var secretKey = () => {
-  const key = readKey();
-  if (!key) {
-    throw new AppError(
-      "Le paiement en ligne n'est pas configur\xE9. Contactez le support.",
-      503
-    );
-  }
-  return key;
-};
-var keyPrefix = readKey().slice(0, 8);
-if (keyPrefix) {
-  const keyIsLive = keyPrefix.startsWith("live_");
-  if (MODE === "live" && !keyIsLive) {
-    console.error(
-      "CHARGILY_MODE=live but CHARGILY_SECRET_KEY is a test key. Every payment will be rejected."
-    );
-  } else if (MODE !== "live" && keyIsLive) {
-    console.error(
-      "CHARGILY_SECRET_KEY is a LIVE key but CHARGILY_MODE is not live. Real cards will not be charged."
-    );
-  }
-}
-var isChargilyConfigured = () => Boolean(readKey());
-var createCheckout = async (input) => {
-  if (!Number.isInteger(input.amount) || input.amount <= 0) {
-    throw new AppError("Invalid amount.", 400);
-  }
-  try {
-    const { data } = await axios2.post(
-      `${API_BASE}/checkouts`,
-      {
-        amount: input.amount,
-        currency: "dzd",
-        success_url: input.successUrl,
-        failure_url: input.failureUrl,
-        description: input.description,
-        locale: input.locale ?? "fr",
-        metadata: input.metadata
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${secretKey()}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 15e3
-      }
-    );
-    if (!data?.id || !data?.checkout_url) {
-      throw new AppError("Chargily returned an unexpected response.", 502);
-    }
-    return {
-      id: data.id,
-      url: data.checkout_url,
-      amount: data.amount,
-      status: data.status
-    };
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    const status = err?.response?.status;
-    const detail2 = err?.response?.data;
-    console.error("Chargily checkout failed:", status, detail2 ?? err?.message);
-    if (status === 401) {
-      throw new AppError(
-        `Le paiement en ligne est mal configur\xE9 (cl\xE9 Chargily refus\xE9e, mode \xAB ${MODE} \xBB). Contactez le support.`,
-        502
-      );
-    }
-    const reason = typeof detail2?.message === "string" ? detail2.message : typeof detail2?.error === "string" ? detail2.error : null;
-    throw new AppError(
-      reason ? `Le paiement n'a pas pu \xEAtre cr\xE9\xE9 : ${reason}` : "Impossible de cr\xE9er le paiement. R\xE9essayez dans un instant.",
-      502
-    );
-  }
-};
-var verifyWebhookSignature = (rawBody, signature2) => {
-  if (!signature2) return false;
-  const key = readKey();
-  if (!key) return false;
-  const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(signature2, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto7.timingSafeEqual(a, b);
 };
 
 // server/services/invoicePdf.service.ts

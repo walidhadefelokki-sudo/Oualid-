@@ -5,6 +5,7 @@ import * as schedule from "../controllers/schedule.controller";
 import * as adminEmail from "../controllers/adminEmail.controller";
 import * as freelanceModeration from "../controllers/freelanceModeration.controller";
 import * as teamTask from "../controllers/teamTask.controller";
+import * as marketplacePayment from "../controllers/marketplacePayment.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 
@@ -70,6 +71,12 @@ router.post("/team/tasks", teamTask.createTask);
 router.get("/team/tasks/:id", teamTask.getTask);
 router.patch("/team/tasks/:id", teamTask.updateTask);
 router.delete("/team/tasks/:id", teamTask.deleteTask);
+
+// Transfers waiting on a human. A screenshot is not a payment until
+// somebody has looked at it.
+router.get("/freelance/payments/pending", marketplacePayment.listPendingReceipts);
+router.post("/freelance/payments/:id/approve", marketplacePayment.approveReceipt);
+router.post("/freelance/payments/:id/reject", marketplacePayment.rejectReceipt);
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", adminController.getCorporatePendingPreselections);

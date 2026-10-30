@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, Coins, Lock } from "lucide-react";
 import freelanceService, { CreditPack, FreelancePlan } from "../freelance.service";
 import { EmptyState, ErrorState, Loading, Price } from "../ui";
@@ -173,14 +174,14 @@ const Pricing: React.FC = () => {
         </div>
       </section>
 
-      {/* Said plainly rather than hidden behind a button that would fail. */}
-      <p className="mt-8 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4">
-        L'achat en ligne n'est pas encore ouvert. Pour obtenir des crédits, contactez-nous à{" "}
-        <a href="mailto:info@darlemploi.dz" className="font-bold underline">
-          info@darlemploi.dz
-        </a>
-        .
-      </p>
+      <div className="mt-8 text-center">
+        <Link
+          to="/acheter-credits"
+          className="inline-block rounded-full px-8 py-3.5 bg-[#173E7D] text-white font-bold"
+        >
+          Acheter des crédits
+        </Link>
+      </div>
     </div>
   );
 };

@@ -19,6 +19,8 @@ import FreelancerProfile from "./pages/FreelancerProfile";
 import Portfolio from "./pages/Portfolio";
 import PortfolioEditor from "./pages/workspace/PortfolioEditor";
 import Pricing from "./pages/Pricing";
+import BuyCredits from "./pages/BuyCredits";
+import PaymentStatus from "./pages/PaymentStatus";
 import {
   MyCredits,
   MyOrders,
@@ -99,6 +101,8 @@ const FreelanceApp: React.FC = () => (
             <Route path="projet/:slug" element={<ProjectDetail />} />
             <Route path="service/:slug" element={<ServiceDetail />} />
             <Route path="tarifs" element={<Pricing />} />
+            <Route path="acheter-credits" element={<BuyCredits />} />
+            <Route path="paiement/:id" element={<PaymentStatus />} />
             {/* The handle lives at the root, as the specification sets out:
                 freelance.darlemploi.dz/@nom-utilisateur. */}
             <Route path=":handle" element={<HandleRoute />} />

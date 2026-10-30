@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes, useParams } from "react-router-dom";
 import { I18nProvider, useI18n } from "./i18n";
 import { AuthProvider } from "./auth";
 import PublicLayout from "./PublicLayout";
@@ -14,6 +14,9 @@ import OrderDetail from "./pages/workspace/OrderDetail";
 import MyProjects from "./pages/client/MyProjects";
 import ProjectEditor from "./pages/client/ProjectEditor";
 import ProjectDetail from "./pages/ProjectDetail";
+import ServiceDetail from "./pages/ServiceDetail";
+import FreelancerProfile from "./pages/FreelancerProfile";
+import Pricing from "./pages/Pricing";
 import {
   MyCredits,
   MyOrders,
@@ -73,6 +76,11 @@ const Freelancers: React.FC = () => {
   return <Browse kind="freelancers" title={t("nav.freelancers")} />;
 };
 
+const HandleRoute: React.FC = () => {
+  const { handle } = useParams<{ handle: string }>();
+  return handle?.startsWith("@") ? <FreelancerProfile /> : <NotFound />;
+};
+
 const FreelanceApp: React.FC = () => (
   <I18nProvider>
     <AuthProvider>
@@ -85,6 +93,11 @@ const FreelanceApp: React.FC = () => (
             <Route path="projets" element={<Projects />} />
             <Route path="freelances" element={<Freelancers />} />
             <Route path="projet/:slug" element={<ProjectDetail />} />
+            <Route path="service/:slug" element={<ServiceDetail />} />
+            <Route path="tarifs" element={<Pricing />} />
+            {/* The handle lives at the root, as the specification sets out:
+                freelance.darlemploi.dz/@nom-utilisateur. */}
+            <Route path=":handle" element={<HandleRoute />} />
 
             <Route path="connexion" element={<SignIn mode="signin" />} />
             <Route path="inscription" element={<SignIn mode="signup" />} />

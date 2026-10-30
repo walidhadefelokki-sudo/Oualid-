@@ -315,4 +315,94 @@ export const detail = async (orderId: string, userId: string) => {
   };
 };
 
-export default { start, deliver, requestRevision, accept, cancel, detail, sideOf, OrderError };
+
+
+/**
+ * Buys a service package.
+ *
+ * The total is computed here from the package and the chosen add-ons. A
+ * price sent by the browser is a number the buyer picked, and an order is
+ * what both sides are held to.
+ *
+ * Add-on names and prices are copied onto the order rather than referenced,
+ * so repricing an add-on later cannot restate what an earlier buyer agreed.
+ */
+export const orderService = async (
+  clientId: string,
+  packageId: string,
+  addonIds: string[] = []
+) => {
+  const pkg = await prisma.servicePackage.findUnique({
+    where: { id: packageId },
+    select: {
+      id: true,
+      price: true,
+      deliveryDays: true,
+      service: {
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          freelancerId: true,
+          freelancer: { select: { userId: true } },
+        },
+      },
+    },
+  });
+
+  if (!pkg) throw new OrderError("Formule introuvable.", 404);
+
+  const live =
+    pkg.service.status === "PUBLISHED" &&
+    (!pkg.service.expiresAt || pkg.service.expiresAt > new Date());
+  if (!live) throw new OrderError("Ce service n'est plus disponible.", 409);
+
+  if (pkg.service.freelancer.userId === clientId) {
+    throw new OrderError("Vous ne pouvez pas commander votre propre service.", 403);
+  }
+
+  // Only add-ons belonging to this service, so an id from elsewhere cannot
+  // be attached to change the total.
+  const addons = addonIds.length
+    ? await prisma.serviceAddon.findMany({
+        where: { id: { in: addonIds }, serviceId: pkg.service.id },
+        select: { id: true, name: true, price: true, extraDays: true },
+      })
+    : [];
+
+  const total = addons.reduce((sum, a) => sum + Number(a.price), Number(pkg.price));
+  const days = addons.reduce((sum, a) => sum + a.extraDays, pkg.deliveryDays);
+
+  const order = await prisma.freelanceOrder.create({
+    data: {
+      reference: `SRV-${Date.now().toString(36).toUpperCase()}`,
+      clientId,
+      freelancerId: pkg.service.freelancerId,
+      serviceId: pkg.service.id,
+      packageId: pkg.id,
+      agreedPrice: String(total),
+      deliveryDueAt: new Date(Date.now() + days * 86_400_000),
+      status: FreelanceOrderStatus.CREATED,
+      addons: addons.length
+        ? { create: addons.map((a) => ({ addonId: a.id, name: a.name, price: a.price })) }
+        : undefined,
+    },
+    select: { id: true, reference: true, status: true, agreedPrice: true },
+  });
+
+  await eventFor(order.id, clientId, FreelanceOrderStatus.CREATED, FreelanceOrderStatus.CREATED, "Commande passée");
+
+  return order;
+};
+
+export default {
+  start,
+  deliver,
+  requestRevision,
+  accept,
+  cancel,
+  detail,
+  sideOf,
+  orderService,
+  OrderError,
+};

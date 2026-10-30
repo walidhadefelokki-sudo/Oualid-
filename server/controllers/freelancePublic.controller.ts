@@ -493,3 +493,166 @@ export const getProject = async (req: Request, res: Response, next: NextFunction
     next(err);
   }
 };
+
+/**
+ * One published service, by slug.
+ *
+ * A view is counted here. Only a live service is served, so a draft cannot
+ * accumulate views, and the owner's own previews go through the workspace
+ * endpoint instead — a freelancer refreshing their own page should not
+ * inflate the number a buyer reads as interest.
+ */
+export const getService = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const service = await prisma.serviceListing.findFirst({
+      where: { slug: req.params.slug, ...publishedServiceWhere() },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        views: true,
+        publishedAt: true,
+        category: { select: { name: true, slug: true } },
+        media: { orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        packages: {
+          orderBy: { price: "asc" },
+          select: {
+            id: true,
+            tier: true,
+            name: true,
+            description: true,
+            price: true,
+            deliveryDays: true,
+            revisions: true,
+            features: true,
+          },
+        },
+        addons: { select: { id: true, name: true, price: true, extraDays: true } },
+        faqs: { orderBy: { position: "asc" }, select: { question: true, answer: true } },
+        requirements: {
+          orderBy: { position: "asc" },
+          select: { prompt: true, required: true },
+        },
+        skills: { select: { skill: { select: { name: true } } } },
+        freelancer: {
+          select: {
+            username: true,
+            displayName: true,
+            title: true,
+            bio: true,
+            level: true,
+            identityVerified: true,
+            ratingAverage: true,
+            ratingCount: true,
+            completedOrders: true,
+            wilaya: true,
+            languages: true,
+            user: { select: { avatar: { select: { url: true } } } },
+          },
+        },
+      },
+    });
+
+    if (!service) {
+      return res.status(404).json({ success: false, message: "Service introuvable." });
+    }
+
+    // Fire-and-forget: a failed counter must not fail the page.
+    prisma.serviceListing
+      .update({ where: { id: service.id }, data: { views: { increment: 1 } } })
+      .catch(() => {});
+
+    res.json({
+      success: true,
+      data: {
+        service: {
+          ...service,
+          images: service.media.map((m) => m.file.url),
+          skills: service.skills.map((s) => s.skill.name),
+          freelancer: {
+            ...service.freelancer,
+            avatarUrl: service.freelancer.user.avatar?.url ?? null,
+          },
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * A freelancer's public profile.
+ *
+ * Their published services, their standing, and nothing that would let
+ * someone contact them off the platform: no e-mail, no phone. The buttons
+ * on this page open the platform's own flows.
+ */
+export const getFreelancer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const freelancer = await prisma.freelancerProfile.findUnique({
+      where: { username: req.params.username },
+      select: {
+        username: true,
+        displayName: true,
+        title: true,
+        bio: true,
+        wilaya: true,
+        hourlyRate: true,
+        availability: true,
+        level: true,
+        identityVerified: true,
+        ratingAverage: true,
+        ratingCount: true,
+        completedOrders: true,
+        languages: true,
+        createdAt: true,
+        category: { select: { name: true, slug: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        user: { select: { avatar: { select: { url: true } } } },
+        services: {
+          where: publishedServiceWhere(),
+          orderBy: { publishedAt: "desc" },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            views: true,
+            media: {
+              take: 1,
+              orderBy: { position: "asc" },
+              select: { file: { select: { url: true } } },
+            },
+            packages: { orderBy: { price: "asc" }, take: 1, select: { price: true } },
+          },
+        },
+      },
+    });
+
+    if (!freelancer) {
+      return res.status(404).json({ success: false, message: "Freelance introuvable." });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        freelancer: {
+          ...freelancer,
+          avatarUrl: freelancer.user.avatar?.url ?? null,
+          skills: freelancer.skills.map((s) => s.skill.name),
+          services: freelancer.services.map((s) => ({
+            id: s.id,
+            title: s.title,
+            slug: s.slug,
+            views: s.views,
+            coverUrl: s.media[0]?.file.url ?? null,
+            startingPrice: s.packages[0]?.price ?? null,
+          })),
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

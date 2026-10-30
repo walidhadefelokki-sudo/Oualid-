@@ -18,6 +18,8 @@ router.get("/categories", freelancePublic.listCategories);
 router.get("/services", freelancePublic.listServices);
 router.get("/projects", freelancePublic.listProjects);
 router.get("/projects/by-slug/:slug", freelancePublic.getProject);
+router.get("/services/by-slug/:slug", freelancePublic.getService);
+router.get("/freelancers/:username", freelancePublic.getFreelancer);
 router.get("/freelancers", freelancePublic.listFreelancers);
 router.get("/pricing", freelancePublic.listPricing);
 
@@ -68,6 +70,7 @@ router.post("/me/received-proposals/:id/decide", protect, proposal.decideProposa
 
 // Orders. The service decides who may do what; both parties share these
 // routes and are told apart by the order they are a party to.
+router.post("/me/orders/from-service", protect, order.createFromService);
 router.get("/me/orders/:id", protect, order.getOrder);
 router.post("/me/orders/:id/start", protect, order.startOrder);
 router.post("/me/orders/:id/deliver", protect, order.deliverOrder);

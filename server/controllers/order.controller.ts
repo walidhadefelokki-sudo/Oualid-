@@ -70,3 +70,21 @@ export const cancelOrder = async (req: Request, res: Response, next: NextFunctio
     next(asHttpError(err));
   }
 };
+
+/** POST /freelance/me/orders/from-service — buy a package. */
+export const createFromService = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { packageId, addonIds } = req.body as { packageId?: string; addonIds?: string[] };
+    if (!packageId) return next(new AppError("Choisissez une formule.", 400));
+
+    const order = await orders.orderService(
+      req.user!.id,
+      String(packageId),
+      Array.isArray(addonIds) ? addonIds.map(String).slice(0, 10) : []
+    );
+
+    res.status(201).json({ success: true, data: { order } });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};

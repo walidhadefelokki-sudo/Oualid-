@@ -3067,6 +3067,145 @@ var getProject = async (req, res, next) => {
     next(err);
   }
 };
+var getService = async (req, res, next) => {
+  try {
+    const service = await prisma_default.serviceListing.findFirst({
+      where: { slug: req.params.slug, ...publishedServiceWhere() },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        views: true,
+        publishedAt: true,
+        category: { select: { name: true, slug: true } },
+        media: { orderBy: { position: "asc" }, select: { file: { select: { url: true } } } },
+        packages: {
+          orderBy: { price: "asc" },
+          select: {
+            id: true,
+            tier: true,
+            name: true,
+            description: true,
+            price: true,
+            deliveryDays: true,
+            revisions: true,
+            features: true
+          }
+        },
+        addons: { select: { id: true, name: true, price: true, extraDays: true } },
+        faqs: { orderBy: { position: "asc" }, select: { question: true, answer: true } },
+        requirements: {
+          orderBy: { position: "asc" },
+          select: { prompt: true, required: true }
+        },
+        skills: { select: { skill: { select: { name: true } } } },
+        freelancer: {
+          select: {
+            username: true,
+            displayName: true,
+            title: true,
+            bio: true,
+            level: true,
+            identityVerified: true,
+            ratingAverage: true,
+            ratingCount: true,
+            completedOrders: true,
+            wilaya: true,
+            languages: true,
+            user: { select: { avatar: { select: { url: true } } } }
+          }
+        }
+      }
+    });
+    if (!service) {
+      return res.status(404).json({ success: false, message: "Service introuvable." });
+    }
+    prisma_default.serviceListing.update({ where: { id: service.id }, data: { views: { increment: 1 } } }).catch(() => {
+    });
+    res.json({
+      success: true,
+      data: {
+        service: {
+          ...service,
+          images: service.media.map((m) => m.file.url),
+          skills: service.skills.map((s) => s.skill.name),
+          freelancer: {
+            ...service.freelancer,
+            avatarUrl: service.freelancer.user.avatar?.url ?? null
+          }
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getFreelancer = async (req, res, next) => {
+  try {
+    const freelancer = await prisma_default.freelancerProfile.findUnique({
+      where: { username: req.params.username },
+      select: {
+        username: true,
+        displayName: true,
+        title: true,
+        bio: true,
+        wilaya: true,
+        hourlyRate: true,
+        availability: true,
+        level: true,
+        identityVerified: true,
+        ratingAverage: true,
+        ratingCount: true,
+        completedOrders: true,
+        languages: true,
+        createdAt: true,
+        category: { select: { name: true, slug: true } },
+        skills: { select: { skill: { select: { name: true } } } },
+        user: { select: { avatar: { select: { url: true } } } },
+        services: {
+          where: publishedServiceWhere(),
+          orderBy: { publishedAt: "desc" },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            views: true,
+            media: {
+              take: 1,
+              orderBy: { position: "asc" },
+              select: { file: { select: { url: true } } }
+            },
+            packages: { orderBy: { price: "asc" }, take: 1, select: { price: true } }
+          }
+        }
+      }
+    });
+    if (!freelancer) {
+      return res.status(404).json({ success: false, message: "Freelance introuvable." });
+    }
+    res.json({
+      success: true,
+      data: {
+        freelancer: {
+          ...freelancer,
+          avatarUrl: freelancer.user.avatar?.url ?? null,
+          skills: freelancer.skills.map((s) => s.skill.name),
+          services: freelancer.services.map((s) => ({
+            id: s.id,
+            title: s.title,
+            slug: s.slug,
+            views: s.views,
+            coverUrl: s.media[0]?.file.url ?? null,
+            startingPrice: s.packages[0]?.price ?? null
+          }))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/controllers/freelancer.controller.ts
 init_prisma();
@@ -4732,7 +4871,64 @@ var detail = async (orderId, userId) => {
     }
   };
 };
-var order_service_default = { start, deliver, requestRevision, accept, cancel, detail, sideOf, OrderError };
+var orderService = async (clientId, packageId, addonIds = []) => {
+  const pkg = await prisma_default.servicePackage.findUnique({
+    where: { id: packageId },
+    select: {
+      id: true,
+      price: true,
+      deliveryDays: true,
+      service: {
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          freelancerId: true,
+          freelancer: { select: { userId: true } }
+        }
+      }
+    }
+  });
+  if (!pkg) throw new OrderError("Formule introuvable.", 404);
+  const live = pkg.service.status === "PUBLISHED" && (!pkg.service.expiresAt || pkg.service.expiresAt > /* @__PURE__ */ new Date());
+  if (!live) throw new OrderError("Ce service n'est plus disponible.", 409);
+  if (pkg.service.freelancer.userId === clientId) {
+    throw new OrderError("Vous ne pouvez pas commander votre propre service.", 403);
+  }
+  const addons = addonIds.length ? await prisma_default.serviceAddon.findMany({
+    where: { id: { in: addonIds }, serviceId: pkg.service.id },
+    select: { id: true, name: true, price: true, extraDays: true }
+  }) : [];
+  const total = addons.reduce((sum, a) => sum + Number(a.price), Number(pkg.price));
+  const days = addons.reduce((sum, a) => sum + a.extraDays, pkg.deliveryDays);
+  const order = await prisma_default.freelanceOrder.create({
+    data: {
+      reference: `SRV-${Date.now().toString(36).toUpperCase()}`,
+      clientId,
+      freelancerId: pkg.service.freelancerId,
+      serviceId: pkg.service.id,
+      packageId: pkg.id,
+      agreedPrice: String(total),
+      deliveryDueAt: new Date(Date.now() + days * 864e5),
+      status: FreelanceOrderStatus.CREATED,
+      addons: addons.length ? { create: addons.map((a) => ({ addonId: a.id, name: a.name, price: a.price })) } : void 0
+    },
+    select: { id: true, reference: true, status: true, agreedPrice: true }
+  });
+  await eventFor(order.id, clientId, FreelanceOrderStatus.CREATED, FreelanceOrderStatus.CREATED, "Commande pass\xE9e");
+  return order;
+};
+var order_service_default = {
+  start,
+  deliver,
+  requestRevision,
+  accept,
+  cancel,
+  detail,
+  sideOf,
+  orderService,
+  OrderError
+};
 
 // server/controllers/order.controller.ts
 var asHttpError3 = (err) => err instanceof OrderError ? new AppError(err.message, err.status) : err;
@@ -4789,6 +4985,20 @@ var cancelOrder = async (req, res, next) => {
     next(asHttpError3(err));
   }
 };
+var createFromService = async (req, res, next) => {
+  try {
+    const { packageId, addonIds } = req.body;
+    if (!packageId) return next(new AppError("Choisissez une formule.", 400));
+    const order = await order_service_default.orderService(
+      req.user.id,
+      String(packageId),
+      Array.isArray(addonIds) ? addonIds.map(String).slice(0, 10) : []
+    );
+    res.status(201).json({ success: true, data: { order } });
+  } catch (err) {
+    next(asHttpError3(err));
+  }
+};
 
 // server/routes/freelance.routes.ts
 var router4 = Router4();
@@ -4796,6 +5006,8 @@ router4.get("/categories", listCategories);
 router4.get("/services", listServices);
 router4.get("/projects", listProjects);
 router4.get("/projects/by-slug/:slug", getProject);
+router4.get("/services/by-slug/:slug", getService);
+router4.get("/freelancers/:username", getFreelancer);
 router4.get("/freelancers", listFreelancers);
 router4.get("/pricing", listPricing);
 router4.get("/me/activation", protect, getActivationDraft);
@@ -4826,6 +5038,7 @@ router4.post("/me/proposals", protect, submitProposal);
 router4.post("/me/proposals/:id/withdraw", protect, withdrawProposal);
 router4.get("/me/received-proposals/:id", protect, getProposalForClient);
 router4.post("/me/received-proposals/:id/decide", protect, decideProposal);
+router4.post("/me/orders/from-service", protect, createFromService);
 router4.get("/me/orders/:id", protect, getOrder);
 router4.post("/me/orders/:id/start", protect, startOrder);
 router4.post("/me/orders/:id/deliver", protect, deliverOrder);

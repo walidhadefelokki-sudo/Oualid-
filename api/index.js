@@ -5000,6 +5000,223 @@ var createFromService = async (req, res, next) => {
   }
 };
 
+// server/services/review.service.ts
+init_prisma();
+import { Prisma as Prisma2 } from "@prisma/client";
+var ReviewError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "ReviewError";
+  }
+};
+var inRange = (n) => Number.isInteger(n) && n >= 1 && n <= 5;
+var recomputeRating = async (freelancerUserId) => {
+  const profile = await prisma_default.freelancerProfile.findUnique({
+    where: { userId: freelancerUserId },
+    select: { id: true }
+  });
+  if (!profile) return;
+  const agg = await prisma_default.freelanceReview.aggregate({
+    where: { targetId: freelancerUserId, state: "APPROVED" },
+    _avg: { rating: true },
+    _count: { rating: true }
+  });
+  await prisma_default.freelancerProfile.update({
+    where: { id: profile.id },
+    data: {
+      ratingAverage: agg._count.rating > 0 ? new Prisma2.Decimal((agg._avg.rating ?? 0).toFixed(2)) : null,
+      ratingCount: agg._count.rating
+    }
+  });
+};
+var leave = async (orderId, authorId, input) => {
+  if (!inRange(input.rating)) throw new ReviewError("La note doit \xEAtre comprise entre 1 et 5.");
+  for (const [name, value] of [
+    ["qualit\xE9", input.qualityRating],
+    ["communication", input.communicationRating],
+    ["respect des d\xE9lais", input.deadlineRating]
+  ]) {
+    if (value !== void 0 && value !== null && !inRange(value)) {
+      throw new ReviewError(`La note de ${name} doit \xEAtre comprise entre 1 et 5.`);
+    }
+  }
+  const order = await prisma_default.freelanceOrder.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      clientId: true,
+      freelancer: { select: { userId: true } }
+    }
+  });
+  if (!order) throw new ReviewError("Commande introuvable.", 404);
+  const isClient = order.clientId === authorId;
+  const isFreelancer = order.freelancer.userId === authorId;
+  if (!isClient && !isFreelancer) throw new ReviewError("Commande introuvable.", 404);
+  if (order.status !== "COMPLETED") {
+    throw new ReviewError("Vous pourrez laisser un avis une fois la commande termin\xE9e.", 409);
+  }
+  const targetId = isClient ? order.freelancer.userId : order.clientId;
+  try {
+    const review = await prisma_default.freelanceReview.create({
+      data: {
+        orderId: order.id,
+        authorId,
+        targetId,
+        rating: input.rating,
+        qualityRating: input.qualityRating ?? null,
+        communicationRating: input.communicationRating ?? null,
+        deadlineRating: input.deadlineRating ?? null,
+        comment: input.comment?.trim() || null
+      },
+      select: { id: true, rating: true, comment: true, createdAt: true }
+    });
+    if (isClient) await recomputeRating(targetId);
+    return review;
+  } catch (err) {
+    if (err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new ReviewError("Vous avez d\xE9j\xE0 laiss\xE9 un avis sur cette commande.", 409);
+    }
+    throw err;
+  }
+};
+var reply = async (reviewId, userId, response) => {
+  if (!response?.trim()) throw new ReviewError("La r\xE9ponse ne peut pas \xEAtre vide.");
+  const review = await prisma_default.freelanceReview.findUnique({
+    where: { id: reviewId },
+    select: { id: true, targetId: true, response: true }
+  });
+  if (!review) throw new ReviewError("Avis introuvable.", 404);
+  if (review.targetId !== userId) {
+    throw new ReviewError("Seule la personne concern\xE9e peut r\xE9pondre.", 403);
+  }
+  if (review.response) {
+    throw new ReviewError("Vous avez d\xE9j\xE0 r\xE9pondu \xE0 cet avis.", 409);
+  }
+  return prisma_default.freelanceReview.update({
+    where: { id: review.id },
+    data: { response: response.trim(), respondedAt: /* @__PURE__ */ new Date() },
+    select: { id: true, response: true, respondedAt: true }
+  });
+};
+var pendingFor = async (orderId, userId) => {
+  const order = await prisma_default.freelanceOrder.findUnique({
+    where: { id: orderId },
+    select: { id: true, status: true, clientId: true, freelancer: { select: { userId: true } } }
+  });
+  if (!order) return { canReview: false, reason: "not-found", existing: null };
+  const isParty = order.clientId === userId || order.freelancer.userId === userId;
+  if (!isParty) return { canReview: false, reason: "not-found", existing: null };
+  const existing = await prisma_default.freelanceReview.findUnique({
+    where: { orderId_authorId: { orderId, authorId: userId } },
+    select: { id: true, rating: true, comment: true, response: true }
+  });
+  if (existing) return { canReview: false, reason: "already", existing };
+  if (order.status !== "COMPLETED") {
+    return { canReview: false, reason: "not-completed", existing: null };
+  }
+  return { canReview: true, reason: null, existing: null };
+};
+var publicFor = async (username, page = 1, pageSize = 10) => {
+  const profile = await prisma_default.freelancerProfile.findUnique({
+    where: { username },
+    select: { userId: true, ratingAverage: true, ratingCount: true }
+  });
+  if (!profile) return null;
+  const where = { targetId: profile.userId, state: "APPROVED" };
+  const [total, reviews, breakdown] = await Promise.all([
+    prisma_default.freelanceReview.count({ where }),
+    prisma_default.freelanceReview.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        rating: true,
+        qualityRating: true,
+        communicationRating: true,
+        deadlineRating: true,
+        comment: true,
+        response: true,
+        respondedAt: true,
+        createdAt: true,
+        // The client's first name only. A review is public; the person who
+        // wrote it did not sign up to be findable by it.
+        author: { select: { firstName: true } }
+      }
+    }),
+    prisma_default.freelanceReview.aggregate({
+      where,
+      _avg: {
+        qualityRating: true,
+        communicationRating: true,
+        deadlineRating: true
+      }
+    })
+  ]);
+  return {
+    average: profile.ratingAverage,
+    count: profile.ratingCount,
+    breakdown: {
+      quality: breakdown._avg.qualityRating,
+      communication: breakdown._avg.communicationRating,
+      deadline: breakdown._avg.deadlineRating
+    },
+    reviews,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / pageSize))
+  };
+};
+var review_service_default = { leave, reply, pendingFor, publicFor, recomputeRating, ReviewError };
+
+// server/controllers/review.controller.ts
+var asHttpError4 = (err) => err instanceof ReviewError ? new AppError(err.message, err.status) : err;
+var leaveReview = async (req, res, next) => {
+  try {
+    const { rating, comment, qualityRating, communicationRating, deadlineRating } = req.body;
+    const num = (v) => v === void 0 || v === null || v === "" ? null : Math.trunc(Number(v));
+    const review = await review_service_default.leave(req.params.id, req.user.id, {
+      rating: Math.trunc(Number(rating)),
+      comment: comment ? String(comment) : null,
+      qualityRating: num(qualityRating),
+      communicationRating: num(communicationRating),
+      deadlineRating: num(deadlineRating)
+    });
+    res.status(201).json({ success: true, data: { review } });
+  } catch (err) {
+    next(asHttpError4(err));
+  }
+};
+var replyToReview = async (req, res, next) => {
+  try {
+    const { response } = req.body;
+    const updated = await review_service_default.reply(req.params.id, req.user.id, String(response ?? ""));
+    res.json({ success: true, data: { review: updated } });
+  } catch (err) {
+    next(asHttpError4(err));
+  }
+};
+var getReviewState = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await review_service_default.pendingFor(req.params.id, req.user.id) });
+  } catch (err) {
+    next(asHttpError4(err));
+  }
+};
+var listPublicReviews = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const data = await review_service_default.publicFor(req.params.username, page);
+    if (!data) return next(new AppError("Freelance introuvable.", 404));
+    res.json({ success: true, data });
+  } catch (err) {
+    next(asHttpError4(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -5008,6 +5225,7 @@ router4.get("/projects", listProjects);
 router4.get("/projects/by-slug/:slug", getProject);
 router4.get("/services/by-slug/:slug", getService);
 router4.get("/freelancers/:username", getFreelancer);
+router4.get("/freelancers/:username/reviews", listPublicReviews);
 router4.get("/freelancers", listFreelancers);
 router4.get("/pricing", listPricing);
 router4.get("/me/activation", protect, getActivationDraft);
@@ -5045,6 +5263,9 @@ router4.post("/me/orders/:id/deliver", protect, deliverOrder);
 router4.post("/me/orders/:id/revision", protect, requestRevision2);
 router4.post("/me/orders/:id/accept", protect, acceptOrder);
 router4.post("/me/orders/:id/cancel", protect, cancelOrder);
+router4.get("/me/orders/:id/review", protect, getReviewState);
+router4.post("/me/orders/:id/review", protect, leaveReview);
+router4.post("/me/reviews/:id/reply", protect, replyToReview);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -8210,7 +8431,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError4 = (err) => {
+var asHttpError5 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -8307,7 +8528,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError4(err));
+    next(asHttpError5(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -8316,7 +8537,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError4(err));
+    next(asHttpError5(err));
   }
 };
 var listHistory = async (req, res, next) => {

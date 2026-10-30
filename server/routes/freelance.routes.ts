@@ -5,6 +5,7 @@ import * as service from "../controllers/service.controller";
 import * as project from "../controllers/project.controller";
 import * as proposal from "../controllers/proposal.controller";
 import * as order from "../controllers/order.controller";
+import * as review from "../controllers/review.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -20,6 +21,7 @@ router.get("/projects", freelancePublic.listProjects);
 router.get("/projects/by-slug/:slug", freelancePublic.getProject);
 router.get("/services/by-slug/:slug", freelancePublic.getService);
 router.get("/freelancers/:username", freelancePublic.getFreelancer);
+router.get("/freelancers/:username/reviews", review.listPublicReviews);
 router.get("/freelancers", freelancePublic.listFreelancers);
 router.get("/pricing", freelancePublic.listPricing);
 
@@ -77,5 +79,10 @@ router.post("/me/orders/:id/deliver", protect, order.deliverOrder);
 router.post("/me/orders/:id/revision", protect, order.requestRevision);
 router.post("/me/orders/:id/accept", protect, order.acceptOrder);
 router.post("/me/orders/:id/cancel", protect, order.cancelOrder);
+
+// Reviews. Only after a completed order, one per person per order.
+router.get("/me/orders/:id/review", protect, review.getReviewState);
+router.post("/me/orders/:id/review", protect, review.leaveReview);
+router.post("/me/reviews/:id/reply", protect, review.replyToReview);
 
 export default router;

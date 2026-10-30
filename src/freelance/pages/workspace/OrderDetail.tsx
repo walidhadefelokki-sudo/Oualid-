@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Check, Loader2, Package, RotateCcw, Send, X } from "lucide-react";
 import api from "../../../services/api";
 import { ErrorState, Loading, Price } from "../../ui";
+import ReviewForm from "../../ReviewForm";
 
 /**
  * One order, for whichever side is reading it.
@@ -253,6 +254,12 @@ const OrderDetail: React.FC = () => {
           </ol>
         )}
       </section>
+
+      {o.status === "COMPLETED" && (
+        <div className="mb-5">
+          <ReviewForm orderId={o.id} onDone={load} />
+        </div>
+      )}
 
       <section className={card}>
         <h2 className="font-display font-bold text-[#173E7D] mb-3">Historique</h2>

@@ -41,6 +41,7 @@ const FreelancerProfile: React.FC = () => {
   const { t } = useI18n();
 
   const [data, setData] = useState<any>(null);
+  const [reviews, setReviews] = useState<any>(null);
   const [failed, setFailed] = useState(false);
 
   const load = () => {
@@ -49,6 +50,13 @@ const FreelancerProfile: React.FC = () => {
       .get(`/freelance/freelancers/${username}`)
       .then((r) => setData(r.data.data.freelancer))
       .catch(() => setFailed(true));
+
+    // A separate call: the profile is useful before the reviews arrive, and
+    // a slow review page should not hold the whole screen blank.
+    api
+      .get(`/freelance/freelancers/${username}/reviews`)
+      .then((r) => setReviews(r.data.data))
+      .catch(() => setReviews(null));
   };
 
   useEffect(load, [username]);
@@ -147,6 +155,73 @@ const FreelancerProfile: React.FC = () => {
               </span>
             ))}
           </div>
+        </section>
+      )}
+
+      {reviews && reviews.count > 0 && (
+        <section className="mt-5 rounded-2xl border-2 border-[#173E7D]/15 bg-white p-6">
+          <h2 className="font-display font-bold text-[#173E7D] mb-4">
+            Avis ({reviews.count})
+          </h2>
+
+          {/* The three criteria, averaged. Shown only where a client
+              actually filled them in — they are optional on the form. */}
+          <div className="flex flex-wrap gap-x-8 gap-y-2 mb-5">
+            {(
+              [
+                ["Qualité", reviews.breakdown.quality],
+                ["Communication", reviews.breakdown.communication],
+                ["Délais", reviews.breakdown.deadline],
+              ] as const
+            )
+              .filter(([, v]) => v !== null)
+              .map(([name, v]) => (
+                <span key={name} className="text-sm">
+                  <span className="text-[#2B3442]/50">{name} </span>
+                  <span dir="ltr" className="font-bold text-[#B8860B]">
+                    {Number(v).toFixed(1)}
+                  </span>
+                </span>
+              ))}
+          </div>
+
+          <ul className="space-y-4">
+            {reviews.reviews.map((r: any) => (
+              <li key={r.id} className="border-t border-[#173E7D]/10 pt-4 first:border-0 first:pt-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span dir="ltr" className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star
+                        key={n}
+                        size={14}
+                        className={n <= r.rating ? "text-[#D4AF37]" : "text-[#173E7D]/15"}
+                        fill={n <= r.rating ? "currentColor" : "none"}
+                      />
+                    ))}
+                  </span>
+                  <span className="text-sm font-semibold text-[#2B3442]">
+                    {r.author?.firstName ?? "Client"}
+                  </span>
+                  <span className="text-xs text-[#2B3442]/40">
+                    {new Date(r.createdAt).toLocaleDateString("fr-FR", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+
+                {r.comment && (
+                  <p className="mt-2 text-sm text-[#2B3442]/80 break-words">{r.comment}</p>
+                )}
+
+                {r.response && (
+                  <p className="mt-2 ms-4 ps-3 border-s-2 border-[#173E7D]/15 text-sm text-[#2B3442]/60 break-words">
+                    <strong className="text-[#173E7D]">Réponse :</strong> {r.response}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

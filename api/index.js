@@ -667,11 +667,22 @@ var sendEmail = async (to, subject, html, options = {}) => {
     return false;
   }
 };
-var sendCandidateWelcomeEmail = async (email, firstName) => {
+var confirmBlock = (verifyUrl) => verifyUrl ? `
+    ${paragraph(
+  `Avant tout, confirmez votre adresse e-mail. Ce lien est valable 48&nbsp;heures.`
+)}
+    ${button(verifyUrl, "Confirmer mon adresse e-mail")}` : "";
+var confirmLines = (verifyUrl) => verifyUrl ? [
+  "Avant tout, confirmez votre adresse e-mail (lien valable 48 heures) :",
+  verifyUrl,
+  ""
+] : [];
+var sendCandidateWelcomeEmail = async (email, firstName, verifyUrl) => {
   const greeting = firstName?.trim() || "et bienvenue";
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${confirmBlock(verifyUrl)}
     ${paragraph(
     `Votre compte a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez maintenant d&eacute;couvrir des opportunit&eacute;s professionnelles adapt&eacute;es &agrave; votre profil et postuler en quelques clics.`
   )}
@@ -698,6 +709,7 @@ var sendCandidateWelcomeEmail = async (email, firstName) => {
     "",
     "Bienvenue sur Dar L'Emploi !",
     "",
+    ...confirmLines(verifyUrl),
     "Votre compte a \xE9t\xE9 cr\xE9\xE9 avec succ\xE8s. Vous pouvez maintenant d\xE9couvrir des opportunit\xE9s professionnelles adapt\xE9es \xE0 votre profil et postuler en quelques clics.",
     "",
     "- Explorez les offres",
@@ -719,11 +731,12 @@ var sendCandidateWelcomeEmail = async (email, firstName) => {
     { from: FROM_REGISTER, text }
   );
 };
-var sendRecruiterWelcomeEmail = async (email, companyName) => {
+var sendRecruiterWelcomeEmail = async (email, companyName, verifyUrl) => {
   const greeting = companyName?.trim() || "et bienvenue";
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${confirmBlock(verifyUrl)}
     ${paragraph(
     `Votre compte entreprise a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez d&egrave;s maintenant publier votre premi&egrave;re offre d'emploi <strong>gratuitement</strong> et commencer &agrave; recevoir des candidatures de profils correspondant &agrave; vos besoins.`
   )}
@@ -747,6 +760,7 @@ var sendRecruiterWelcomeEmail = async (email, companyName) => {
     "",
     "Bienvenue sur Dar L'Emploi !",
     "",
+    ...confirmLines(verifyUrl),
     "Votre compte entreprise a \xE9t\xE9 cr\xE9\xE9 avec succ\xE8s. Vous pouvez d\xE8s maintenant publier votre premi\xE8re offre d'emploi gratuitement et commencer \xE0 recevoir des candidatures de profils correspondant \xE0 vos besoins.",
     "",
     "- Votre premi\xE8re offre est offerte",
@@ -805,7 +819,35 @@ var sendAdminBroadcastEmail = async (to, content, options = {}) => {
     ...options.bcc?.length ? { bcc: options.bcc } : {}
   });
 };
-var sendWelcomeEmail = async (email, name, role) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name) : sendCandidateWelcomeEmail(email, name);
+var sendWelcomeEmail = async (email, name, role, verifyUrl) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name, verifyUrl) : sendCandidateWelcomeEmail(email, name, verifyUrl);
+var sendVerifyEmail = async (email, firstName, verifyUrl) => {
+  if (!verifyUrl) return false;
+  const greeting = firstName?.trim() || "bonjour";
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+    `Confirmez votre adresse e-mail pour activer votre compte Dar L'Emploi. Ce lien est valable 48&nbsp;heures.`
+  )}
+    ${button(verifyUrl, "Confirmer mon adresse e-mail")}
+    ${paragraph(
+    `Si vous n'avez pas cr&eacute;&eacute; de compte sur Dar L'Emploi, ignorez simplement ce message.`
+  )}`;
+  const text = [
+    `Bonjour ${greeting},`,
+    "",
+    "Confirmez votre adresse e-mail pour activer votre compte Dar L'Emploi.",
+    "Ce lien est valable 48 heures :",
+    verifyUrl,
+    "",
+    "Si vous n'avez pas cr\xE9\xE9 de compte sur Dar L'Emploi, ignorez simplement ce message."
+  ].join("\n");
+  return sendEmail(
+    email,
+    "Confirmez votre adresse e-mail \u2014 Dar L'Emploi",
+    layout("Confirmez votre adresse", body),
+    { from: FROM_REGISTER, text }
+  );
+};
 var sendApplicationSentEmail = async (email, details) => {
   const greeting = details.firstName?.trim() || "et merci";
   const city = details.city?.trim() || "Non pr&eacute;cis&eacute;e";
@@ -1018,6 +1060,56 @@ var deliverEmail = async (label, send, timeoutMs = 8e3) => {
   }
 };
 
+// server/services/emailVerification.service.ts
+init_prisma();
+import crypto from "crypto";
+var TTL_MS = 48 * 60 * 60 * 1e3;
+var digest = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+var issueEmailVerificationToken = async (userId) => {
+  const raw = crypto.randomBytes(32).toString("base64url");
+  await prisma_default.$transaction([
+    prisma_default.emailVerificationToken.deleteMany({ where: { userId, usedAt: null } }),
+    prisma_default.emailVerificationToken.create({
+      data: {
+        userId,
+        tokenHash: digest(raw),
+        expiresAt: new Date(Date.now() + TTL_MS)
+      }
+    })
+  ]);
+  return raw;
+};
+var consumeEmailVerificationToken = async (raw) => {
+  if (!raw || typeof raw !== "string") return { ok: false, reason: "invalid" };
+  const record = await prisma_default.emailVerificationToken.findUnique({
+    where: { tokenHash: digest(raw) },
+    include: { user: { select: { id: true, email: true, status: true, emailVerified: true } } }
+  });
+  if (!record || !record.user) return { ok: false, reason: "invalid" };
+  if (record.usedAt) {
+    return record.user.emailVerified ? { ok: true, email: record.user.email, alreadyVerified: true } : { ok: false, reason: "invalid" };
+  }
+  if (record.expiresAt.getTime() < Date.now()) return { ok: false, reason: "expired" };
+  await prisma_default.$transaction([
+    prisma_default.emailVerificationToken.update({
+      where: { id: record.id },
+      data: { usedAt: /* @__PURE__ */ new Date() }
+    }),
+    prisma_default.user.update({
+      where: { id: record.user.id },
+      data: {
+        emailVerified: true,
+        ...record.user.status === "PENDING" ? { status: "ACTIVE" } : {}
+      }
+    })
+  ]);
+  return { ok: true, email: record.user.email, alreadyVerified: record.user.emailVerified };
+};
+var verificationUrl = (token) => {
+  const base = (process.env.APP_URL || "https://www.darlemploi.dz").replace(/\/$/, "");
+  return `${base}/?verifier=${encodeURIComponent(token)}`;
+};
+
 // server/middleware/tier.middleware.ts
 init_prisma();
 var TIER_ORDER = ["FREE", "PREMIUM", "CORPORATE"];
@@ -1058,10 +1150,10 @@ var requireRecruiterTier = (minimumPlan) => {
 };
 
 // server/controllers/auth.controller.ts
-import crypto3 from "crypto";
+import crypto4 from "crypto";
 
 // server/utils/jwt.ts
-import crypto from "crypto";
+import crypto2 from "crypto";
 var devSecret = null;
 function getJwtSecret() {
   const configured = process.env.JWT_SECRET;
@@ -1074,7 +1166,7 @@ function getJwtSecret() {
     );
   }
   if (!devSecret) {
-    devSecret = crypto.randomBytes(48).toString("hex");
+    devSecret = crypto2.randomBytes(48).toString("hex");
     console.warn(
       "\u26A0\uFE0F  JWT_SECRET is not set. Using a random per-process secret for development \u2014 every restart invalidates existing sessions. Set JWT_SECRET in your .env to keep sessions across restarts."
     );
@@ -1103,7 +1195,7 @@ import multer from "multer";
 
 // server/utils/supabaseStorage.ts
 import { createClient } from "@supabase/supabase-js";
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 var CV_BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
 var AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET?.trim() || "avatars";
 var PRESENTATION_BUCKET = process.env.SUPABASE_PRESENTATION_BUCKET?.trim() || "presentations";
@@ -1165,7 +1257,7 @@ var ensureBucket = async (bucket) => {
     throw err;
   }
 };
-var buildObjectPath = (ownerId, extension) => `${ownerId}/${crypto2.randomUUID()}.${extension}`;
+var buildObjectPath = (ownerId, extension) => `${ownerId}/${crypto3.randomUUID()}.${extension}`;
 var OBJECT_NAME_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{2,5}$/;
 var uploadObject = async (params) => {
   const { bucket, path, buffer, mimeType } = params;
@@ -1411,7 +1503,7 @@ var mapPlanToTier = (plan) => {
 };
 var slugify = (name) => {
   const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto3.randomBytes(3).toString("hex");
+  const suffix = crypto4.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
 var createCompanyForRecruiter = async (recruiterProfileId, companyName) => {
@@ -1466,7 +1558,11 @@ var register = async (req, res, next) => {
       await createCompanyForRecruiter(user.recruiterProfile.id, companyNameFrom(companyName, email));
     }
     const greeting = user.role === "RECRUITER" ? companyNameFrom(companyName, email) : `${firstName ?? ""} ${lastName ?? ""}`.trim() || email;
-    await deliverEmail("Welcome", () => sendWelcomeEmail(email, greeting, user.role));
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(user.id));
+    await deliverEmail(
+      "Welcome",
+      () => sendWelcomeEmail(email, greeting, user.role, verifyUrl)
+    );
     const token = signToken(user.id, user.role);
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
     res.status(201).json({
@@ -1479,6 +1575,9 @@ var register = async (req, res, next) => {
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          // Sent so the client can show the "confirm your address" reminder
+          // without a second round trip to /auth/me.
+          emailVerified: user.emailVerified,
           recruiterTier
         }
       }
@@ -1525,10 +1624,58 @@ var login = async (req, res, next) => {
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          // Sent so the client can show the "confirm your address" reminder
+          // without a second round trip to /auth/me.
+          emailVerified: user.emailVerified,
           recruiterTier
         }
       }
     });
+  } catch (err) {
+    next(err);
+  }
+};
+var verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    if (!token) return next(new AppError("Lien de confirmation incomplet.", 400));
+    const result = await consumeEmailVerificationToken(token);
+    if (result.ok === false) {
+      return next(
+        new AppError(
+          result.reason === "expired" ? "Ce lien de confirmation a expir\xE9. Connectez-vous pour en recevoir un nouveau." : "Ce lien de confirmation n'est pas valide.",
+          400
+        )
+      );
+    }
+    res.status(200).json({
+      status: "success",
+      data: { email: result.email, alreadyVerified: result.alreadyVerified }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var resendVerification = async (req, res, next) => {
+  try {
+    if (!req.user) return next(new AppError("User not found", 404));
+    const user = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, email: true, firstName: true, emailVerified: true }
+    });
+    if (!user) return next(new AppError("User not found", 404));
+    if (user.emailVerified) {
+      return res.status(200).json({
+        status: "success",
+        data: { sent: false, alreadyVerified: true }
+      });
+    }
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(user.id));
+    await deliverEmail(
+      "Verify",
+      () => sendVerifyEmail(user.email, user.firstName, verifyUrl)
+    );
+    res.status(200).json({ status: "success", data: { sent: true, alreadyVerified: false } });
   } catch (err) {
     next(err);
   }
@@ -1628,17 +1775,17 @@ var updateMyAvatar = async (req, res, next) => {
 };
 
 // server/controllers/googleAuth.controller.ts
-import crypto5 from "crypto";
+import crypto6 from "crypto";
 import jwt2 from "jsonwebtoken";
 import passport2 from "passport";
 
 // server/services/oauth.service.ts
 init_prisma();
-import crypto4 from "crypto";
+import crypto5 from "crypto";
 var PROVIDER = "google";
 var slugify2 = (name) => {
   const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  return `${base || "company"}-${crypto4.randomBytes(3).toString("hex")}`;
+  return `${base || "company"}-${crypto5.randomBytes(3).toString("hex")}`;
 };
 async function findOrCreateUserFromGoogle(identity, requestedRole) {
   const existingAccount = await prisma_default.account.findUnique({
@@ -1670,7 +1817,14 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         providerEmail: identity.email
       }
     });
-    return { user: existingUser, outcome: "linked_existing" };
+    const promoted = !existingUser.emailVerified || existingUser.status === "PENDING" ? await prisma_default.user.update({
+      where: { id: existingUser.id },
+      data: {
+        emailVerified: true,
+        ...existingUser.status === "PENDING" ? { status: "ACTIVE" } : {}
+      }
+    }) : existingUser;
+    return { user: promoted, outcome: "linked_existing" };
   }
   const user = await prisma_default.$transaction(async (tx) => {
     const created = await tx.user.create({
@@ -1680,7 +1834,11 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         // honest rather than storing an unusable placeholder hash.
         password: null,
         role: requestedRole,
-        status: "ACTIVE",
+        // Mirrors the password path: ACTIVE means the address is confirmed,
+        // and here Google has confirmed it. In the rare case Google reports an
+        // unverified address the account starts PENDING like any other, and
+        // the dashboard banner offers the confirmation link.
+        status: identity.emailVerified ? "ACTIVE" : "PENDING",
         emailVerified: identity.emailVerified,
         firstName: identity.firstName || void 0,
         lastName: identity.lastName || void 0,
@@ -1737,7 +1895,7 @@ var googleAuthStart = (req, res, next) => {
   }
   const requestedRole = req.query.role === "employer" ? "RECRUITER" : "CANDIDATE";
   const requestedNext = typeof req.query.next === "string" && req.query.next.startsWith("/") && !req.query.next.startsWith("//") ? req.query.next : void 0;
-  const nonce = crypto5.randomBytes(24).toString("hex");
+  const nonce = crypto6.randomBytes(24).toString("hex");
   const state = jwt2.sign({ nonce, role: requestedRole, next: requestedNext }, getJwtSecret(), {
     expiresIn: "10m"
   });
@@ -1832,6 +1990,7 @@ var googleAuthSession = async (req, res, next) => {
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          emailVerified: user.emailVerified,
           recruiterTier: recruiterTier === "PREMIUM" ? "paid" : recruiterTier === "CORPORATE" ? "corporate" : recruiterTier ? "free" : void 0
         }
       }
@@ -1871,6 +2030,8 @@ var protect = (req, res, next) => {
 var router = Router();
 router.post("/register", register);
 router.post("/login", login);
+router.post("/verify-email", verifyEmail);
+router.post("/resend-verification", protect, resendVerification);
 router.get("/google", googleAuthStart);
 router.get("/google/callback", googleAuthCallback);
 router.post("/google/session", googleAuthSession);
@@ -1884,7 +2045,7 @@ import { Router as Router2 } from "express";
 
 // server/controllers/job.controller.ts
 init_prisma();
-import crypto6 from "crypto";
+import crypto7 from "crypto";
 
 // server/services/notification.service.ts
 init_prisma();
@@ -2184,7 +2345,7 @@ var getMatchedJobsForCandidate = async (userId, limit = 6) => {
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const suffix = crypto6.randomBytes(3).toString("hex");
+  const suffix = crypto7.randomBytes(3).toString("hex");
   return `${base || "job"}-${suffix}`;
 };
 var getAllJobs = async (req, res, next) => {
@@ -5937,7 +6098,7 @@ var marketplacePayment_service_default = {
 };
 
 // server/services/chargily.service.ts
-import crypto7 from "crypto";
+import crypto8 from "crypto";
 import axios from "axios";
 var MODE = (process.env.CHARGILY_MODE?.trim() || "test").toLowerCase();
 var API_BASE = MODE === "live" ? "https://pay.chargily.net/api/v2" : "https://pay.chargily.net/test/api/v2";
@@ -6024,11 +6185,11 @@ var verifyWebhookSignature = (rawBody, signature2) => {
   if (!signature2) return false;
   const key = readKey();
   if (!key) return false;
-  const expected = crypto7.createHmac("sha256", key).update(rawBody).digest("hex");
+  const expected = crypto8.createHmac("sha256", key).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(signature2, "utf8");
   if (a.length !== b.length) return false;
-  return crypto7.timingSafeEqual(a, b);
+  return crypto8.timingSafeEqual(a, b);
 };
 
 // server/controllers/marketplacePayment.controller.ts
@@ -8586,6 +8747,9 @@ var getAllUsers = async (req, res, next) => {
         email: true,
         role: true,
         status: true,
+        // Sent alongside status because the two are no longer independent:
+        // PENDING means this is false, and the list offers a way to fix it.
+        emailVerified: true,
         firstName: true,
         lastName: true,
         createdAt: true,
@@ -8854,6 +9018,35 @@ var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
     userAgent: req.headers["user-agent"]
   }
 }).catch((err) => console.error(`Audit log failed for ${action}:`, err));
+var sendVerificationLink = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        status: true,
+        emailVerified: true,
+        deletedAt: true
+      }
+    });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+    if (target.emailVerified) {
+      return next(new AppError("Cette adresse est d\xE9j\xE0 confirm\xE9e.", 400));
+    }
+    if (target.status === "DELETED" || target.deletedAt) {
+      return next(new AppError("Ce compte est supprim\xE9.", 400));
+    }
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(target.id));
+    const sent = await sendVerifyEmail(target.email, target.firstName, verifyUrl);
+    await audit(req, "SEND_VERIFICATION_LINK", "User", id);
+    res.status(200).json({ status: "success", data: { sent: Boolean(sent) } });
+  } catch (err) {
+    next(err);
+  }
+};
 var ROLES = ["CANDIDATE", "RECRUITER", "ADMIN"];
 var STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"];
 var updateUser = async (req, res, next) => {
@@ -10005,6 +10198,7 @@ router7.get("/users", getAllUsers);
 router7.patch("/users/:id/status", updateUserStatus);
 router7.get("/users/:id", getUserDetail);
 router7.patch("/users/:id", updateUser);
+router7.post("/users/:id/send-verification", sendVerificationLink);
 router7.delete("/users/:id", deleteUser);
 router7.get("/jobs", getAllJobsAdmin);
 router7.patch("/jobs/:id", updateJobAdmin);
@@ -13450,6 +13644,8 @@ function createApp() {
   });
   app2.use("/api/auth/login", authLimiter);
   app2.use("/api/auth/register", authLimiter);
+  app2.use("/api/auth/verify-email", authLimiter);
+  app2.use("/api/auth/resend-verification", authLimiter);
   const contactLimiter = rateLimit({
     windowMs: 60 * 60 * 1e3,
     limit: 10,

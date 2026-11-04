@@ -95,7 +95,22 @@ export async function findOrCreateUserFromGoogle(
       },
     });
 
-    return { user: existingUser, outcome: "linked_existing" };
+    /* Linking proves the address: the guard above refused unless Google itself
+     * says it is verified, which is the same proof the confirmation link
+     * collects. Only PENDING is promoted — a suspended account that links
+     * Google stays suspended. */
+    const promoted =
+      !existingUser.emailVerified || existingUser.status === "PENDING"
+        ? await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              emailVerified: true,
+              ...(existingUser.status === "PENDING" ? { status: "ACTIVE" as const } : {}),
+            },
+          })
+        : existingUser;
+
+    return { user: promoted, outcome: "linked_existing" };
   }
 
   // 3. Brand new person. Role comes from what they chose before leaving the
@@ -108,7 +123,11 @@ export async function findOrCreateUserFromGoogle(
         // honest rather than storing an unusable placeholder hash.
         password: null,
         role: requestedRole,
-        status: "ACTIVE",
+        // Mirrors the password path: ACTIVE means the address is confirmed,
+        // and here Google has confirmed it. In the rare case Google reports an
+        // unverified address the account starts PENDING like any other, and
+        // the dashboard banner offers the confirmation link.
+        status: identity.emailVerified ? "ACTIVE" : "PENDING",
         emailVerified: identity.emailVerified,
         firstName: identity.firstName || undefined,
         lastName: identity.lastName || undefined,

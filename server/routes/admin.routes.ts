@@ -30,6 +30,9 @@ router.get("/users", adminController.getAllUsers);
 router.patch("/users/:id/status", adminController.updateUserStatus);
 router.get("/users/:id", adminManage.getUserDetail);
 router.patch("/users/:id", adminManage.updateUser);
+// Sends the account its confirmation link — the only way an account that
+// registered before confirmation existed can leave PENDING by itself.
+router.post("/users/:id/send-verification", adminManage.sendVerificationLink);
 // Marks the account DELETED rather than removing the row — see the controller.
 router.delete("/users/:id", adminManage.deleteUser);
 

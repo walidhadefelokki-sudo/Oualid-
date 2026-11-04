@@ -100,6 +100,7 @@ import JobOfferCard from './components/JobOfferCard';
 import applicationService from './services/application.service';
 import { shareJobLink } from './utils/shareJob';
 import { trackPageView } from './analytics';
+import EmailConfirmation from './components/EmailConfirmation';
 
 function TierLockedScreen({
   title,
@@ -460,6 +461,7 @@ export default function App() {
           displayName: [data.data.user.firstName, data.data.user.lastName].filter(Boolean).join(' ') || data.data.user.email,
           role: normalizeRole(data.data.user.role),
           recruiterTier: data.data.user.recruiterTier,
+          emailVerified: data.data.user.emailVerified,
         });
 
         setIsLoginOpen(false);
@@ -701,6 +703,7 @@ export default function App() {
           displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
           role: normalizeRole(u.role),
           recruiterTier: u.recruiterTier,
+          emailVerified: u.emailVerified,
         });
 
         // Chargily sends the customer back to the site root with ?payment=…
@@ -780,6 +783,7 @@ export default function App() {
             displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
             role: normalizeRole(u.role),
             recruiterTier: u.recruiterTier,
+            emailVerified: u.emailVerified,
           });
           setView('dashboard');
         }}
@@ -788,8 +792,29 @@ export default function App() {
     );
   }
 
+  /* Confirming an address, and the reminder to do it.
+   *
+   * Rendered beside each view below because the link in the welcome email
+   * lands on the site root, which resolves to any of them depending on
+   * whether a session was restored first. It renders nothing when there is no
+   * token to spend and nobody to remind. */
+  const emailConfirmation = (
+    <EmailConfirmation
+      language={language}
+      unverified={Boolean(user) && user?.emailVerified === false}
+      onConfirmed={() =>
+        setUser((prev: any) => (prev ? { ...prev, emailVerified: true } : prev))
+      }
+    />
+  );
+
   if (user && view === 'dashboard' && user.role === 'admin') {
-    return <AdminDashboard onGoHome={() => setView('landing')} />;
+    return (
+      <>
+        <AdminDashboard onGoHome={() => setView('landing')} />
+        {emailConfirmation}
+      </>
+    );
   }
 
   if ((user || isDemo) && view === 'dashboard') {
@@ -797,7 +822,12 @@ export default function App() {
     // it. Without it the prop defaulted to false, so demo sessions — which
     // have no JWT — called the real API and got back
     // "Not authorized to access this route".
-    return <Dashboard user={user} isDemo={isDemo} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />;
+    return (
+      <>
+        <Dashboard user={user} isDemo={isDemo} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />
+        {emailConfirmation}
+      </>
+    );
   }
 
   return (
@@ -2295,10 +2325,13 @@ export default function App() {
             displayName: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
             role: normalizeRole(u.role),
             recruiterTier: u.recruiterTier,
+            emailVerified: u.emailVerified,
           });
           setView('dashboard');
         }}
       />
+
+      {emailConfirmation}
     </div>
   );
 }

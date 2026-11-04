@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Eye, FileCheck2, FileText, Mail, Minus, Pencil, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Eye, FileCheck2, FileText, Mail, MailCheck, Minus, Pencil, RefreshCw, Search, Send, Trash2, X } from "lucide-react";
 import UserDetailModal from "./UserDetailModal";
 import SendEmailModal from "./SendEmailModal";
 import adminService, {
@@ -19,7 +19,11 @@ import adminService, {
  */
 
 const ROLES: AdminRole[] = ["CANDIDATE", "RECRUITER", "ADMIN"];
-const STATUSES: AdminAccountStatus[] = ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"];
+/* PENDING is left out on purpose: it is not a decision an administrator
+   makes. It means nobody has confirmed the address, and only the person
+   reading that mailbox can change it. ACTIVE here means "no restriction",
+   which is what setting it by hand actually does. */
+const STATUSES: AdminAccountStatus[] = ["ACTIVE", "SUSPENDED", "DELETED"];
 
 const ROLE_LABEL: Record<AdminRole, string> = {
   CANDIDATE: "Candidat",
@@ -41,6 +45,51 @@ const STATUS_STYLE: Record<AdminAccountStatus, string> = {
   DELETED: "bg-gray-100 text-gray-400 border-gray-200",
 };
 
+/* The raw enum name was printed here, which told an administrator nothing:
+   "PENDING" reads like a queue waiting on them when it means the user has not
+   clicked the link in their welcome email. These say what the row is. */
+const STATUS_LABEL: Record<AdminAccountStatus, string> = {
+  PENDING: "Non confirmé",
+  ACTIVE: "Actif",
+  SUSPENDED: "Suspendu",
+  DELETED: "Supprimé",
+};
+
+/**
+ * What the badge says, which is not always what `status` holds.
+ *
+ * `status` carries two different questions in one column: has the address
+ * been confirmed, and has a moderator intervened. The moderation answer wins
+ * when there is one, because it is the one that changes what the account can
+ * do. Otherwise the badge reads `emailVerified` rather than the enum — an
+ * administrator can set a row to ACTIVE by hand without anybody confirming
+ * anything, and a badge saying "confirmé" over an unconfirmed address would
+ * put this column straight back to meaning nothing.
+ */
+const badgeFor = (user: AdminUser) => {
+  if (user.status === "SUSPENDED" || user.status === "DELETED") {
+    return {
+      key: user.status,
+      label: STATUS_LABEL[user.status],
+      hint:
+        user.status === "SUSPENDED"
+          ? "Ne peut plus se connecter."
+          : "Marqué supprimé ; les données sont conservées.",
+    };
+  }
+  return user.emailVerified
+    ? {
+        key: "ACTIVE" as AdminAccountStatus,
+        label: "Confirmé",
+        hint: "Adresse e-mail confirmée.",
+      }
+    : {
+        key: "PENDING" as AdminAccountStatus,
+        label: "Non confirmé",
+        hint: "Adresse e-mail jamais confirmée. Le compte fonctionne normalement.",
+      };
+};
+
 const UsersTab: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +99,8 @@ const UsersTab: React.FC = () => {
   /** "" = no filter, "yes"/"no" = has it / does not. */
   const [uploadFilter, setUploadFilter] = useState<CvFilter>("");
   const [builtFilter, setBuiltFilter] = useState<CvFilter>("");
+  /** "" = no filter, "no" = address never confirmed, "yes" = confirmed. */
+  const [verifiedFilter, setVerifiedFilter] = useState<CvFilter>("");
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -90,6 +141,32 @@ const UsersTab: React.FC = () => {
     }
   };
 
+  /**
+   * Sends one account its confirmation link.
+   *
+   * Confirmed with a prompt because it puts mail in someone's inbox, which is
+   * not something to do by brushing a button. The row is not updated
+   * afterwards: sending a link confirms nothing — clicking it does.
+   */
+  const sendVerification = async (user: AdminUser) => {
+    const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
+    if (!window.confirm(`Envoyer un lien de confirmation à ${name} (${user.email}) ?`)) return;
+
+    setBusyId(user.id);
+    try {
+      const { sent } = await adminService.sendVerificationLink(user.id);
+      alert(
+        sent
+          ? `Lien envoyé à ${user.email}.`
+          : "Le serveur d'e-mail a refusé l'envoi. Vérifiez la configuration."
+      );
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Échec de l'envoi");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   /* Filtered here rather than on the server: both flags are already on every
      row, and "built one" is decided in JS server-side anyway (JSON emptiness
      is not something Prisma can filter on), so a round trip would buy nothing
@@ -108,6 +185,7 @@ const UsersTab: React.FC = () => {
 
     if (uploadFilter && matches(uploadFilter, u.candidateProfile?.hasUploadedCv)) return false;
     if (builtFilter && matches(builtFilter, u.candidateProfile?.hasBuiltCv)) return false;
+    if (verifiedFilter && matches(verifiedFilter, u.emailVerified)) return false;
 
     return true;
   });
@@ -138,6 +216,9 @@ const UsersTab: React.FC = () => {
 
   // Counts for the whole loaded set, so the filters say what they would find.
   const candidates = users.filter((u) => u.role === "CANDIDATE");
+  /* Across every role, not just candidates: an unconfirmed recruiter matters
+     more, not less. */
+  const unconfirmed = users.filter((u) => !u.emailVerified && u.status !== "DELETED").length;
   const withUpload = candidates.filter((u) => u.candidateProfile?.hasUploadedCv).length;
   const withBuilt = candidates.filter((u) => u.candidateProfile?.hasBuiltCv).length;
   const withNeither = candidates.filter(
@@ -200,6 +281,17 @@ const UsersTab: React.FC = () => {
           <option value="no">N’a pas créé de CV</option>
         </select>
 
+        <select
+          value={verifiedFilter}
+          onChange={(e) => setVerifiedFilter(e.target.value as CvFilter)}
+          className="border border-primary/20 rounded-lg px-3 py-2 text-sm"
+          aria-label="Filtrer par adresse confirmée"
+        >
+          <option value="">Adresse : toutes</option>
+          <option value="yes">Confirmée</option>
+          <option value="no">Non confirmée</option>
+        </select>
+
         <button
           onClick={load}
           disabled={loading}
@@ -243,11 +335,22 @@ const UsersTab: React.FC = () => {
           >
             {withNeither} sans aucun CV
           </button>
-          {(uploadFilter || builtFilter) && (
+          <button
+            onClick={() => {
+              setVerifiedFilter("no");
+              setUploadFilter("");
+              setBuiltFilter("");
+            }}
+            className="px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-400"
+          >
+            {unconfirmed} adresse(s) non confirmée(s)
+          </button>
+          {(uploadFilter || builtFilter || verifiedFilter) && (
             <button
               onClick={() => {
                 setUploadFilter("");
                 setBuiltFilter("");
+                setVerifiedFilter("");
               }}
               className="px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-gray-400"
             >
@@ -329,11 +432,17 @@ const UsersTab: React.FC = () => {
                     <td className="px-4 py-3 break-all">{u.email}</td>
                     <td className="px-4 py-3">{ROLE_LABEL[u.role]}</td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${STATUS_STYLE[u.status]}`}
-                      >
-                        {u.status}
-                      </span>
+                      {(() => {
+                        const badge = badgeFor(u);
+                        return (
+                          <span
+                            title={badge.hint}
+                            className={`px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${STATUS_STYLE[badge.key]}`}
+                          >
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <CvState user={u} />
@@ -357,6 +466,27 @@ const UsersTab: React.FC = () => {
                         >
                           <Pencil size={15} />
                         </button>
+                        {/* Only where it can do something. An address already
+                            confirmed, or an account that is gone, has nothing
+                            to send. */}
+                        {u.emailVerified ? (
+                          <span
+                            title="Adresse confirmée"
+                            className="p-2 rounded-lg border border-emerald-200 text-emerald-500"
+                          >
+                            <MailCheck size={15} />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => sendVerification(u)}
+                            disabled={deleted || busyId === u.id}
+                            className="p-2 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label="Envoyer un lien de confirmation"
+                            title="Envoyer un lien de confirmation"
+                          >
+                            <Send size={15} />
+                          </button>
+                        )}
                         <button
                           onClick={() => remove(u)}
                           disabled={deleted || busyId === u.id}
@@ -552,7 +682,7 @@ const EditUserModal: React.FC<{
             >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {STATUS_LABEL[s]}
                 </option>
               ))}
             </select>

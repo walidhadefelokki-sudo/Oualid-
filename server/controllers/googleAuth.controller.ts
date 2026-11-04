@@ -238,6 +238,7 @@ export const googleAuthSession = async (req: Request, res: Response, next: NextF
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          emailVerified: user.emailVerified,
           recruiterTier:
             recruiterTier === "PREMIUM"
               ? "paid"

@@ -4,7 +4,12 @@ import jwt from "jsonwebtoken";
 import prisma from "../utils/prisma";
 import { companyNameFrom } from "../utils/companyName";
 import { AppError } from "../middleware/error.middleware";
-import { sendWelcomeEmail, deliverEmail } from "../utils/email";
+import { sendWelcomeEmail, sendVerifyEmail, deliverEmail } from "../utils/email";
+import {
+  consumeEmailVerificationToken,
+  issueEmailVerificationToken,
+  verificationUrl,
+} from "../services/emailVerification.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import crypto from "crypto";
@@ -145,7 +150,14 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
      *
      * deliverEmail bounds the wait and swallows failures, so a mail problem
      * still cannot fail a signup that is already committed. */
-    await deliverEmail("Welcome", () => sendWelcomeEmail(email, greeting, user.role));
+    /* The account is PENDING until this link is clicked — that is what the
+     * status column means. Issued before the send so the email cannot go out
+     * pointing at a token that was never written. */
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(user.id));
+
+    await deliverEmail("Welcome", () =>
+      sendWelcomeEmail(email, greeting, user.role, verifyUrl)
+    );
 
     const token = signToken(user.id, user.role);
 
@@ -167,6 +179,9 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          // Sent so the client can show the "confirm your address" reminder
+          // without a second round trip to /auth/me.
+          emailVerified: user.emailVerified,
           recruiterTier,
         },
       },
@@ -208,9 +223,11 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
      * it were decorative and a suspended user kept working normally.
      *
      * Checked after the password, so this cannot be used to enumerate which
-     * addresses are registered. PENDING is deliberately allowed — registration
-     * never moves an account off it, and most accounts on the platform sit
-     * there, so treating it as unusable would lock nearly everyone out. */
+     * addresses are registered. PENDING is deliberately allowed: it means the
+     * address has not been confirmed yet, and the dashboard says so with a
+     * banner offering a new link. Blocking sign-in on it instead would lock
+     * out everyone who registered before confirmation existed, and would hide
+     * the one page that can resend the email. */
     if (user.status === "SUSPENDED") {
       return next(
         new AppError("Ce compte est suspendu. Contactez le support.", 403)
@@ -237,10 +254,89 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
           role: user.role,
           firstName: user.firstName,
           lastName: user.lastName,
+          // Sent so the client can show the "confirm your address" reminder
+          // without a second round trip to /auth/me.
+          emailVerified: user.emailVerified,
           recruiterTier,
         },
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Confirms an email address from the link in a welcome email.
+ *
+ * Public: the person clicking has usually not signed in yet, and the token is
+ * the credential. It answers 200 for an already-confirmed address because a
+ * second click — a mail client prefetching, a double tap — is not an error the
+ * user can do anything about.
+ */
+export const verifyEmail = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token } = req.body as { token?: string };
+    if (!token) return next(new AppError("Lien de confirmation incomplet.", 400));
+
+    const result = await consumeEmailVerificationToken(token);
+
+    // Compared rather than negated: the project compiles without
+    // strictNullChecks, where `!result.ok` does not narrow the union.
+    if (result.ok === false) {
+      return next(
+        new AppError(
+          result.reason === "expired"
+            ? "Ce lien de confirmation a expiré. Connectez-vous pour en recevoir un nouveau."
+            : "Ce lien de confirmation n'est pas valide.",
+          400
+        )
+      );
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: { email: result.email, alreadyVerified: result.alreadyVerified },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Sends the signed-in user a fresh confirmation link.
+ *
+ * Reports success when the address is already confirmed instead of an error:
+ * the user asked to be confirmed and they are. Issuing a new token invalidates
+ * the previous one, so the newest email is always the one that works.
+ */
+export const resendVerification = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) return next(new AppError("User not found", 404));
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, email: true, firstName: true, emailVerified: true },
+    });
+    if (!user) return next(new AppError("User not found", 404));
+
+    if (user.emailVerified) {
+      return res.status(200).json({
+        status: "success",
+        data: { sent: false, alreadyVerified: true },
+      });
+    }
+
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(user.id));
+    await deliverEmail("Verify", () =>
+      sendVerifyEmail(user.email, user.firstName, verifyUrl)
+    );
+
+    res.status(200).json({ status: "success", data: { sent: true, alreadyVerified: false } });
   } catch (err) {
     next(err);
   }

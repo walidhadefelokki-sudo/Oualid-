@@ -6,6 +6,11 @@ import {
   fromCvBuilder,
   fromUploadedCv,
 } from "../services/profileFromCv.service";
+import {
+  issueEmailVerificationToken,
+  verificationUrl,
+} from "../services/emailVerification.service";
+import { sendVerifyEmail } from "../utils/email";
 
 /**
  * Super-admin management of accounts and offers.
@@ -35,6 +40,56 @@ const audit = (
     .catch((err) => console.error(`Audit log failed for ${action}:`, err));
 
 /* ============================================================= accounts === */
+
+/**
+ * Sends one account a confirmation link.
+ *
+ * The reason this exists: every account that registered before confirmation
+ * was built sits at PENDING with an address nobody has ever proved. They
+ * cannot all be assumed good, and they cannot all be emailed at once without
+ * thinking about deliverability — so this does one at a time, on purpose, and
+ * the list filters to the accounts worth the click.
+ */
+export const sendVerificationLink = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        status: true,
+        emailVerified: true,
+        deletedAt: true,
+      },
+    });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+
+    if (target.emailVerified) {
+      return next(new AppError("Cette adresse est déjà confirmée.", 400));
+    }
+    if (target.status === "DELETED" || target.deletedAt) {
+      return next(new AppError("Ce compte est supprimé.", 400));
+    }
+
+    const verifyUrl = verificationUrl(await issueEmailVerificationToken(target.id));
+    const sent = await sendVerifyEmail(target.email, target.firstName, verifyUrl);
+
+    await audit(req, "SEND_VERIFICATION_LINK", "User", id);
+
+    // Reported rather than swallowed: an administrator clicking this wants to
+    // know whether to try again or chase the mail configuration.
+    res.status(200).json({ status: "success", data: { sent: Boolean(sent) } });
+  } catch (err) {
+    next(err);
+  }
+};
 
 const ROLES = ["CANDIDATE", "RECRUITER", "ADMIN"] as const;
 const STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"] as const;

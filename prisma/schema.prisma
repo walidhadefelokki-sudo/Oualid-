@@ -20,6 +20,11 @@ enum Role {
   ADMIN
 }
 
+/// PENDING means the email address has not been confirmed. Registration
+/// starts here and a click on the link in the welcome email moves the account
+/// to ACTIVE; a new Google account arrives ACTIVE because Google confirmed the
+/// address already. Neither state gates sign-in — SUSPENDED and DELETED are
+/// the states that do.
 enum AccountStatus {
   PENDING
   ACTIVE
@@ -801,6 +806,10 @@ model User {
   // the user at the provider instead.
   password      String?
   role          Role          @default(CANDIDATE)
+  // Kept in step with emailVerified while an account is PENDING: confirming
+  // the address promotes PENDING to ACTIVE. They stay separate columns because
+  // an administrator can suspend a user whose address is perfectly valid, and
+  // a confirmation arriving afterwards must not undo that.
   status        AccountStatus @default(PENDING)
   emailVerified Boolean       @default(false)
 
@@ -822,17 +831,18 @@ model User {
   quiz         Quiz?
   quizAttempts QuizAttempt[]
 
-  refreshTokens   RefreshToken[]
-  sessions        UserSession[]
-  accounts        Account[]
-  notifications   Notification[]
-  auditLogs       AuditLog[]
-  supportTickets  SupportTicket[]
-  ownedLeads      Lead[]          @relation("LeadOwner")
-  convertedFrom   Lead[]          @relation("LeadConverted")
-  crmNotesWritten CrmNote[]       @relation("CrmNoteAuthor")
-  crmNotesAbout   CrmNote[]       @relation("CrmNoteSubject")
-  deviceTokens    DeviceToken[]
+  refreshTokens      RefreshToken[]
+  emailVerifications EmailVerificationToken[]
+  sessions           UserSession[]
+  accounts           Account[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  supportTickets     SupportTicket[]
+  ownedLeads         Lead[]                   @relation("LeadOwner")
+  convertedFrom      Lead[]                   @relation("LeadConverted")
+  crmNotesWritten    CrmNote[]                @relation("CrmNoteAuthor")
+  crmNotesAbout      CrmNote[]                @relation("CrmNoteSubject")
+  deviceTokens       DeviceToken[]
 
   packOrders             PackOrder[]               @relation("PackOrderBuyer")
   schedulesHosted        ScheduleEvent[]           @relation("ScheduleHost")
@@ -895,6 +905,23 @@ model RefreshToken {
   expiresAt DateTime
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// A single-use link that confirms an email address.
+///
+/// Only the SHA-256 of the token is stored. The value that travels in the link
+/// is never written down, so a copy of this table does not let anyone confirm
+/// somebody else's address — which is the one thing the link proves.
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }

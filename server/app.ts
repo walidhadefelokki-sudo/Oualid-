@@ -150,6 +150,10 @@ export function createApp() {
   });
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", authLimiter);
+  // Confirming guesses a 256-bit token, and resending sends real mail to the
+  // signed-in user's own address. Neither is worth leaving unbounded.
+  app.use("/api/auth/verify-email", authLimiter);
+  app.use("/api/auth/resend-verification", authLimiter);
 
   // The contact form is public and unauthenticated, and every submission sends
   // an email. Without a limit on it, it is an open relay for whoever finds it.

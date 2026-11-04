@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { register, login, getMe, updateMyAvatar } from "../controllers/auth.controller";
+import {
+  register,
+  login,
+  getMe,
+  updateMyAvatar,
+  verifyEmail,
+  resendVerification,
+} from "../controllers/auth.controller";
 import {
   googleAuthStart,
   googleAuthCallback,
@@ -13,6 +20,13 @@ const router = Router();
 
 router.post("/register", register);
 router.post("/login", login);
+
+// --- Email confirmation --------------------------------------------------
+// The token in the link is the credential, so confirming needs no session.
+// Asking for a new link does: otherwise the endpoint would send mail to any
+// address handed to it.
+router.post("/verify-email", verifyEmail);
+router.post("/resend-verification", protect, resendVerification);
 
 // --- Google OAuth 2.0 / OpenID Connect -----------------------------------
 // Standard redirect flow. `/google` sends the browser to Google, Google

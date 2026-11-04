@@ -403,17 +403,49 @@ export const sendEmail = async (
 /* -------------------------------------------------------------------------- */
 
 /**
+ * The confirmation block the welcome emails carry.
+ *
+ * It sits near the top rather than at the bottom: it is the one thing in a
+ * welcome email that stops working if left for later, because the link
+ * expires. Returns nothing when no link was issued, which is the case for an
+ * account created through Google — Google confirmed the address already.
+ */
+const confirmBlock = (verifyUrl?: string | null) =>
+  verifyUrl
+    ? `
+    ${paragraph(
+      `Avant tout, confirmez votre adresse e-mail. Ce lien est valable 48&nbsp;heures.`
+    )}
+    ${button(verifyUrl, 'Confirmer mon adresse e-mail')}`
+    : '';
+
+/** The same block as plain text, for the text/plain part. */
+const confirmLines = (verifyUrl?: string | null) =>
+  verifyUrl
+    ? [
+        'Avant tout, confirmez votre adresse e-mail (lien valable 48 heures) :',
+        verifyUrl,
+        '',
+      ]
+    : [];
+
+/**
  * Candidate: account created.
  *
- * There is no verification link because the platform has no email-verification
- * flow — `User.emailVerified` exists but nothing issues or checks a token.
+ * `verifyUrl` confirms the address, which moves the account from PENDING to
+ * ACTIVE. It is optional because a Google signup needs no link.
  */
-export const sendCandidateWelcomeEmail = async (email: string, firstName?: string | null) => {
+export const sendCandidateWelcomeEmail = async (
+  email: string,
+  firstName?: string | null,
+  verifyUrl?: string | null
+) => {
   const greeting = firstName?.trim() || 'et bienvenue';
 
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${confirmBlock(verifyUrl)}
     ${paragraph(
       `Votre compte a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez maintenant d&eacute;couvrir des opportunit&eacute;s professionnelles adapt&eacute;es &agrave; votre profil et postuler en quelques clics.`
     )}
@@ -441,6 +473,7 @@ export const sendCandidateWelcomeEmail = async (email: string, firstName?: strin
     '',
     "Bienvenue sur Dar L'Emploi !",
     '',
+    ...confirmLines(verifyUrl),
     'Votre compte a été créé avec succès. Vous pouvez maintenant découvrir des opportunités professionnelles adaptées à votre profil et postuler en quelques clics.',
     '',
     '- Explorez les offres',
@@ -464,13 +497,18 @@ export const sendCandidateWelcomeEmail = async (email: string, firstName?: strin
   );
 };
 
-/** Recruiter: company account created. */
-export const sendRecruiterWelcomeEmail = async (email: string, companyName?: string | null) => {
+/** Recruiter: company account created. See `verifyUrl` above. */
+export const sendRecruiterWelcomeEmail = async (
+  email: string,
+  companyName?: string | null,
+  verifyUrl?: string | null
+) => {
   const greeting = companyName?.trim() || 'et bienvenue';
 
   const body = `
     ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
     ${paragraph(`<strong>Bienvenue sur Dar L'Emploi&nbsp;!</strong>`)}
+    ${confirmBlock(verifyUrl)}
     ${paragraph(
       `Votre compte entreprise a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez d&egrave;s maintenant publier votre premi&egrave;re offre d'emploi <strong>gratuitement</strong> et commencer &agrave; recevoir des candidatures de profils correspondant &agrave; vos besoins.`
     )}
@@ -495,6 +533,7 @@ export const sendRecruiterWelcomeEmail = async (email: string, companyName?: str
     '',
     "Bienvenue sur Dar L'Emploi !",
     '',
+    ...confirmLines(verifyUrl),
     "Votre compte entreprise a été créé avec succès. Vous pouvez dès maintenant publier votre première offre d'emploi gratuitement et commencer à recevoir des candidatures de profils correspondant à vos besoins.",
     '',
     '- Votre première offre est offerte',
@@ -817,11 +856,57 @@ export const sendAdminBroadcastEmail = async (
 export const sendWelcomeEmail = async (
   email: string,
   name?: string | null,
-  role?: 'CANDIDATE' | 'RECRUITER' | string
+  role?: 'CANDIDATE' | 'RECRUITER' | string,
+  verifyUrl?: string | null
 ) =>
   role === 'RECRUITER'
-    ? sendRecruiterWelcomeEmail(email, name)
-    : sendCandidateWelcomeEmail(email, name);
+    ? sendRecruiterWelcomeEmail(email, name, verifyUrl)
+    : sendCandidateWelcomeEmail(email, name, verifyUrl);
+
+/**
+ * A confirmation link on its own.
+ *
+ * Sent when someone asks for a new one, and when an administrator sends one to
+ * an account that registered before confirmation existed. Short on purpose:
+ * the only thing it asks for is a click, and the welcome message has either
+ * been read already or never arrived — in which case repeating it does not
+ * help.
+ */
+export const sendVerifyEmail = async (
+  email: string,
+  firstName?: string | null,
+  verifyUrl?: string | null
+) => {
+  if (!verifyUrl) return false;
+  const greeting = firstName?.trim() || 'bonjour';
+
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+      `Confirmez votre adresse e-mail pour activer votre compte Dar L'Emploi. Ce lien est valable 48&nbsp;heures.`
+    )}
+    ${button(verifyUrl, 'Confirmer mon adresse e-mail')}
+    ${paragraph(
+      `Si vous n'avez pas cr&eacute;&eacute; de compte sur Dar L'Emploi, ignorez simplement ce message.`
+    )}`;
+
+  const text = [
+    `Bonjour ${greeting},`,
+    '',
+    "Confirmez votre adresse e-mail pour activer votre compte Dar L'Emploi.",
+    'Ce lien est valable 48 heures :',
+    verifyUrl,
+    '',
+    "Si vous n'avez pas créé de compte sur Dar L'Emploi, ignorez simplement ce message.",
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    "Confirmez votre adresse e-mail — Dar L'Emploi",
+    layout('Confirmez votre adresse', body),
+    { from: FROM_REGISTER, text }
+  );
+};
 
 /* -------------------------------------------------------------------------- */
 /*                       Transactional confirmations — info@                  */

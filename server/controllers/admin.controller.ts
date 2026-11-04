@@ -144,6 +144,9 @@ export const getAllUsers = async (req: Request, res: Response, next: NextFunctio
         email: true,
         role: true,
         status: true,
+        // Sent alongside status because the two are no longer independent:
+        // PENDING means this is false, and the list offers a way to fix it.
+        emailVerified: true,
         firstName: true,
         lastName: true,
         createdAt: true,

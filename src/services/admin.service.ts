@@ -8,6 +8,12 @@ export interface AdminUser {
   email: string;
   role: AdminRole;
   status: AdminAccountStatus;
+  /**
+   * Whether anyone has proved they can read this address. Tied to status: a
+   * PENDING account is exactly an unconfirmed one, and confirming promotes it
+   * to ACTIVE.
+   */
+  emailVerified: boolean;
   firstName?: string | null;
   lastName?: string | null;
   createdAt: string;
@@ -138,6 +144,17 @@ export const adminService = {
   updateUser: async (id: string, changes: AdminUserChanges): Promise<AdminUser> => {
     const { data } = await api.patch(`/admin/users/${id}`, changes);
     return data.data.user;
+  },
+
+  /**
+   * Sends one account its confirmation link.
+   *
+   * `sent` is false when the mail server refused it — worth surfacing, since
+   * the administrator is about to wonder why nothing happened.
+   */
+  sendVerificationLink: async (id: string): Promise<{ sent: boolean }> => {
+    const { data } = await api.post(`/admin/users/${id}/send-verification`);
+    return data.data;
   },
 
   /** Marks the account DELETED; the row and its records stay. */

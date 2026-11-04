@@ -45,6 +45,7 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
 | **Service editor** | Three formulas, draft, submit, pause, resume, delete | full loop verified: draft → charge → approve → public |
 | **Client projects** | Publish free, moderated, public feed, invite-only stays private | refusal, fix, approval, and no client e-mail in the payload |
 | **Moderation** | Admin queue with age, approve, refuse with a reason and refund, decision history | refusal refunded 10 and the resubmission charged again |
+| **Messaging** | Threads from a profile, a paid proposal or an order; per-thread and total unread; polling with `after`; contact-detail flagging with its own moderation queue | 23 tests incl. a third account refused, find-or-create from both sides, and the database-clock skew that would freeze an unread badge |
 
 ### Not done, in dependency order
 
@@ -53,22 +54,28 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
    tested (`resolveProposalCharge`); the endpoints are not.
 2. **Orders.** Created from a package, a hired proposal or an accepted custom
    offer. Milestones, deliveries, revisions, completion.
-3. **Messaging.** Conversations, attachments, custom offers sent from a
-   thread. Real-time is a later refinement — polling is enough to start.
+3. **Messaging attachments and custom offers.** Threads themselves are done
+   (above). Attachments need the same Supabase upload path as service media,
+   below, and should land with it. Custom offers create an order from a
+   thread, so they belong with the order rules and their own tests, not with
+   the chat.
 4. **Reviews.** Only after a completed order, both directions, one public
    reply.
 5. **Payments.** Credit packs through Chargily, which is already live on the
    recruitment side, plus the CCP/BaridiMob receipt queue a human approves.
    Invoices reuse the existing PDF generator.
 6. **Service media.** Uploads through the existing Supabase storage. Cards
-   currently fall back to an initial.
+   currently fall back to an initial. Message attachments want the same
+   endpoint, so the two are one piece of work.
 
 ### Known gaps in what is done
 
-- **Service detail and freelancer profile pages 404.** The cards link to
-  `/service/:slug` and `/@username`; neither route exists yet.
 - **No image on a service.** The editor has no upload.
-- **`/tarifs` 404s** although the pricing endpoint is live.
+- **Contact flagging is a guess, deliberately.** It never blocks and never
+  bans, because a tradesman quoting their own landline and someone dodging the
+  fees produce the same match. The queue in Modération freelance → Messages
+  signalés is where the difference gets decided; the sanction is suspending
+  the account from Comptes.
 
 ---
 
@@ -116,10 +123,11 @@ subscription worthless to someone who bought a pack.
 
 ## Two things that need a decision before launch
 
-**No test framework existed before this work.** There is one now, and the
-money path is covered — the ledger, the plan limits, the publication charge.
-Nothing else is. Orders, messaging and payments should not ship on the same
-terms.
+**Test coverage is uneven.** The money path is covered — the ledger, the plan
+limits, the publication charge — and so now are proposals, orders, reviews,
+payments, portfolios and messaging, at 157 tests. What has no tests is the
+frontend: every page has been driven by hand against a real server, and that
+is not the same thing.
 
 **The migration has never run against production.** It is additive — 49
 `CREATE TABLE`, no `DROP`, three nullable columns on existing tables — and

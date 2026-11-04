@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, BadgeCheck, Check, Clock, Loader2, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Check, Clock, Loader2, MessageSquare, RefreshCw, X } from "lucide-react";
 import api from "../../services/api";
 
 /**
@@ -88,10 +88,13 @@ const StatTile: React.FC<{ label: string; value: number; warn?: boolean }> = ({
 );
 
 const FreelanceModerationTab: React.FC = () => {
-  const [kind, setKind] = useState<"services" | "projects" | "payments">("services");
+  const [kind, setKind] = useState<"services" | "projects" | "payments" | "messages">(
+    "services"
+  );
   const [items, setItems] = useState<QueueItem[] | null>(null);
   const [projects, setProjects] = useState<any[] | null>(null);
   const [payments, setPayments] = useState<any[] | null>(null);
+  const [flagged, setFlagged] = useState<any[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -105,12 +108,14 @@ const FreelanceModerationTab: React.FC = () => {
       api.get("/admin/freelance/moderation/stats"),
       api.get("/admin/freelance/moderation/projects"),
       api.get("/admin/freelance/payments/pending"),
+      api.get("/admin/freelance/moderation/messages"),
     ])
-      .then(([q, s, pr, pay]) => {
+      .then(([q, s, pr, pay, msg]) => {
         setItems(q.data.data.services);
         setStats(s.data.data);
         setProjects(pr.data.data.projects);
         setPayments(pay.data.data.payments);
+        setFlagged(msg.data.data.messages);
       })
       .catch((e) => setError(e?.response?.data?.message || e?.message || "Échec du chargement"));
   };
@@ -143,6 +148,25 @@ const FreelanceModerationTab: React.FC = () => {
       load();
     } catch (e: any) {
       setError(e?.response?.data?.message || "Le refus a échoué.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /**
+   * Clears a flag after reading the message.
+   *
+   * The message itself is untouched. A moderator deciding it was innocent
+   * does not make it un-said, and the thread is the record of what was.
+   */
+  const clearFlag = async (id: string) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.post(`/admin/freelance/moderation/messages/${id}/clear`);
+      setFlagged((prev) => prev?.filter((m) => m.id !== id) ?? null);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Le classement a échoué.");
     } finally {
       setBusyId(null);
     }
@@ -184,6 +208,7 @@ const FreelanceModerationTab: React.FC = () => {
             { k: "services", label: "Services", n: items?.length ?? 0 },
             { k: "projects", label: "Projets clients", n: projects?.length ?? 0 },
             { k: "payments", label: "Virements", n: payments?.length ?? 0 },
+            { k: "messages", label: "Messages signalés", n: flagged?.length ?? 0 },
           ] as const
         ).map((o) => (
           <button
@@ -201,7 +226,101 @@ const FreelanceModerationTab: React.FC = () => {
         ))}
       </div>
 
-      {kind === "payments" ? (
+      {kind === "messages" ? (
+        flagged === null ? (
+          <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
+        ) : flagged.length === 0 ? (
+          <div className="bg-white rounded-xl p-10 text-center">
+            <Check size={28} className="mx-auto text-emerald-500" />
+            <p className="mt-3 font-semibold text-primary/70">Aucun message signalé.</p>
+            <p className="mt-1 text-sm text-primary/50">
+              Le détecteur signale les messages qui ressemblent à un contact direct. Il ne
+              bloque jamais&nbsp;: la décision se prend ici.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {flagged.map((m) => {
+              const sender =
+                m.sender.freelancerProfile?.displayName ||
+                [m.sender.firstName, m.sender.lastName].filter(Boolean).join(" ") ||
+                m.sender.email;
+
+              return (
+                <article key={m.id} className="rounded-xl border-2 border-amber-200 bg-white p-5">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-bold text-primary break-words">{sender}</h2>
+                      <p className="mt-1 text-xs text-primary/50 break-all">{m.sender.email}</p>
+                    </div>
+
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                      <AlertTriangle size={12} /> {m.flagReason}
+                    </span>
+
+                    {m.conversation.order && (
+                      <span
+                        className="text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-primary/8 text-primary/60"
+                        dir="ltr"
+                      >
+                        {m.conversation.order.reference}
+                      </span>
+                    )}
+
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-primary/8 text-primary/60">
+                      <Clock size={12} /> {waited(m.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* The surrounding lines, oldest first. A phone number in a
+                      conversation about where to deliver something reads very
+                      differently from the same number in a first reply, and
+                      the decision needs the difference. */}
+                  <div className="mt-4 space-y-1.5">
+                    {[...m.context].reverse().map((c: any) => (
+                      <p
+                        key={c.id}
+                        className={`rounded-xl px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
+                          c.id === m.id
+                            ? "bg-amber-50 border border-amber-200 text-amber-900 font-semibold"
+                            : "bg-primary/5 text-primary/70"
+                        }`}
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50 me-2">
+                          {c.senderId === m.sender.id ? "auteur" : "autre"}
+                        </span>
+                        {c.body ?? "—"}
+                      </p>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => clearFlag(m.id)}
+                      disabled={busyId === m.id}
+                      className="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-primary text-white text-sm font-bold disabled:opacity-50"
+                    >
+                      {busyId === m.id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Check size={14} />
+                      )}
+                      Classer sans suite
+                    </button>
+
+                    {/* Suspending an account is the real sanction, and it
+                        belongs on the account rather than here. */}
+                    <span className="inline-flex items-center gap-1.5 text-xs text-primary/50 px-2">
+                      <MessageSquare size={13} />
+                      Pour sanctionner, suspendez le compte depuis Comptes.
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )
+      ) : kind === "payments" ? (
         payments === null ? (
           <div className="bg-white rounded-xl p-8 text-center text-primary/50">Chargement…</div>
         ) : payments.length === 0 ? (

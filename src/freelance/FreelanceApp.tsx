@@ -21,6 +21,7 @@ import PortfolioEditor from "./pages/workspace/PortfolioEditor";
 import Pricing from "./pages/Pricing";
 import BuyCredits from "./pages/BuyCredits";
 import PaymentStatus from "./pages/PaymentStatus";
+import Messages from "./pages/Messages";
 import {
   MyCredits,
   MyOrders,
@@ -103,6 +104,13 @@ const FreelanceApp: React.FC = () => (
             <Route path="tarifs" element={<Pricing />} />
             <Route path="acheter-credits" element={<BuyCredits />} />
             <Route path="paiement/:id" element={<PaymentStatus />} />
+
+            {/* Messages. Outside the workspace on purpose: that shell gates
+                on an activated freelance profile, and a client who posted a
+                project has none — they would be shown the activation form to
+                read their own replies. Both sides need the same inbox. */}
+            <Route path="messages" element={<Messages />} />
+            <Route path="messages/:id" element={<Messages />} />
             {/* The handle lives at the root, as the specification sets out:
                 freelance.darlemploi.dz/@nom-utilisateur. */}
             <Route path=":handle" element={<HandleRoute />} />

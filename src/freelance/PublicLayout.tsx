@@ -5,6 +5,7 @@ import { Lang, useI18n } from "./i18n";
 import logoLight from "../assets/logo2-v2.png";
 import { useAuth } from "./auth";
 import { usePageViews } from "./usePageViews";
+import { useUnread } from "./useUnread";
 import CookieNotice, { openCookiePolicy } from "../components/CookieNotice";
 
 /**
@@ -55,6 +56,7 @@ const PublicLayout: React.FC = () => {
   const { t, lang } = useI18n();
   const { signedIn, loading } = useAuth();
   usePageViews();
+  const unread = useUnread(signedIn);
   const [open, setOpen] = useState(false);
 
   const links = (
@@ -74,6 +76,22 @@ const PublicLayout: React.FC = () => {
       <NavLink to="/client/projets" className={navClass} onClick={() => setOpen(false)}>
         Publier un projet
       </NavLink>
+      {/* Only once there is a session: an inbox link for a visitor who has no
+          inbox is a link to a sign-in screen pretending to be a feature. */}
+      {signedIn && (
+        <NavLink
+          to="/messages"
+          className={(state) => `${navClass(state)} inline-flex items-center gap-1.5`}
+          onClick={() => setOpen(false)}
+        >
+          {t("nav.messages")}
+          {unread > 0 && (
+            <span className="min-w-4.5 h-4.5 px-1.5 grid place-items-center rounded-full bg-[#D4AF37] text-[#0B1E3D] text-[10px] font-black">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </NavLink>
+      )}
     </>
   );
 

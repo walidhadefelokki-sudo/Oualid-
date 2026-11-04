@@ -8,6 +8,7 @@ import * as order from "../controllers/order.controller";
 import * as review from "../controllers/review.controller";
 import * as portfolio from "../controllers/portfolio.controller";
 import * as payment from "../controllers/marketplacePayment.controller";
+import * as message from "../controllers/message.controller";
 import { protect } from "../middleware/auth.middleware";
 
 /**
@@ -106,5 +107,15 @@ router.post("/me/payments", protect, payment.startPurchase);
 router.get("/me/payments", protect, payment.listMyPayments);
 router.get("/me/payments/:id", protect, payment.getPayment);
 router.post("/me/payments/:id/receipt", protect, payment.attachReceipt);
+
+// Messaging. The platform is where the conversation happens — every public
+// page names people without giving a way to reach them — so these are the
+// only channel there is. Polled rather than pushed; see the service.
+router.post("/me/conversations", protect, message.openConversation);
+router.get("/me/conversations", protect, message.listConversations);
+router.get("/me/conversations/unread", protect, message.getUnreadCount);
+router.get("/me/conversations/:id", protect, message.getConversation);
+router.post("/me/conversations/:id/messages", protect, message.sendMessage);
+router.post("/me/conversations/:id/read", protect, message.markConversationRead);
 
 export default router;

@@ -62,6 +62,10 @@ router.post("/freelance/moderation/services/:id/reject", freelanceModeration.rej
 router.get("/freelance/moderation/projects", freelanceModeration.listProjectQueue);
 router.post("/freelance/moderation/projects/:id/approve", freelanceModeration.approveProject);
 router.post("/freelance/moderation/projects/:id/reject", freelanceModeration.rejectProject);
+// Messages the contact detector flagged. A flag nobody reads is decoration,
+// and the rule it stands for is imaginary — so it gets a queue.
+router.get("/freelance/moderation/messages", freelanceModeration.listFlaggedMessages);
+router.post("/freelance/moderation/messages/:id/clear", freelanceModeration.clearMessageFlag);
 
 // The team's weekly board. A week is identified by its Monday.
 router.get("/team/board", teamTask.getBoard);

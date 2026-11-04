@@ -4,6 +4,7 @@ import { Check, Loader2, Package, RotateCcw, Send, X } from "lucide-react";
 import api from "../../../services/api";
 import { ErrorState, Loading, Price } from "../../ui";
 import ReviewForm from "../../ReviewForm";
+import ContactButton from "../../ContactButton";
 
 /**
  * One order, for whichever side is reading it.
@@ -14,7 +15,8 @@ import ReviewForm from "../../ReviewForm";
  *
  * The history is shown in full rather than summarised. An order is the only
  * account of what two people agreed, and the moment it matters is the moment
- * they disagree.
+ * they disagree. The order's conversation is part of that account, which is
+ * why it gets a thread of its own rather than sharing the pair's general one.
  */
 
 const STATUS: Record<string, { label: string; chip: string }> = {
@@ -103,11 +105,16 @@ const OrderDetail: React.FC = () => {
             {mine === "client" ? `Avec ${o.freelancer.displayName}` : `Pour ${o.clientName ?? "—"}`}
           </p>
         </div>
-        <span
-          className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${status.chip}`}
-        >
-          {status.label}
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${status.chip}`}
+          >
+            {status.label}
+          </span>
+          {/* The thread attached to this order, not the general one with the
+              same person: a dispute is read from one job at a time. */}
+          <ContactButton orderId={o.id} label="Messages" size="sm" />
+        </div>
       </div>
 
       <div className={`${card} mb-5 flex flex-wrap items-center gap-x-8 gap-y-3`}>

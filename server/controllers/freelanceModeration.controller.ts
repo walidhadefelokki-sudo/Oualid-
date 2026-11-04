@@ -307,3 +307,118 @@ export const rejectProject = async (req: Request, res: Response, next: NextFunct
     next(err);
   }
 };
+
+/* ------------------------------------------------------------------ messages */
+
+/**
+ * Messages that looked like an attempt to take a deal off the platform.
+ *
+ * The detector in messaging.service flags and never blocks, because a plumber
+ * quoting their own landline and someone dodging the fees produce the same
+ * match. That choice is only defensible if a person actually reads the
+ * flags — otherwise the flag is decoration and the rule it enforces is
+ * imaginary.
+ *
+ * Both sides of the thread are named and some surrounding messages come with
+ * each one: a phone number in the middle of a conversation about where to
+ * deliver a parcel reads very differently from the same number in a first
+ * reply, and the decision needs the difference.
+ */
+export const listFlaggedMessages = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const perPage = 25;
+
+    const [total, messages] = await Promise.all([
+      prisma.message.count({ where: { flagged: true } }),
+      prisma.message.findMany({
+        where: { flagged: true },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * perPage,
+        take: perPage,
+        select: {
+          id: true,
+          body: true,
+          flagReason: true,
+          createdAt: true,
+          conversationId: true,
+          sender: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              freelancerProfile: { select: { username: true, displayName: true } },
+            },
+          },
+          conversation: {
+            select: {
+              order: { select: { id: true, reference: true } },
+              participants: {
+                select: {
+                  user: { select: { id: true, email: true, firstName: true, lastName: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Fetched per message rather than joined: a flagged message is rare, and
+    // this keeps the surrounding lines to the thread they belong to.
+    const withContext = await Promise.all(
+      messages.map(async (m) => ({
+        ...m,
+        context: await prisma.message.findMany({
+          where: { conversationId: m.conversationId, createdAt: { lte: m.createdAt } },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+          select: { id: true, body: true, senderId: true, createdAt: true },
+        }),
+      }))
+    );
+
+    res.json({ success: true, data: { messages: withContext, total, page, perPage } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Clears a flag after a moderator has read the message.
+ *
+ * The message is never edited or removed: it is the record of what was said,
+ * and a moderator deciding it was innocent does not make it un-said. What
+ * changes is that it leaves the queue.
+ */
+export const clearMessageFlag = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const message = await prisma.message.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, flagged: true },
+    });
+    if (!message) return next(new AppError("Message introuvable.", 404));
+
+    const updated = await prisma.message.update({
+      where: { id: message.id },
+      data: { flagged: false },
+      select: { id: true, flagged: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id,
+        action: "CLEAR_MESSAGE_FLAG",
+        entity: "Message",
+        entityId: message.id,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      },
+    });
+
+    res.json({ success: true, data: { message: updated } });
+  } catch (err) {
+    next(err);
+  }
+};

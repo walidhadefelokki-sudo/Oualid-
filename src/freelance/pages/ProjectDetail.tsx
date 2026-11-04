@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { ErrorState, Loading, Price } from "../ui";
+import ContactButton from "../ContactButton";
 
 /**
  * A project, and the form to answer it.
@@ -217,9 +218,18 @@ const ProjectDetail: React.FC = () => {
             </Link>
           </>
         ) : sent ? (
-          <p className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-4">
-            {sent}
-          </p>
+          <>
+            <p className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-4">
+              {sent}
+            </p>
+            {/* Only now. The proposal has been charged, and paying for it is
+                what earns a line to the client — see clientBehindProject. */}
+            <ContactButton
+              projectId={project.id}
+              label="Discuter avec le client"
+              className="mt-4 sm:max-w-xs"
+            />
+          </>
         ) : !eligibility ? (
           <Loading />
         ) : !eligibility.canPropose ? (
@@ -242,6 +252,14 @@ const ProjectDetail: React.FC = () => {
               >
                 Acheter des crédits
               </Link>
+            )}
+            {/* Already answered on an earlier visit: the thread is theirs. */}
+            {eligibility.reason === "already-proposed" && (
+              <ContactButton
+                projectId={project.id}
+                label="Discuter avec le client"
+                className="mt-4 sm:max-w-xs"
+              />
             )}
           </>
         ) : (

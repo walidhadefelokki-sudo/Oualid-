@@ -4,14 +4,15 @@ import { BadgeCheck, MapPin, Star } from "lucide-react";
 import api from "../../services/api";
 import { useI18n } from "../i18n";
 import { EmptyState, ErrorState, Grid, Loading, Price, ServiceTile } from "../ui";
+import ContactButton from "../ContactButton";
 
 /**
  * A freelancer's public page, at /@username.
  *
  * Their standing and their work, and no way to reach them off the platform:
- * no e-mail, no phone. Ordering a service or answering a project is how a
- * conversation starts, which is what keeps the record of it where a dispute
- * can be read.
+ * no e-mail, no phone. Ordering a service, answering a project or writing
+ * through the platform's own messages is how a conversation starts, which is
+ * what keeps the record of it where a dispute can be read.
  *
  * This is not yet the mini-portfolio the specification describes — that has
  * sections a freelancer arranges, case studies and templates. This is the
@@ -130,6 +131,10 @@ const FreelancerProfile: React.FC = () => {
               <span className="text-[#2B3442]/50"> / heure</span>
             </p>
           )}
+
+          {/* The only way to reach this person, which is the point: a thread
+              here is readable if the work later goes wrong. */}
+          <ContactButton username={data.username} variant="solid" className="mt-4 sm:max-w-xs" />
         </div>
       </header>
 

@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { ErrorState, Loading, Price } from "../ui";
+import ContactButton from "../ContactButton";
 
 /**
  * A service, and the way to buy it.
@@ -285,7 +286,16 @@ const ServiceDetail: React.FC = () => {
                 {signedIn ? "Commander" : t("nav.signin")}
               </button>
 
-              <p className="mt-2 text-[11px] text-[#2B3442]/40 text-center">
+              {/* A buyer with a question should not have to order to ask it.
+                  Placed under the order button, not instead of it: the
+                  service page is for selling. */}
+              <ContactButton
+                username={f.username}
+                label="Poser une question"
+                className="mt-2"
+              />
+
+              <p className="mt-3 text-[11px] text-[#2B3442]/40 text-center">
                 Le paiement se règle directement avec le freelance.
               </p>
             </>

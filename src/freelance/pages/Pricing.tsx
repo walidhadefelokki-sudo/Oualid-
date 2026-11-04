@@ -13,9 +13,9 @@ import { useI18n } from "../i18n";
  * would make changing them a deploy — and would let the page disagree with
  * what the server actually charges.
  *
- * Buying is not built yet. Rather than a button that does nothing, the page
- * says so: a price list people can read is useful, a checkout that fails is
- * not.
+ * Buying is built, and the page links to it rather than describing it: the
+ * packs here are the same rows the checkout charges, so the two cannot
+ * disagree about what something costs.
  */
 
 const TIER_STYLE: Record<string, string> = {

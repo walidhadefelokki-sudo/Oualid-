@@ -1044,11 +1044,11 @@ var sendCorporateEnquiryAck = async (enquiry) => {
     { from: FROM_INFO, text }
   );
 };
-var deliverEmail = async (label, send, timeoutMs = 8e3) => {
+var deliverEmail = async (label, send2, timeoutMs = 8e3) => {
   let timer;
   try {
     await Promise.race([
-      send(),
+      send2(),
       new Promise((_, reject2) => {
         timer = setTimeout(() => reject2(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
       })
@@ -6361,6 +6361,405 @@ var rejectReceipt = async (req, res, next) => {
   }
 };
 
+// server/services/messaging.service.ts
+init_prisma();
+var MessagingError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "MessagingError";
+  }
+};
+var MAX_BODY = 5e3;
+var PATTERNS = [
+  // Algerian mobiles, with or without the country code and with any of the
+  // usual separators: 0555 12 34 56, +213555123456, 00213-555-123456.
+  [/(?:\+|00)\s*213[\s.\-]*[5-7]\d(?:[\s.\-]*\d){7}/, "num\xE9ro de t\xE9l\xE9phone"],
+  [/(?:^|[^\d])0[5-7](?:[\s.\-]*\d){8}(?:[^\d]|$)/, "num\xE9ro de t\xE9l\xE9phone"],
+  // Spelled out to dodge a digit filter: "zero five five five".
+  [
+    /\b(?:z[eé]ro|sifr)\b[\s,.\-]*(?:\b(?:un|deux|trois|quatre|cinq|six|sept|huit|neuf|z[eé]ro)\b[\s,.\-]*){5,}/i,
+    "num\xE9ro de t\xE9l\xE9phone"
+  ],
+  [/[\w.+-]+@[\w-]+\.[\w.]{2,}/, "adresse e-mail"],
+  // "arobase", "(at)", "[at]" standing in for the @.
+  [
+    /[\w.+-]{2,}\s*[([]?\s*(?:arobase|at|dot)\s*[)\]]?\s*[\w-]{2,}\s*\.\s*[a-z]{2,}/i,
+    "adresse e-mail"
+  ],
+  [
+    /\b(?:whats?app|watsapp|wtsp|telegram|t\.me|viber|imo|messenger|snapchat|instagram|insta|facebook)\b/i,
+    "messagerie externe"
+  ],
+  [
+    /(?:hors[\s-]?plateforme|en dehors de la plateforme|sans passer par (?:le )?site)/i,
+    "contournement de la plateforme"
+  ]
+];
+var contactFlags = (body) => {
+  const found = /* @__PURE__ */ new Set();
+  for (const [pattern, reason] of PATTERNS) {
+    if (pattern.test(body)) found.add(reason);
+  }
+  return [...found];
+};
+var participantIn = async (conversationId, userId) => {
+  const conversation = await prisma_default.conversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      id: true,
+      orderId: true,
+      participants: { select: { userId: true, lastReadAt: true } }
+    }
+  });
+  if (!conversation || !conversation.participants.some((p) => p.userId === userId)) {
+    throw new MessagingError("Conversation introuvable.", 404);
+  }
+  return conversation;
+};
+var openWith = async (userId, otherUserId, orderId) => {
+  if (userId === otherUserId) {
+    throw new MessagingError("Vous ne pouvez pas vous \xE9crire \xE0 vous-m\xEAme.", 400);
+  }
+  const other = await prisma_default.user.findUnique({
+    where: { id: otherUserId },
+    select: { id: true, status: true, deletedAt: true }
+  });
+  if (!other || other.status === "DELETED" || other.deletedAt) {
+    throw new MessagingError("Ce compte n'est plus disponible.", 404);
+  }
+  if (orderId) {
+    const existing = await prisma_default.conversation.findUnique({
+      where: { orderId },
+      select: { id: true }
+    });
+    if (existing) return existing;
+  } else {
+    const mine = await prisma_default.conversationParticipant.findMany({
+      where: { userId, conversation: { orderId: null } },
+      select: { conversationId: true }
+    });
+    if (mine.length) {
+      const shared = await prisma_default.conversationParticipant.findFirst({
+        where: {
+          userId: otherUserId,
+          conversationId: { in: mine.map((m) => m.conversationId) }
+        },
+        select: { conversationId: true }
+      });
+      if (shared) return { id: shared.conversationId };
+    }
+  }
+  return prisma_default.conversation.create({
+    data: {
+      orderId: orderId ?? null,
+      participants: { create: [{ userId }, { userId: otherUserId }] }
+    },
+    select: { id: true }
+  });
+};
+var userBehindUsername = async (username) => {
+  const freelancer = await prisma_default.freelancerProfile.findUnique({
+    where: { username },
+    select: { userId: true }
+  });
+  if (!freelancer) throw new MessagingError("Freelance introuvable.", 404);
+  return freelancer.userId;
+};
+var clientBehindProject = async (projectId, userId) => {
+  const project = await prisma_default.freelanceProject.findFirst({
+    where: { id: projectId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+    select: { clientId: true }
+  });
+  if (!project) throw new MessagingError("Projet introuvable.", 404);
+  const proposed = await prisma_default.proposal.findFirst({
+    where: { projectId, freelancer: { userId } },
+    select: { id: true }
+  });
+  if (!proposed) {
+    throw new MessageAfterProposalError();
+  }
+  return project.clientId;
+};
+var MessageAfterProposalError = class extends MessagingError {
+  constructor() {
+    super("Envoyez d'abord une proposition : la discussion s'ouvre ensuite.", 403);
+  }
+};
+var otherSideOfOrder = async (orderId, userId) => {
+  const order = await prisma_default.freelanceOrder.findUnique({
+    where: { id: orderId },
+    select: { id: true, clientId: true, freelancer: { select: { userId: true } } }
+  });
+  if (!order) throw new MessagingError("Commande introuvable.", 404);
+  if (order.clientId === userId) return order.freelancer.userId;
+  if (order.freelancer.userId === userId) return order.clientId;
+  throw new MessagingError("Commande introuvable.", 404);
+};
+var OTHER_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  freelancerProfile: { select: { displayName: true, username: true } }
+};
+var nameOf = (user) => user.freelancerProfile?.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || // The local part only. A thread list is not a place to hand out addresses.
+user.email.split("@")[0];
+var unreadIn = (conversationId, userId, lastReadAt) => prisma_default.message.count({
+  where: {
+    conversationId,
+    senderId: { not: userId },
+    ...lastReadAt ? { createdAt: { gt: lastReadAt } } : {}
+  }
+});
+var readUpToLatest = async (conversationId, userId) => {
+  const latest = await prisma_default.message.findFirst({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true }
+  });
+  await prisma_default.conversationParticipant.update({
+    where: { conversationId_userId: { conversationId, userId } },
+    // An empty thread has nothing to have read; `now()` from the database
+    // keeps even that case off the application's clock.
+    data: { lastReadAt: latest?.createdAt ?? /* @__PURE__ */ new Date() }
+  });
+};
+var listFor = async (userId, page = 1, perPage = 20) => {
+  const where = { participants: { some: { userId } } };
+  const [total, rows] = await Promise.all([
+    prisma_default.conversation.count({ where }),
+    prisma_default.conversation.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      skip: (page - 1) * perPage,
+      take: perPage,
+      select: {
+        id: true,
+        updatedAt: true,
+        order: { select: { id: true, reference: true } },
+        participants: {
+          select: { userId: true, lastReadAt: true, user: { select: OTHER_SELECT } }
+        },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { body: true, senderId: true, createdAt: true }
+        }
+      }
+    })
+  ]);
+  const threads = await Promise.all(
+    rows.map(async (c) => {
+      const me = c.participants.find((p) => p.userId === userId);
+      const other = c.participants.find((p) => p.userId !== userId);
+      const last = c.messages[0];
+      return {
+        id: c.id,
+        updatedAt: c.updatedAt,
+        order: c.order,
+        // Null only if the other account was hard-deleted, which cascades its
+        // join row away and leaves a thread with one side.
+        with: other ? {
+          id: other.user.id,
+          name: nameOf(other.user),
+          username: other.user.freelancerProfile?.username ?? null
+        } : null,
+        lastMessage: last ? { body: last.body, mine: last.senderId === userId, createdAt: last.createdAt } : null,
+        unread: await unreadIn(c.id, userId, me.lastReadAt)
+      };
+    })
+  );
+  return { threads, total, page, perPage };
+};
+var unreadTotal = async (userId) => {
+  const rows = await prisma_default.conversationParticipant.findMany({
+    where: { userId },
+    select: { conversationId: true, lastReadAt: true }
+  });
+  const counts = await Promise.all(
+    rows.map((r) => unreadIn(r.conversationId, userId, r.lastReadAt))
+  );
+  return counts.reduce((a, b) => a + b, 0);
+};
+var threadFor = async (conversationId, userId, options = {}) => {
+  const conversation = await participantIn(conversationId, userId);
+  const after = options.after ? new Date(options.after) : null;
+  if (after && Number.isNaN(after.getTime())) {
+    throw new MessagingError("Param\xE8tre \xAB after \xBB invalide.", 400);
+  }
+  const messages = await prisma_default.message.findMany({
+    where: {
+      conversationId,
+      ...after ? { createdAt: { gt: after } } : {}
+    },
+    orderBy: { createdAt: "asc" },
+    take: Math.min(Math.max(options.limit ?? 200, 1), 200),
+    select: {
+      id: true,
+      body: true,
+      senderId: true,
+      createdAt: true,
+      flagged: true,
+      attachments: {
+        select: {
+          file: {
+            select: { id: true, url: true, fileName: true, mimeType: true, size: true }
+          }
+        }
+      }
+    }
+  });
+  const otherId = conversation.participants.find((p) => p.userId !== userId)?.userId;
+  const other = otherId ? await prisma_default.user.findUnique({ where: { id: otherId }, select: OTHER_SELECT }) : null;
+  await readUpToLatest(conversationId, userId);
+  return {
+    conversation: {
+      id: conversation.id,
+      orderId: conversation.orderId,
+      with: other ? { id: other.id, name: nameOf(other), username: other.freelancerProfile?.username ?? null } : null
+    },
+    messages: messages.map((m) => ({
+      id: m.id,
+      body: m.body,
+      mine: m.senderId === userId,
+      createdAt: m.createdAt,
+      /* The sender is told their own message was flagged; the recipient is
+       * not. Hiding it from the sender would be a shadow-ban, and showing it
+       * to the recipient would turn a guess into an accusation. */
+      flagged: m.senderId === userId ? m.flagged : false,
+      attachments: m.attachments.map((a) => a.file)
+    }))
+  };
+};
+var send = async (conversationId, userId, body, fileIds = []) => {
+  await participantIn(conversationId, userId);
+  const text = (body ?? "").trim();
+  if (!text && !fileIds.length) throw new MessagingError("Message vide.", 400);
+  if (text.length > MAX_BODY) {
+    throw new MessagingError(`Message trop long (maximum ${MAX_BODY} caract\xE8res).`, 400);
+  }
+  const flags = text ? contactFlags(text) : [];
+  const [message] = await prisma_default.$transaction([
+    prisma_default.message.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        body: text || null,
+        flagged: flags.length > 0,
+        flagReason: flags.length ? flags.join(", ") : null,
+        attachments: fileIds.length ? { create: fileIds.map((fileId) => ({ fileId })) } : void 0
+      },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        flagged: true,
+        flagReason: true,
+        attachments: {
+          select: {
+            file: {
+              select: { id: true, url: true, fileName: true, mimeType: true, size: true }
+            }
+          }
+        }
+      }
+    }),
+    prisma_default.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: /* @__PURE__ */ new Date() },
+      select: { id: true }
+    })
+  ]);
+  await readUpToLatest(conversationId, userId);
+  return {
+    ...message,
+    mine: true,
+    attachments: message.attachments.map((a) => a.file)
+  };
+};
+var markRead = async (conversationId, userId) => {
+  await participantIn(conversationId, userId);
+  await readUpToLatest(conversationId, userId);
+};
+var messaging_service_default = {
+  MessagingError,
+  contactFlags,
+  openWith,
+  userBehindUsername,
+  clientBehindProject,
+  otherSideOfOrder,
+  listFor,
+  unreadTotal,
+  threadFor,
+  send,
+  markRead
+};
+
+// server/controllers/message.controller.ts
+var asHttpError7 = (err) => err instanceof MessagingError ? new AppError(err.message, err.status) : err;
+var openConversation = async (req, res, next) => {
+  try {
+    const { username, projectId, orderId } = req.body;
+    const me = req.user.id;
+    let otherId;
+    if (orderId) {
+      otherId = await messaging_service_default.otherSideOfOrder(orderId, me);
+    } else if (username) {
+      otherId = await messaging_service_default.userBehindUsername(String(username).replace(/^@/, ""));
+    } else if (projectId) {
+      otherId = await messaging_service_default.clientBehindProject(projectId, me);
+    } else {
+      return next(new AppError("Pr\xE9cisez un freelance, un projet ou une commande.", 400));
+    }
+    const conversation = await messaging_service_default.openWith(me, otherId, orderId);
+    res.json({ success: true, data: { conversation } });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+var listConversations = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    res.json({ success: true, data: await messaging_service_default.listFor(req.user.id, page) });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+var getUnreadCount = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: { unread: await messaging_service_default.unreadTotal(req.user.id) } });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+var getConversation = async (req, res, next) => {
+  try {
+    const after = typeof req.query.after === "string" ? req.query.after : void 0;
+    const data = await messaging_service_default.threadFor(req.params.id, req.user.id, { after });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+var sendMessage = async (req, res, next) => {
+  try {
+    const { body } = req.body;
+    const message = await messaging_service_default.send(req.params.id, req.user.id, String(body ?? ""));
+    res.status(201).json({ success: true, data: { message } });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+var markConversationRead = async (req, res, next) => {
+  try {
+    await messaging_service_default.markRead(req.params.id, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(asHttpError7(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -6423,6 +6822,12 @@ router4.post("/me/payments", protect, startPurchase2);
 router4.get("/me/payments", protect, listMyPayments);
 router4.get("/me/payments/:id", protect, getPayment);
 router4.post("/me/payments/:id/receipt", protect, attachReceipt2);
+router4.post("/me/conversations", protect, openConversation);
+router4.get("/me/conversations", protect, listConversations);
+router4.get("/me/conversations/unread", protect, getUnreadCount);
+router4.get("/me/conversations/:id", protect, getConversation);
+router4.post("/me/conversations/:id/messages", protect, sendMessage);
+router4.post("/me/conversations/:id/read", protect, markConversationRead);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -9620,7 +10025,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError7 = (err) => {
+var asHttpError8 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -9717,7 +10122,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError7(err));
+    next(asHttpError8(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -9726,7 +10131,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError7(err));
+    next(asHttpError8(err));
   }
 };
 var listHistory = async (req, res, next) => {
@@ -9867,6 +10272,88 @@ var rejectProject = async (req, res, next) => {
       }
     });
     res.json({ success: true, data: { id: req.params.id, status: "REJECTED" } });
+  } catch (err) {
+    next(err);
+  }
+};
+var listFlaggedMessages = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const perPage = 25;
+    const [total, messages] = await Promise.all([
+      prisma_default.message.count({ where: { flagged: true } }),
+      prisma_default.message.findMany({
+        where: { flagged: true },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * perPage,
+        take: perPage,
+        select: {
+          id: true,
+          body: true,
+          flagReason: true,
+          createdAt: true,
+          conversationId: true,
+          sender: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              freelancerProfile: { select: { username: true, displayName: true } }
+            }
+          },
+          conversation: {
+            select: {
+              order: { select: { id: true, reference: true } },
+              participants: {
+                select: {
+                  user: { select: { id: true, email: true, firstName: true, lastName: true } }
+                }
+              }
+            }
+          }
+        }
+      })
+    ]);
+    const withContext = await Promise.all(
+      messages.map(async (m) => ({
+        ...m,
+        context: await prisma_default.message.findMany({
+          where: { conversationId: m.conversationId, createdAt: { lte: m.createdAt } },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+          select: { id: true, body: true, senderId: true, createdAt: true }
+        })
+      }))
+    );
+    res.json({ success: true, data: { messages: withContext, total, page, perPage } });
+  } catch (err) {
+    next(err);
+  }
+};
+var clearMessageFlag = async (req, res, next) => {
+  try {
+    const message = await prisma_default.message.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, flagged: true }
+    });
+    if (!message) return next(new AppError("Message introuvable.", 404));
+    const updated = await prisma_default.message.update({
+      where: { id: message.id },
+      data: { flagged: false },
+      select: { id: true, flagged: true }
+    });
+    await prisma_default.auditLog.create({
+      data: {
+        userId: req.user?.id,
+        action: "CLEAR_MESSAGE_FLAG",
+        entity: "Message",
+        entityId: message.id,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"]
+      }
+    });
+    res.json({ success: true, data: { message: updated } });
   } catch (err) {
     next(err);
   }
@@ -10217,6 +10704,8 @@ router7.post("/freelance/moderation/services/:id/reject", rejectService);
 router7.get("/freelance/moderation/projects", listProjectQueue);
 router7.post("/freelance/moderation/projects/:id/approve", approveProject);
 router7.post("/freelance/moderation/projects/:id/reject", rejectProject);
+router7.get("/freelance/moderation/messages", listFlaggedMessages);
+router7.post("/freelance/moderation/messages/:id/clear", clearMessageFlag);
 router7.get("/team/board", getBoard);
 router7.post("/team/carry-over", carryOver);
 router7.get("/team/members", listMembers);

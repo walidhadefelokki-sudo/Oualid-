@@ -373,7 +373,11 @@ export const sendEmail = async (
     // Deliberately non-fatal: registration must still succeed on an
     // environment where mail is not configured yet.
     console.log('--- Email simulation (no SMTP_HOST, no RESEND_API_KEY) ---');
-    console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? 'unset'}>`);
+    // `from`, not FROM_ADDRESS: messages that override the sender — the
+    // welcome mail from register@, confirmations from info@ — were all logged
+    // here as coming from the default address, which is the one thing this
+    // log exists to show.
+    console.log(`From: ${from}`);
     console.log(`To: ${to}`);
     console.log(`Subject: ${subject}`);
     console.log('----------------------------------------------------------');
@@ -975,6 +979,132 @@ export const sendApplicationSentEmail = async (
     email,
     `Candidature envoyée avec succès — ${details.jobTitle} ✅`,
     layout('Candidature envoy&eacute;e', body),
+    { from: FROM_INFO, text }
+  );
+};
+
+export interface NewApplicationDetails {
+  /** The recruiter's own first name, when the account has one. */
+  recruiterFirstName?: string | null;
+  candidateName: string;
+  jobTitle: string;
+  company?: string | null;
+  city?: string | null;
+  coverLetter?: string | null;
+  appliedAt?: Date;
+}
+
+/** How much of a cover letter goes in the email before it stops being a preview. */
+const COVER_LETTER_PREVIEW = 400;
+
+/**
+ * Recruiter: somebody applied to one of their offers.
+ *
+ * The counterpart to sendApplicationSentEmail. The candidate has been told
+ * their application arrived; until now the recruiter was only told in-app,
+ * which nobody sees unless they happen to open the dashboard — so an offer
+ * could collect applications for a week in silence.
+ *
+ * The candidate's name and letter are escaped. Those come from whoever
+ * registered, and this message arrives under Dar L'Emploi branding in a
+ * recruiter's inbox: raw interpolation would let an applicant put working
+ * links or spoofed markup in it.
+ *
+ * No phone number and no e-mail address for the candidate. The dashboard
+ * holds those, along with the CV and the match analysis, and a recruiter who
+ * replies from their own mailbox leaves no record on the application.
+ */
+export const sendNewApplicationEmail = async (
+  email: string,
+  details: NewApplicationDetails
+) => {
+  /* Escaping applies to what the sender typed, never to the fallbacks.
+   *
+   * The templates in this file write their French with HTML entities, and
+   * running an entity through escapeForEmail turns its `&` into `&amp;` — so
+   * a missing city would have arrived reading "Non pr&eacute;cis&eacute;e"
+   * literally. The defaults below are plain UTF-8 text for that reason. */
+  const escaped = (value: string | null | undefined, fallback: string) => {
+    const trimmed = value?.trim();
+    return trimmed ? escapeForEmail(trimmed) : fallback;
+  };
+
+  const greeting = escaped(details.recruiterFirstName, 'bonjour');
+  const candidate = escaped(details.candidateName, 'Un candidat');
+  const jobTitle = escapeForEmail(details.jobTitle);
+  const company = escaped(details.company, 'votre entreprise');
+  const city = escaped(details.city, 'Non précisée');
+  const date = formatDate(details.appliedAt);
+
+  const letter = details.coverLetter?.trim();
+  const preview = letter
+    ? escapeForEmail(
+        letter.length > COVER_LETTER_PREVIEW
+          ? `${letter.slice(0, COVER_LETTER_PREVIEW)}…`
+          : letter
+      ).replace(/\n/g, '<br>')
+    : null;
+
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+      `<strong>${candidate}</strong> vient de postuler &agrave; votre offre &laquo;&nbsp;<strong>${jobTitle}</strong>&nbsp;&raquo;.`
+    )}
+
+    ${detailBlock(
+      detailRow('&#128100;', 'Candidat', candidate) +
+        detailRow('&#128204;', 'Poste', jobTitle) +
+        detailRow('&#127970;', 'Entreprise', company) +
+        detailRow('&#128205;', 'Localisation', city) +
+        detailRow('&#128197;', 'Re&ccedil;ue le', date)
+    )}
+
+    ${
+      preview
+        ? paragraph(
+            `<strong style="color:#173E7D;">Lettre de motivation</strong><br><em>${preview}</em>`
+          )
+        : ''
+    }
+
+    ${paragraph(
+      `Son CV et son analyse de correspondance vous attendent dans votre espace recruteur.`
+    )}
+
+    ${button(`${APP_URL}/dashboard?tab=candidates`, 'Voir la candidature')}
+
+    ${paragraph(
+      `<em>Les candidats qui re&ccedil;oivent une r&eacute;ponse rapide sont ceux qui restent disponibles.</em>`
+    )}`;
+
+  const text = [
+    `Bonjour ${details.recruiterFirstName?.trim() || 'bonjour'},`,
+    '',
+    `${details.candidateName} vient de postuler à votre offre « ${details.jobTitle} ».`,
+    '',
+    `Candidat : ${details.candidateName}`,
+    `Poste : ${details.jobTitle}`,
+    `Entreprise : ${details.company ?? 'votre entreprise'}`,
+    `Localisation : ${details.city ?? 'Non précisée'}`,
+    `Reçue le : ${date}`,
+    ...(letter
+      ? [
+          '',
+          'Lettre de motivation :',
+          letter.length > COVER_LETTER_PREVIEW
+            ? `${letter.slice(0, COVER_LETTER_PREVIEW)}…`
+            : letter,
+        ]
+      : []),
+    '',
+    'Son CV et son analyse de correspondance vous attendent dans votre espace recruteur :',
+    `${APP_URL}/dashboard?tab=candidates`,
+  ].join('\n');
+
+  return sendEmail(
+    email,
+    `Nouvelle candidature — ${details.jobTitle} 📩`,
+    layout('Nouvelle candidature', body),
     { from: FROM_INFO, text }
   );
 };

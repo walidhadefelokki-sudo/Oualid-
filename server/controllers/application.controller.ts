@@ -2,7 +2,11 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "../middleware/error.middleware";
 import aiAnalysisService from "../services/aiAnalysis.service";
-import { sendApplicationSentEmail, deliverEmail } from "../utils/email";
+import {
+  sendApplicationSentEmail,
+  sendNewApplicationEmail,
+  deliverEmail,
+} from "../utils/email";
 import {
   notifyApplicationStatus,
   notifyNewApplication,
@@ -17,7 +21,22 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
       where: { id: jobId },
       include: {
         company: { select: { name: true } },
-        recruiter: { select: { userId: true } },
+        recruiter: {
+          select: {
+            userId: true,
+            // Needed to write to them. A suspended or deleted recruiter is
+            // read here and skipped below rather than excluded by the query,
+            // because the application itself must still be saved.
+            user: {
+              select: {
+                email: true,
+                firstName: true,
+                status: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -72,33 +91,74 @@ export const applyToJob = async (req: Request, res: Response, next: NextFunction
           );
         });
 
+    const candidateName =
+      `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
+
     // Tell the recruiter, in-app. Fire-and-forget for the same reason as the
     // email below: the application is saved, and a notification failure must
     // not surface as a failed application.
     if (job.recruiter?.userId) {
       notifyNewApplication({
         recruiterUserId: job.recruiter.userId,
-        candidateName:
-          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
+        candidateName,
         jobTitle: job.title,
       });
     }
 
-    /* Confirm to the candidate that their application went through.
+    /* Who gets told, by e-mail.
+     *
+     * The candidate gets their receipt, and the recruiter gets told somebody
+     * applied. The recruiter used to be told in-app only, which nobody sees
+     * unless they happen to open the dashboard — so an offer could collect
+     * applications for a week in silence.
+     *
+     * Only the recruiter who posted the offer. A company can have several
+     * members, but `Job.recruiterId` names the one who owns this offer and
+     * the applications are filed against them; mailing every colleague would
+     * be a decision about who answers for an offer, and that is not this
+     * handler's to make.
+     *
+     * Skipped for an account that can no longer sign in, since the mail would
+     * point at a dashboard they cannot open. */
+    const recruiterUser = job.recruiter?.user;
+    const recruiterReachable =
+      !!recruiterUser?.email &&
+      recruiterUser.status !== "SUSPENDED" &&
+      recruiterUser.status !== "DELETED" &&
+      !recruiterUser.deletedAt;
+
+    /* Both sends share one bounded wait.
      *
      * Awaited through deliverEmail rather than fired off: on Vercel the
      * function is frozen once the response is written, so an unawaited send
-     * never completes. The wait is bounded and failures are swallowed, so a
-     * mail problem still cannot turn a saved application into an error the
-     * candidate would retry. */
-    await deliverEmail("Application confirmation", () =>
-      sendApplicationSentEmail(user.email, {
-        firstName: user.firstName,
-        jobTitle: job.title,
-        company: job.company?.name ?? "l'entreprise",
-        city: job.location,
-        appliedAt: application.appliedAt,
-      })
+     * never completes. Run together rather than one after the other, so
+     * adding the recruiter's mail does not double how long the candidate
+     * waits for their own request to come back. sendEmail reports a failure
+     * by returning false rather than throwing, so one failing send does not
+     * abandon the other, and deliverEmail swallows whatever is left — a mail
+     * problem cannot turn a saved application into an error the candidate
+     * would retry. */
+    await deliverEmail("Application e-mails", () =>
+      Promise.all([
+        sendApplicationSentEmail(user.email, {
+          firstName: user.firstName,
+          jobTitle: job.title,
+          company: job.company?.name ?? "l'entreprise",
+          city: job.location,
+          appliedAt: application.appliedAt,
+        }),
+        recruiterReachable
+          ? sendNewApplicationEmail(recruiterUser!.email, {
+              recruiterFirstName: recruiterUser!.firstName,
+              candidateName,
+              jobTitle: job.title,
+              company: job.company?.name ?? null,
+              city: job.location,
+              coverLetter,
+              appliedAt: application.appliedAt,
+            })
+          : Promise.resolve(false),
+      ])
     );
 
     res.status(201).json({

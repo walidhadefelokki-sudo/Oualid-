@@ -644,7 +644,7 @@ var sendEmail = async (to, subject, html, options = {}) => {
   }
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.log("--- Email simulation (no SMTP_HOST, no RESEND_API_KEY) ---");
-    console.log(`From: ${FROM_NAME} <${FROM_ADDRESS ?? "unset"}>`);
+    console.log(`From: ${from}`);
     console.log(`To: ${to}`);
     console.log(`Subject: ${subject}`);
     console.log("----------------------------------------------------------");
@@ -893,6 +893,71 @@ var sendApplicationSentEmail = async (email, details) => {
     email,
     `Candidature envoy\xE9e avec succ\xE8s \u2014 ${details.jobTitle} \u2705`,
     layout("Candidature envoy&eacute;e", body),
+    { from: FROM_INFO, text }
+  );
+};
+var COVER_LETTER_PREVIEW = 400;
+var sendNewApplicationEmail = async (email, details) => {
+  const escaped = (value, fallback) => {
+    const trimmed = value?.trim();
+    return trimmed ? escapeForEmail(trimmed) : fallback;
+  };
+  const greeting = escaped(details.recruiterFirstName, "bonjour");
+  const candidate = escaped(details.candidateName, "Un candidat");
+  const jobTitle = escapeForEmail(details.jobTitle);
+  const company = escaped(details.company, "votre entreprise");
+  const city = escaped(details.city, "Non pr\xE9cis\xE9e");
+  const date2 = formatDate(details.appliedAt);
+  const letter = details.coverLetter?.trim();
+  const preview = letter ? escapeForEmail(
+    letter.length > COVER_LETTER_PREVIEW ? `${letter.slice(0, COVER_LETTER_PREVIEW)}\u2026` : letter
+  ).replace(/\n/g, "<br>") : null;
+  const body = `
+    ${paragraph(`Bonjour <strong>${greeting}</strong>,`)}
+    ${paragraph(
+    `<strong>${candidate}</strong> vient de postuler &agrave; votre offre &laquo;&nbsp;<strong>${jobTitle}</strong>&nbsp;&raquo;.`
+  )}
+
+    ${detailBlock(
+    detailRow("&#128100;", "Candidat", candidate) + detailRow("&#128204;", "Poste", jobTitle) + detailRow("&#127970;", "Entreprise", company) + detailRow("&#128205;", "Localisation", city) + detailRow("&#128197;", "Re&ccedil;ue le", date2)
+  )}
+
+    ${preview ? paragraph(
+    `<strong style="color:#173E7D;">Lettre de motivation</strong><br><em>${preview}</em>`
+  ) : ""}
+
+    ${paragraph(
+    `Son CV et son analyse de correspondance vous attendent dans votre espace recruteur.`
+  )}
+
+    ${button(`${APP_URL}/dashboard?tab=candidates`, "Voir la candidature")}
+
+    ${paragraph(
+    `<em>Les candidats qui re&ccedil;oivent une r&eacute;ponse rapide sont ceux qui restent disponibles.</em>`
+  )}`;
+  const text = [
+    `Bonjour ${details.recruiterFirstName?.trim() || "bonjour"},`,
+    "",
+    `${details.candidateName} vient de postuler \xE0 votre offre \xAB ${details.jobTitle} \xBB.`,
+    "",
+    `Candidat : ${details.candidateName}`,
+    `Poste : ${details.jobTitle}`,
+    `Entreprise : ${details.company ?? "votre entreprise"}`,
+    `Localisation : ${details.city ?? "Non pr\xE9cis\xE9e"}`,
+    `Re\xE7ue le : ${date2}`,
+    ...letter ? [
+      "",
+      "Lettre de motivation :",
+      letter.length > COVER_LETTER_PREVIEW ? `${letter.slice(0, COVER_LETTER_PREVIEW)}\u2026` : letter
+    ] : [],
+    "",
+    "Son CV et son analyse de correspondance vous attendent dans votre espace recruteur :",
+    `${APP_URL}/dashboard?tab=candidates`
+  ].join("\n");
+  return sendEmail(
+    email,
+    `Nouvelle candidature \u2014 ${details.jobTitle} \u{1F4E9}`,
+    layout("Nouvelle candidature", body),
     { from: FROM_INFO, text }
   );
 };
@@ -8610,7 +8675,22 @@ var applyToJob = async (req, res, next) => {
       where: { id: jobId },
       include: {
         company: { select: { name: true } },
-        recruiter: { select: { userId: true } }
+        recruiter: {
+          select: {
+            userId: true,
+            // Needed to write to them. A suspended or deleted recruiter is
+            // read here and skipped below rather than excluded by the query,
+            // because the application itself must still be saved.
+            user: {
+              select: {
+                email: true,
+                firstName: true,
+                status: true,
+                deletedAt: true
+              }
+            }
+          }
+        }
       }
     });
     if (!job) {
@@ -8652,22 +8732,36 @@ var applyToJob = async (req, res, next) => {
         error
       );
     });
+    const candidateName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
     if (job.recruiter?.userId) {
       notifyNewApplication({
         recruiterUserId: job.recruiter.userId,
-        candidateName: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
+        candidateName,
         jobTitle: job.title
       });
     }
+    const recruiterUser = job.recruiter?.user;
+    const recruiterReachable = !!recruiterUser?.email && recruiterUser.status !== "SUSPENDED" && recruiterUser.status !== "DELETED" && !recruiterUser.deletedAt;
     await deliverEmail(
-      "Application confirmation",
-      () => sendApplicationSentEmail(user.email, {
-        firstName: user.firstName,
-        jobTitle: job.title,
-        company: job.company?.name ?? "l'entreprise",
-        city: job.location,
-        appliedAt: application.appliedAt
-      })
+      "Application e-mails",
+      () => Promise.all([
+        sendApplicationSentEmail(user.email, {
+          firstName: user.firstName,
+          jobTitle: job.title,
+          company: job.company?.name ?? "l'entreprise",
+          city: job.location,
+          appliedAt: application.appliedAt
+        }),
+        recruiterReachable ? sendNewApplicationEmail(recruiterUser.email, {
+          recruiterFirstName: recruiterUser.firstName,
+          candidateName,
+          jobTitle: job.title,
+          company: job.company?.name ?? null,
+          city: job.location,
+          coverLetter,
+          appliedAt: application.appliedAt
+        }) : Promise.resolve(false)
+      ])
     );
     res.status(201).json({
       status: "success",

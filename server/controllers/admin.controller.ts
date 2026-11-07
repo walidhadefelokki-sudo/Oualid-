@@ -228,7 +228,11 @@ export const updateUserStatus = async (req: Request, res: Response, next: NextFu
       );
     }
 
-    const user = await prisma.user.update({ where: { id }, data: { status } });
+    const user = await prisma.user.update({
+      where: { id },
+      data: { status },
+      select: { id: true, email: true, role: true, status: true },
+    });
 
     await prisma.auditLog.create({
       data: {

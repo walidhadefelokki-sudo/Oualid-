@@ -10,6 +10,7 @@ import {
   issueEmailVerificationToken,
   verificationUrl,
 } from "../services/emailVerification.service";
+import { readAdminAccess } from "../utils/adminAccess";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import crypto from "crypto";
@@ -91,7 +92,20 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     // Covers the "signed up with Google first, now registering" case: the
     // unique email constraint already prevents a duplicate User, but the
     // message should point at the way in rather than look like a dead end.
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    /* Columns named explicitly.
+     *
+     * Without a `select`, Prisma asks for every column in the schema — so a
+     * column added by a migration that has not run yet makes Postgres refuse
+     * the whole statement. That is what took sign-in down across the site when
+     * the limited-admin columns shipped ahead of their migration: this query
+     * never reached the password check.
+     *
+     * Naming what is needed also keeps the bcrypt hash and anything else
+     * irrelevant out of rows that get spread into responses. */
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, password: true },
+    });
     if (existingUser) {
       if (existingUser.password === null) {
         return next(
@@ -117,10 +131,21 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         candidateProfile: role === "CANDIDATE" ? { create: {} } : undefined,
         recruiterProfile: role === "RECRUITER" ? { create: {} } : undefined,
       },
-      include: {
-        candidateProfile: true,
-        recruiterProfile: true,
-      }
+      /* select, not include.
+       *
+       * `include` returns every scalar column alongside the relations, so a
+       * column added by a migration that has not run yet refuses the insert —
+       * which is how registration broke along with sign-in. */
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true,
+        candidateProfile: { select: { id: true } },
+        recruiterProfile: { select: { id: true } },
+      },
     });
 
     if (role === "RECRUITER" && user.recruiterProfile) {
@@ -199,7 +224,22 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return next(new AppError("Please provide email and password", 400));
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // See the note on the registration query above: an implicit select is
+    // what broke sign-in when a migration was pending.
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true,
+      },
+    });
 
     // A Google-only account has no local password. Say so plainly instead of
     // "incorrect password", which would send the user round in circles trying
@@ -359,11 +399,6 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
         role: true,
         status: true,
         emailVerified: true,
-        // The admin sidebar hides what this account cannot reach, so it has
-        // to know. Enforcement is on the routes either way — this only stops
-        // the UI offering a screen that would answer 403.
-        isSuperAdmin: true,
-        adminScopes: true,
         firstName: true,
         lastName: true,
         phone: true,
@@ -382,9 +417,31 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
         ? mapPlanToTier(await getRecruiterPlan(user.id))
         : undefined;
 
+    /* The admin sidebar hides what the account cannot reach, so it has to
+     * know. Read separately rather than selected above, because these two
+     * columns arrive in a migration and this endpoint is on the path of every
+     * signed-in user — selecting them here is what turned a pending migration
+     * into nobody being able to hold a session.
+     *
+     * Enforcement is on the routes regardless; this only stops the UI
+     * offering a screen that would answer 403. */
+    const access =
+      user.role === "ADMIN" ? await readAdminAccess(user.id) : null;
+
     res.status(200).json({
       status: "success",
-      data: { user: { ...user, recruiterTier } },
+      data: {
+        user: {
+          ...user,
+          recruiterTier,
+          ...(access
+            ? {
+                isSuperAdmin: access.isSuperAdmin,
+                adminScopes: access.adminScopes,
+              }
+            : {}),
+        },
+      },
     });
   } catch (err) {
     next(err);

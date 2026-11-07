@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
 import { AppError } from "./error.middleware";
 import { AdminScope, SCOPE_LABELS, canUseScope } from "../utils/adminScopes";
+import { readAdminAccess } from "../utils/adminAccess";
 
 /**
  * Restricts an admin route to the administrators allowed that area.
@@ -22,16 +23,10 @@ export const requireAdminScope = (scope: AdminScope) => {
         return next(new AppError("Not authorized to access this route", 401));
       }
 
-      const account = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: {
-          role: true,
-          status: true,
-          deletedAt: true,
-          isSuperAdmin: true,
-          adminScopes: true,
-        },
-      });
+      // Through readAdminAccess so a pending migration degrades to the
+      // behaviour the database still describes — every administrator
+      // unrestricted — instead of refusing every admin request.
+      const account = await readAdminAccess(req.user.id);
 
       // Suspended or deleted between issuing the token and using it. `protect`
       // only reads the token, so without this an administrator could be
@@ -87,10 +82,7 @@ export const requireSuperAdmin = async (
       return next(new AppError("Not authorized to access this route", 401));
     }
 
-    const account = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { role: true, status: true, deletedAt: true, isSuperAdmin: true },
-    });
+    const account = await readAdminAccess(req.user.id);
 
     if (
       !account ||

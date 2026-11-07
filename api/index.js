@@ -1165,7 +1165,10 @@ var consumeEmailVerificationToken = async (raw) => {
       data: {
         emailVerified: true,
         ...record.user.status === "PENDING" ? { status: "ACTIVE" } : {}
-      }
+      },
+      // Named so the write does not return every column; see the note in
+      // auth.controller on why an implicit select is a liability here.
+      select: { id: true }
     })
   ]);
   return { ok: true, email: record.user.email, alreadyVerified: record.user.emailVerified };
@@ -1173,6 +1176,57 @@ var consumeEmailVerificationToken = async (raw) => {
 var verificationUrl = (token) => {
   const base = (process.env.APP_URL || "https://www.darlemploi.dz").replace(/\/$/, "");
   return `${base}/?verifier=${encodeURIComponent(token)}`;
+};
+
+// server/utils/adminAccess.ts
+init_prisma();
+var columnsPresent = null;
+var adminColumnsReady = async () => {
+  if (columnsPresent !== null) return columnsPresent;
+  try {
+    const rows = await prisma_default.$queryRaw`
+      SELECT count(*) AS n
+        FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = 'User'
+         AND column_name IN ('isSuperAdmin', 'adminScopes')`;
+    columnsPresent = Number(rows[0]?.n ?? 0) === 2;
+  } catch {
+    columnsPresent = false;
+  }
+  if (!columnsPresent) {
+    console.warn(
+      "[admin] isSuperAdmin / adminScopes are missing from the database. Every administrator is treated as unrestricted until `prisma migrate deploy` has run. Admin limits are NOT in force."
+    );
+  }
+  return columnsPresent;
+};
+var readAdminAccess = async (userId) => {
+  const base = await prisma_default.user.findUnique({
+    where: { id: userId },
+    // Named explicitly, so this query works on either schema.
+    select: { role: true, status: true, deletedAt: true }
+  });
+  if (!base) return null;
+  if (!await adminColumnsReady()) {
+    return {
+      ...base,
+      // The pre-migration state: an administrator was an administrator.
+      isSuperAdmin: base.role === "ADMIN",
+      adminScopes: [],
+      enforced: false
+    };
+  }
+  const withAccess = await prisma_default.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true, adminScopes: true }
+  });
+  return {
+    ...base,
+    isSuperAdmin: Boolean(withAccess?.isSuperAdmin),
+    adminScopes: withAccess?.adminScopes ?? [],
+    enforced: true
+  };
 };
 
 // server/middleware/tier.middleware.ts
@@ -1590,7 +1644,10 @@ var register = async (req, res, next) => {
   try {
     const { email, password, role, firstName, lastName, companyName, plan, source } = req.body;
     const signupSource = source === "FREELANCE" ? "FREELANCE" : "JOBS";
-    const existingUser = await prisma_default.user.findUnique({ where: { email } });
+    const existingUser = await prisma_default.user.findUnique({
+      where: { email },
+      select: { id: true, password: true }
+    });
     if (existingUser) {
       if (existingUser.password === null) {
         return next(
@@ -1614,9 +1671,20 @@ var register = async (req, res, next) => {
         candidateProfile: role === "CANDIDATE" ? { create: {} } : void 0,
         recruiterProfile: role === "RECRUITER" ? { create: {} } : void 0
       },
-      include: {
-        candidateProfile: true,
-        recruiterProfile: true
+      /* select, not include.
+       *
+       * `include` returns every scalar column alongside the relations, so a
+       * column added by a migration that has not run yet refuses the insert —
+       * which is how registration broke along with sign-in. */
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true,
+        candidateProfile: { select: { id: true } },
+        recruiterProfile: { select: { id: true } }
       }
     });
     if (role === "RECRUITER" && user.recruiterProfile) {
@@ -1657,7 +1725,20 @@ var login = async (req, res, next) => {
     if (!email || !password) {
       return next(new AppError("Please provide email and password", 400));
     }
-    const user = await prisma_default.user.findUnique({ where: { email } });
+    const user = await prisma_default.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true
+      }
+    });
     if (user && user.password === null) {
       return next(
         new AppError(
@@ -1756,11 +1837,6 @@ var getMe = async (req, res, next) => {
         role: true,
         status: true,
         emailVerified: true,
-        // The admin sidebar hides what this account cannot reach, so it has
-        // to know. Enforcement is on the routes either way — this only stops
-        // the UI offering a screen that would answer 403.
-        isSuperAdmin: true,
-        adminScopes: true,
         firstName: true,
         lastName: true,
         phone: true,
@@ -1773,9 +1849,19 @@ var getMe = async (req, res, next) => {
     });
     if (!user) return next(new AppError("User not found", 404));
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
+    const access = user.role === "ADMIN" ? await readAdminAccess(user.id) : null;
     res.status(200).json({
       status: "success",
-      data: { user: { ...user, recruiterTier } }
+      data: {
+        user: {
+          ...user,
+          recruiterTier,
+          ...access ? {
+            isSuperAdmin: access.isSuperAdmin,
+            adminScopes: access.adminScopes
+          } : {}
+        }
+      }
     });
   } catch (err) {
     next(err);
@@ -1852,6 +1938,17 @@ import passport2 from "passport";
 // server/services/oauth.service.ts
 init_prisma();
 import crypto5 from "crypto";
+var OAUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  firstName: true,
+  lastName: true,
+  status: true,
+  deletedAt: true,
+  emailVerified: true,
+  recruiterProfile: { select: { id: true } }
+};
 var PROVIDER = "google";
 var slugify2 = (name2) => {
   const base = name2.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -1865,13 +1962,14 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         providerAccountId: identity.providerAccountId
       }
     },
-    include: { user: true }
+    select: { user: { select: OAUTH_USER_SELECT } }
   });
   if (existingAccount) {
     return { user: existingAccount.user, outcome: "returning" };
   }
   const existingUser = await prisma_default.user.findUnique({
-    where: { email: identity.email }
+    where: { email: identity.email },
+    select: OAUTH_USER_SELECT
   });
   if (existingUser) {
     if (!identity.emailVerified) {
@@ -1892,7 +1990,8 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
       data: {
         emailVerified: true,
         ...existingUser.status === "PENDING" ? { status: "ACTIVE" } : {}
-      }
+      },
+      select: OAUTH_USER_SELECT
     }) : existingUser;
     return { user: promoted, outcome: "linked_existing" };
   }
@@ -1915,7 +2014,9 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : void 0,
         recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : void 0
       },
-      include: { recruiterProfile: true }
+      // select, not include: include returns every scalar column, and one
+      // added by a pending migration refuses the insert.
+      select: OAUTH_USER_SELECT
     });
     await tx.account.create({
       data: {
@@ -2045,7 +2146,19 @@ var googleAuthSession = async (req, res, next) => {
       return next(new AppError("Your sign-in expired. Please try again.", 401));
     }
     const prisma2 = (await Promise.resolve().then(() => (init_prisma(), prisma_exports))).default;
-    const user = await prisma2.user.findUnique({ where: { id: decoded.id } });
+    const user = await prisma2.user.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true
+      }
+    });
     if (!user) {
       return next(new AppError("Account no longer exists.", 401));
     }
@@ -9756,7 +9869,11 @@ var updateUserStatus = async (req, res, next) => {
         )
       );
     }
-    const user = await prisma_default.user.update({ where: { id }, data: { status } });
+    const user = await prisma_default.user.update({
+      where: { id },
+      data: { status },
+      select: { id: true, email: true, role: true, status: true }
+    });
     await prisma_default.auditLog.create({
       data: {
         userId: req.user?.id,
@@ -11710,23 +11827,13 @@ var carryOver = async (req, res, next) => {
 };
 
 // server/middleware/adminScope.middleware.ts
-init_prisma();
 var requireAdminScope = (scope2) => {
   return async (req, res, next) => {
     try {
       if (!req.user) {
         return next(new AppError("Not authorized to access this route", 401));
       }
-      const account = await prisma_default.user.findUnique({
-        where: { id: req.user.id },
-        select: {
-          role: true,
-          status: true,
-          deletedAt: true,
-          isSuperAdmin: true,
-          adminScopes: true
-        }
-      });
+      const account = await readAdminAccess(req.user.id);
       if (!account || account.role !== "ADMIN" || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
         return next(new AppError("You do not have permission to perform this action", 403));
       }
@@ -11753,10 +11860,7 @@ var requireSuperAdmin = async (req, res, next) => {
     if (!req.user) {
       return next(new AppError("Not authorized to access this route", 401));
     }
-    const account = await prisma_default.user.findUnique({
-      where: { id: req.user.id },
-      select: { role: true, status: true, deletedAt: true, isSuperAdmin: true }
-    });
+    const account = await readAdminAccess(req.user.id);
     if (!account || account.role !== "ADMIN" || !account.isSuperAdmin || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
       return next(
         new AppError("R\xE9serv\xE9 \xE0 un administrateur sans restriction.", 403)
@@ -14856,7 +14960,17 @@ var updateMyProfile2 = async (req, res, next) => {
     const [updatedUser, updatedProfile] = await prisma_default.$transaction([
       prisma_default.user.update({
         where: { id: user.id },
-        data: userData
+        data: userData,
+        // Named: a write that returns every column fails against a schema
+        // whose migration has not run, and the response needs only these.
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          preferredLanguage: true
+        }
       }),
       prisma_default.candidateProfile.update({
         where: { id: user.candidateProfile.id },

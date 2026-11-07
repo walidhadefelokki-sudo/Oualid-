@@ -305,6 +305,16 @@ export const updateMyProfile = async (
       prisma.user.update({
         where: { id: user.id },
         data: userData,
+        // Named: a write that returns every column fails against a schema
+        // whose migration has not run, and the response needs only these.
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          preferredLanguage: true,
+        },
       }),
       prisma.candidateProfile.update({
         where: { id: user.candidateProfile.id },

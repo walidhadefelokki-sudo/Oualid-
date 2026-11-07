@@ -30,6 +30,30 @@ export interface AdminUser {
   } | null;
 }
 
+/** One grantable admin area. */
+export interface AdminScopeInfo {
+  key: string;
+  label: string;
+  description: string;
+}
+
+/** An administrator, and what they may reach. */
+export interface AdminAccessRow {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  status: AdminAccountStatus;
+  /** Unrestricted; adminScopes is ignored while this is true. */
+  isSuperAdmin: boolean;
+  adminScopes: string[];
+  /** Neither unrestricted nor given any area: can sign in and reach nothing. */
+  hasNoAccess?: boolean;
+  /** The signed-in administrator cannot edit their own access. */
+  isMe?: boolean;
+  createdAt: string;
+}
+
 /** Only what an administrator may change. */
 export interface AdminUserChanges {
   firstName?: string;
@@ -155,6 +179,37 @@ export const adminService = {
   sendVerificationLink: async (id: string): Promise<{ sent: boolean }> => {
     const { data } = await api.post(`/admin/users/${id}/send-verification`);
     return data.data;
+  },
+
+  /* ------------------------------------------------------ admin access --
+   * Reserved to an unrestricted administrator by the server; these calls
+   * answer 403 for anyone else.
+   */
+
+  /** The areas that can be granted, with what each one permits. */
+  listAdminScopes: async (): Promise<AdminScopeInfo[]> => {
+    const { data } = await api.get("/admin/access/scopes");
+    return data.data.scopes;
+  },
+
+  /** Every administrator and what they may reach. */
+  listAdminAccess: async (): Promise<AdminAccessRow[]> => {
+    const { data } = await api.get("/admin/access");
+    return data.data.admins;
+  },
+
+  /**
+   * Sets what one administrator may reach.
+   *
+   * Omitting `scopes` leaves the existing list alone, so turning somebody
+   * unrestricted does not quietly erase the areas they were trusted with.
+   */
+  updateAdminAccess: async (
+    id: string,
+    changes: { isSuperAdmin?: boolean; scopes?: string[] }
+  ): Promise<AdminAccessRow> => {
+    const { data } = await api.patch(`/admin/access/${id}`, changes);
+    return data.data.admin;
   },
 
   /** Marks the account DELETED; the row and its records stay. */

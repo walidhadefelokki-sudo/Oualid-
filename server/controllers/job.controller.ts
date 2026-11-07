@@ -7,6 +7,7 @@ import { notifyJobMatch } from "../services/notification.service";
 import { consumePosting } from "../services/postingQuota.service";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { getMatchedJobsForCandidate } from "../services/jobMatch.service";
+import { searchJobs } from "../services/jobSearch.service";
 
 // Turns "Développeur Full Stack" into "developpeur-full-stack-a1b2c3" -
 // the random suffix keeps the (unique) Job.slug collision-free without
@@ -21,49 +22,83 @@ const slugify = (title: string) => {
   return `${base || "job"}-${suffix}`;
 };
 
+/**
+ * The public job list and search.
+ *
+ * The matching itself lives in jobSearch.service — this reads the query
+ * string and nothing more.
+ *
+ * `title` is still accepted as a name for the search term. It is what the
+ * frontend has always sent and it no longer describes what happens (the term
+ * now reaches the description and the employer's name too), but breaking
+ * every existing caller to rename a parameter would be a poor trade.
+ *
+ * The envelope keeps `results` and `data.jobs` so callers that predate
+ * pagination are unaffected; the page counts are added beside them.
+ */
 export const getAllJobs = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, location, type, categoryId, categorySlug, wilaya, featured, limit } =
-      req.query;
+    const {
+      q,
+      title,
+      location,
+      type,
+      experienceLevel,
+      categoryId,
+      categorySlug,
+      wilaya,
+      remote,
+      salaryMin,
+      featured,
+      limit,
+      page,
+      perPage,
+    } = req.query;
+
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
     // `featured=true` drives the "Postes à la une" section; any other value is
     // ignored rather than treated as false, so an accidental ?featured=maybe
     // still returns the full list instead of silently filtering it.
     const featuredOnly = featured === "true" ? true : undefined;
+    const remoteOnly = remote === "true" ? true : undefined;
 
-    // Bounded so a public endpoint cannot be asked for the entire table.
+    const salaryFloor = Number(salaryMin);
+
+    /* `limit` predates pagination and means "give me this many", which is a
+     * page size with no page. Both are accepted; perPage wins when sent. */
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit)
-      ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 60)
-      : undefined;
+    const size = Number(perPage) || (Number.isFinite(parsedLimit) ? parsedLimit : undefined);
 
-    const jobs = await prisma.job.findMany({
-      where: {
-        title: title ? { contains: title as string, mode: 'insensitive' } : undefined,
-        location: location ? { contains: location as string, mode: 'insensitive' } : undefined,
-        type: type as any,
-        categoryId: categoryId ? (categoryId as string) : undefined,
-        // Lets the frontend filter by the stable slug it already knows ("it",
-        // "health", …) without first resolving it to a uuid.
-        category: categorySlug ? { slug: categorySlug as string } : undefined,
-        wilaya: wilaya ? { equals: wilaya as string, mode: 'insensitive' } : undefined,
-        featured: featuredOnly,
-        status: 'PUBLISHED',
-      },
-      include: {
-        recruiter: true,
-        company: true,
-        category: true,
-      },
-      // Featured first so promoted postings lead any list they appear in.
-      orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
-      take,
+    const result = await searchJobs({
+      q: str(q) ?? str(title),
+      location: str(location),
+      wilaya: str(wilaya),
+      type: str(type),
+      experienceLevel: str(experienceLevel),
+      categoryId: str(categoryId),
+      categorySlug: str(categorySlug),
+      remote: remoteOnly,
+      featured: featuredOnly,
+      salaryMin: Number.isFinite(salaryFloor) ? salaryFloor : undefined,
+      page: Number(page) || 1,
+      perPage: size,
     });
 
     res.status(200).json({
       status: "success",
-      results: jobs.length,
-      data: { jobs },
+      results: result.jobs.length,
+      data: {
+        jobs: result.jobs,
+        total: result.total,
+        page: result.page,
+        perPage: result.perPage,
+        totalPages: result.totalPages,
+        // True when nothing matched the words and the results below came from
+        // similarity instead, so the page can say so rather than presenting a
+        // guess as an answer.
+        didYouMean: result.didYouMean,
+      },
     });
   } catch (err) {
     next(err);

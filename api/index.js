@@ -5,8 +5,8 @@ var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
 };
 
 // server/utils/prisma.ts
@@ -41,7 +41,7 @@ __export(credits_service_exports, {
   refundFor: () => refundFor,
   spend: () => spend
 });
-import { CreditEntryType, Prisma } from "@prisma/client";
+import { CreditEntryType, Prisma as Prisma2 } from "@prisma/client";
 var InsufficientCreditsError, getOrCreateWallet, getBalance, move, spend, grant, refundFor, history, getCreditCosts, credits_service_default;
 var init_credits_service = __esm({
   "server/services/credits.service.ts"() {
@@ -60,7 +60,7 @@ var init_credits_service = __esm({
       try {
         return await tx.creditWallet.create({ data: { userId } });
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
           const wallet = await tx.creditWallet.findUnique({ where: { userId } });
           if (wallet) return wallet;
         }
@@ -111,10 +111,10 @@ var init_credits_service = __esm({
             });
             return { balance: next, entryId: entry.id, replayed: false };
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+          { isolationLevel: Prisma2.TransactionIsolationLevel.Serializable }
         );
       } catch (err) {
-        if (idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (idempotencyKey && err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
           const winner = await prisma_default.creditLedgerEntry.findUnique({
             where: { idempotencyKey },
             select: { id: true, balanceAfter: true }
@@ -819,7 +819,7 @@ var sendAdminBroadcastEmail = async (to, content, options = {}) => {
     ...options.bcc?.length ? { bcc: options.bcc } : {}
   });
 };
-var sendWelcomeEmail = async (email, name, role, verifyUrl) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name, verifyUrl) : sendCandidateWelcomeEmail(email, name, verifyUrl);
+var sendWelcomeEmail = async (email, name2, role, verifyUrl) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name2, verifyUrl) : sendCandidateWelcomeEmail(email, name2, verifyUrl);
 var sendVerifyEmail = async (email, firstName, verifyUrl) => {
   if (!verifyUrl) return false;
   const greeting = firstName?.trim() || "bonjour";
@@ -1165,7 +1165,10 @@ var consumeEmailVerificationToken = async (raw) => {
       data: {
         emailVerified: true,
         ...record.user.status === "PENDING" ? { status: "ACTIVE" } : {}
-      }
+      },
+      // Named so the write does not return every column; see the note in
+      // auth.controller on why an implicit select is a liability here.
+      select: { id: true }
     })
   ]);
   return { ok: true, email: record.user.email, alreadyVerified: record.user.emailVerified };
@@ -1173,6 +1176,57 @@ var consumeEmailVerificationToken = async (raw) => {
 var verificationUrl = (token) => {
   const base = (process.env.APP_URL || "https://www.darlemploi.dz").replace(/\/$/, "");
   return `${base}/?verifier=${encodeURIComponent(token)}`;
+};
+
+// server/utils/adminAccess.ts
+init_prisma();
+var columnsPresent = null;
+var adminColumnsReady = async () => {
+  if (columnsPresent !== null) return columnsPresent;
+  try {
+    const rows = await prisma_default.$queryRaw`
+      SELECT count(*) AS n
+        FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = 'User'
+         AND column_name IN ('isSuperAdmin', 'adminScopes')`;
+    columnsPresent = Number(rows[0]?.n ?? 0) === 2;
+  } catch {
+    columnsPresent = false;
+  }
+  if (!columnsPresent) {
+    console.warn(
+      "[admin] isSuperAdmin / adminScopes are missing from the database. Every administrator is treated as unrestricted until `prisma migrate deploy` has run. Admin limits are NOT in force."
+    );
+  }
+  return columnsPresent;
+};
+var readAdminAccess = async (userId) => {
+  const base = await prisma_default.user.findUnique({
+    where: { id: userId },
+    // Named explicitly, so this query works on either schema.
+    select: { role: true, status: true, deletedAt: true }
+  });
+  if (!base) return null;
+  if (!await adminColumnsReady()) {
+    return {
+      ...base,
+      // The pre-migration state: an administrator was an administrator.
+      isSuperAdmin: base.role === "ADMIN",
+      adminScopes: [],
+      enforced: false
+    };
+  }
+  const withAccess = await prisma_default.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true, adminScopes: true }
+  });
+  return {
+    ...base,
+    isSuperAdmin: Boolean(withAccess?.isSuperAdmin),
+    adminScopes: withAccess?.adminScopes ?? [],
+    enforced: true
+  };
 };
 
 // server/middleware/tier.middleware.ts
@@ -1395,10 +1449,10 @@ var downloadObjectHead = async (bucket, path, bytes = 4096) => {
 var getObjectSize = async (bucket, path) => {
   const lastSlash = path.lastIndexOf("/");
   const folder = lastSlash === -1 ? "" : path.slice(0, lastSlash);
-  const name = path.slice(lastSlash + 1);
-  const { data, error } = await getClient().storage.from(bucket).list(folder, { search: name, limit: 100 });
+  const name2 = path.slice(lastSlash + 1);
+  const { data, error } = await getClient().storage.from(bucket).list(folder, { search: name2, limit: 100 });
   if (error || !data) return null;
-  const match = data.find((entry) => entry.name === name);
+  const match = data.find((entry) => entry.name === name2);
   if (!match) return null;
   return match.metadata?.size ?? null;
 };
@@ -1566,8 +1620,8 @@ var mapPlanToTier = (plan) => {
       return "free";
   }
 };
-var slugify = (name) => {
-  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+var slugify = (name2) => {
+  const base = name2.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const suffix = crypto4.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
@@ -1590,7 +1644,10 @@ var register = async (req, res, next) => {
   try {
     const { email, password, role, firstName, lastName, companyName, plan, source } = req.body;
     const signupSource = source === "FREELANCE" ? "FREELANCE" : "JOBS";
-    const existingUser = await prisma_default.user.findUnique({ where: { email } });
+    const existingUser = await prisma_default.user.findUnique({
+      where: { email },
+      select: { id: true, password: true }
+    });
     if (existingUser) {
       if (existingUser.password === null) {
         return next(
@@ -1614,9 +1671,20 @@ var register = async (req, res, next) => {
         candidateProfile: role === "CANDIDATE" ? { create: {} } : void 0,
         recruiterProfile: role === "RECRUITER" ? { create: {} } : void 0
       },
-      include: {
-        candidateProfile: true,
-        recruiterProfile: true
+      /* select, not include.
+       *
+       * `include` returns every scalar column alongside the relations, so a
+       * column added by a migration that has not run yet refuses the insert —
+       * which is how registration broke along with sign-in. */
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true,
+        candidateProfile: { select: { id: true } },
+        recruiterProfile: { select: { id: true } }
       }
     });
     if (role === "RECRUITER" && user.recruiterProfile) {
@@ -1657,7 +1725,20 @@ var login = async (req, res, next) => {
     if (!email || !password) {
       return next(new AppError("Please provide email and password", 400));
     }
-    const user = await prisma_default.user.findUnique({ where: { email } });
+    const user = await prisma_default.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true
+      }
+    });
     if (user && user.password === null) {
       return next(
         new AppError(
@@ -1768,9 +1849,19 @@ var getMe = async (req, res, next) => {
     });
     if (!user) return next(new AppError("User not found", 404));
     const recruiterTier = user.role === "RECRUITER" ? mapPlanToTier(await getRecruiterPlan(user.id)) : void 0;
+    const access = user.role === "ADMIN" ? await readAdminAccess(user.id) : null;
     res.status(200).json({
       status: "success",
-      data: { user: { ...user, recruiterTier } }
+      data: {
+        user: {
+          ...user,
+          recruiterTier,
+          ...access ? {
+            isSuperAdmin: access.isSuperAdmin,
+            adminScopes: access.adminScopes
+          } : {}
+        }
+      }
     });
   } catch (err) {
     next(err);
@@ -1847,9 +1938,20 @@ import passport2 from "passport";
 // server/services/oauth.service.ts
 init_prisma();
 import crypto5 from "crypto";
+var OAUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  firstName: true,
+  lastName: true,
+  status: true,
+  deletedAt: true,
+  emailVerified: true,
+  recruiterProfile: { select: { id: true } }
+};
 var PROVIDER = "google";
-var slugify2 = (name) => {
-  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+var slugify2 = (name2) => {
+  const base = name2.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return `${base || "company"}-${crypto5.randomBytes(3).toString("hex")}`;
 };
 async function findOrCreateUserFromGoogle(identity, requestedRole) {
@@ -1860,13 +1962,14 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         providerAccountId: identity.providerAccountId
       }
     },
-    include: { user: true }
+    select: { user: { select: OAUTH_USER_SELECT } }
   });
   if (existingAccount) {
     return { user: existingAccount.user, outcome: "returning" };
   }
   const existingUser = await prisma_default.user.findUnique({
-    where: { email: identity.email }
+    where: { email: identity.email },
+    select: OAUTH_USER_SELECT
   });
   if (existingUser) {
     if (!identity.emailVerified) {
@@ -1887,7 +1990,8 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
       data: {
         emailVerified: true,
         ...existingUser.status === "PENDING" ? { status: "ACTIVE" } : {}
-      }
+      },
+      select: OAUTH_USER_SELECT
     }) : existingUser;
     return { user: promoted, outcome: "linked_existing" };
   }
@@ -1910,7 +2014,9 @@ async function findOrCreateUserFromGoogle(identity, requestedRole) {
         candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : void 0,
         recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : void 0
       },
-      include: { recruiterProfile: true }
+      // select, not include: include returns every scalar column, and one
+      // added by a pending migration refuses the insert.
+      select: OAUTH_USER_SELECT
     });
     await tx.account.create({
       data: {
@@ -2040,7 +2146,19 @@ var googleAuthSession = async (req, res, next) => {
       return next(new AppError("Your sign-in expired. Please try again.", 401));
     }
     const prisma2 = (await Promise.resolve().then(() => (init_prisma(), prisma_exports))).default;
-    const user = await prisma2.user.findUnique({ where: { id: decoded.id } });
+    const user = await prisma2.user.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        firstName: true,
+        lastName: true,
+        emailVerified: true
+      }
+    });
     if (!user) {
       return next(new AppError("Account no longer exists.", 401));
     }
@@ -2407,6 +2525,150 @@ var getMatchedJobsForCandidate = async (userId, limit = 6) => {
   return scored.filter((m) => m.score > 0).sort((a, b) => b.score - a.score || (b.job.publishedAt?.getTime() ?? 0) - (a.job.publishedAt?.getTime() ?? 0)).slice(0, limit);
 };
 
+// server/services/jobSearch.service.ts
+init_prisma();
+import { Prisma } from "@prisma/client";
+var CONFIG = "public.french_unaccent";
+var SIMILARITY_FLOOR = 0.45;
+var MAX_TERMS = 10;
+var MAX_PER_PAGE = 60;
+var buildTsQuery = (raw) => {
+  const terms = raw.toLowerCase().replace(/[^\p{L}\p{N}\s+#]/gu, " ").split(/\s+/).filter((t) => t.length >= 2).slice(0, MAX_TERMS);
+  if (!terms.length) return null;
+  return terms.map((t) => `${t.replace(/[+#]/g, "")}:*`).filter(Boolean).join(" & ");
+};
+var filterSql = (p) => {
+  const parts = [Prisma.sql`j."status" = 'PUBLISHED'::"JobStatus"`];
+  parts.push(Prisma.sql`(j."expiresAt" IS NULL OR j."expiresAt" > now())`);
+  if (p.location) {
+    parts.push(
+      Prisma.sql`public.dl_unaccent(j."location") ILIKE public.dl_unaccent(${`%${p.location}%`})`
+    );
+  }
+  if (p.wilaya) {
+    parts.push(
+      Prisma.sql`public.dl_unaccent(coalesce(j."wilaya", '')) ILIKE public.dl_unaccent(${p.wilaya})`
+    );
+  }
+  if (p.type) parts.push(Prisma.sql`j."type" = ${p.type}::"JobType"`);
+  if (p.experienceLevel) {
+    parts.push(Prisma.sql`j."experienceLevel" = ${p.experienceLevel}::"ExperienceLevel"`);
+  }
+  if (p.categoryId) parts.push(Prisma.sql`j."categoryId" = ${p.categoryId}`);
+  if (p.categorySlug) {
+    parts.push(
+      Prisma.sql`j."categoryId" IN (SELECT id FROM "JobCategory" WHERE slug = ${p.categorySlug})`
+    );
+  }
+  if (p.remote === true) parts.push(Prisma.sql`j."remote" = true`);
+  if (p.featured === true) parts.push(Prisma.sql`j."featured" = true`);
+  if (typeof p.salaryMin === "number" && Number.isFinite(p.salaryMin)) {
+    parts.push(
+      Prisma.sql`(j."salaryMax" IS NULL AND j."salaryMin" IS NULL
+                  OR coalesce(j."salaryMax", j."salaryMin") >= ${Math.trunc(p.salaryMin)})`
+    );
+  }
+  return parts;
+};
+var DOCUMENT = Prisma.sql`(
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.title, '')), 'A') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.location, '')), 'B') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.wilaya, '')), 'B') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.description, '')), 'C')
+)`;
+var rankedIds = async (tsquery, params, skip, take) => {
+  const where = Prisma.join(filterSql(params), " AND ");
+  return prisma_default.$queryRaw`
+    SELECT j.id,
+           count(*) OVER() AS total
+      FROM "Job" j
+      LEFT JOIN "Company" c ON c.id = j."companyId"
+     WHERE ${where}
+       AND (
+         ${DOCUMENT} @@ to_tsquery(${CONFIG}::regconfig, ${tsquery})
+         -- The employer's name, which cannot live in the index expression
+         -- because it is in another table. Backed by Company_name_trgm_idx.
+         OR public.dl_unaccent(c.name) ILIKE public.dl_unaccent(${`%${params.q ?? ""}%`})
+       )
+     ORDER BY j."featured" DESC,
+              ts_rank(${DOCUMENT}, to_tsquery(${CONFIG}::regconfig, ${tsquery})) DESC,
+              j."publishedAt" DESC NULLS LAST,
+              j."createdAt" DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var similarIds = async (raw, params, skip, take) => {
+  const where = Prisma.join(filterSql(params), " AND ");
+  return prisma_default.$queryRaw`
+    SELECT j.id,
+           count(*) OVER() AS total
+      FROM "Job" j
+     WHERE ${where}
+       AND word_similarity(public.dl_unaccent(${raw}), public.dl_unaccent(j.title))
+             > ${SIMILARITY_FLOOR}
+     ORDER BY word_similarity(public.dl_unaccent(${raw}), public.dl_unaccent(j.title)) DESC,
+              j."featured" DESC,
+              j."createdAt" DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var JOB_INCLUDE = {
+  company: { select: { name: true, logo: { select: { url: true } } } },
+  category: { select: { name: true, slug: true } }
+};
+var searchJobs = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 20) || 20, 1), MAX_PER_PAGE);
+  const skip = (page - 1) * perPage;
+  const tsquery = params.q?.trim() ? buildTsQuery(params.q) : null;
+  if (!tsquery) {
+    const where = Prisma.join(filterSql(params), " AND ");
+    const [rows2, counted] = await Promise.all([
+      prisma_default.$queryRaw`
+        SELECT j.id FROM "Job" j
+         WHERE ${where}
+         ORDER BY j."featured" DESC,
+                  j."publishedAt" DESC NULLS LAST,
+                  j."createdAt" DESC
+         LIMIT ${perPage} OFFSET ${skip}`,
+      prisma_default.$queryRaw`
+        SELECT count(*) AS total FROM "Job" j WHERE ${where}`
+    ]);
+    const total2 = Number(counted[0]?.total ?? 0);
+    return {
+      jobs: await hydrate(rows2.map((r) => r.id)),
+      total: total2,
+      page,
+      perPage,
+      totalPages: Math.max(1, Math.ceil(total2 / perPage)),
+      didYouMean: false
+    };
+  }
+  let rows = await rankedIds(tsquery, params, skip, perPage);
+  let didYouMean = false;
+  const singleTerm = tsquery.split("&").length === 1;
+  if (!rows.length && page === 1 && singleTerm && params.q) {
+    rows = await similarIds(params.q.trim(), params, 0, perPage);
+    didYouMean = rows.length > 0;
+  }
+  const total = Number(rows[0]?.total ?? 0);
+  return {
+    jobs: await hydrate(rows.map((r) => r.id)),
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+    didYouMean
+  };
+};
+var hydrate = async (ids) => {
+  if (!ids.length) return [];
+  const jobs = await prisma_default.job.findMany({
+    where: { id: { in: ids } },
+    include: JOB_INCLUDE
+  });
+  const position = new Map(ids.map((id, i) => [id, i]));
+  return jobs.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+};
+
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -2415,36 +2677,56 @@ var slugify3 = (title) => {
 };
 var getAllJobs = async (req, res, next) => {
   try {
-    const { title, location, type, categoryId, categorySlug, wilaya, featured, limit } = req.query;
+    const {
+      q,
+      title,
+      location,
+      type,
+      experienceLevel,
+      categoryId,
+      categorySlug,
+      wilaya,
+      remote,
+      salaryMin,
+      featured,
+      limit,
+      page,
+      perPage
+    } = req.query;
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
     const featuredOnly = featured === "true" ? true : void 0;
+    const remoteOnly = remote === "true" ? true : void 0;
+    const salaryFloor = Number(salaryMin);
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 60) : void 0;
-    const jobs = await prisma_default.job.findMany({
-      where: {
-        title: title ? { contains: title, mode: "insensitive" } : void 0,
-        location: location ? { contains: location, mode: "insensitive" } : void 0,
-        type,
-        categoryId: categoryId ? categoryId : void 0,
-        // Lets the frontend filter by the stable slug it already knows ("it",
-        // "health", …) without first resolving it to a uuid.
-        category: categorySlug ? { slug: categorySlug } : void 0,
-        wilaya: wilaya ? { equals: wilaya, mode: "insensitive" } : void 0,
-        featured: featuredOnly,
-        status: "PUBLISHED"
-      },
-      include: {
-        recruiter: true,
-        company: true,
-        category: true
-      },
-      // Featured first so promoted postings lead any list they appear in.
-      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-      take
+    const size = Number(perPage) || (Number.isFinite(parsedLimit) ? parsedLimit : void 0);
+    const result = await searchJobs({
+      q: str(q) ?? str(title),
+      location: str(location),
+      wilaya: str(wilaya),
+      type: str(type),
+      experienceLevel: str(experienceLevel),
+      categoryId: str(categoryId),
+      categorySlug: str(categorySlug),
+      remote: remoteOnly,
+      featured: featuredOnly,
+      salaryMin: Number.isFinite(salaryFloor) ? salaryFloor : void 0,
+      page: Number(page) || 1,
+      perPage: size
     });
     res.status(200).json({
       status: "success",
-      results: jobs.length,
-      data: { jobs }
+      results: result.jobs.length,
+      data: {
+        jobs: result.jobs,
+        total: result.total,
+        page: result.page,
+        perPage: result.perPage,
+        totalPages: result.totalPages,
+        // True when nothing matched the words and the results below came from
+        // similarity instead, so the page can say so rather than presenting a
+        // guess as an answer.
+        didYouMean: result.didYouMean
+      }
     });
   } catch (err) {
     next(err);
@@ -2614,7 +2896,7 @@ var createJob = async (req, res, next) => {
     );
     (async () => {
       try {
-        const matchingCandidates = await prisma_default.candidateProfile.findMany({
+        const matchingCandidates2 = await prisma_default.candidateProfile.findMany({
           where: {
             skills: {
               hasSome: title.split(" ")
@@ -2623,11 +2905,11 @@ var createJob = async (req, res, next) => {
           include: { user: true }
         });
         await notifyJobMatch({
-          candidateUserIds: matchingCandidates.map((c) => c.userId),
+          candidateUserIds: matchingCandidates2.map((c) => c.userId),
           jobTitle: job.title,
           company: membership.company.name
         });
-        for (const candidate of matchingCandidates) {
+        for (const candidate of matchingCandidates2) {
           await sendJobMatchEmail(
             candidate.user.email,
             job.title,
@@ -2751,12 +3033,12 @@ var deleteJob = async (req, res, next) => {
 var getMatchedJobs = async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 6, 20);
-    const matches = await getMatchedJobsForCandidate(req.user.id, limit);
+    const matches2 = await getMatchedJobsForCandidate(req.user.id, limit);
     res.status(200).json({
       status: "success",
-      results: matches.length,
+      results: matches2.length,
       data: {
-        jobs: matches.map(({ job, reasons }) => ({
+        jobs: matches2.map(({ job, reasons }) => ({
           id: job.id,
           title: job.title,
           slug: job.slug,
@@ -3552,12 +3834,12 @@ var activate = async (req, res, next) => {
       });
       if (Array.isArray(skills)) {
         for (const raw of skills.slice(0, 20)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.freelancerSkill.create({
@@ -4156,12 +4438,12 @@ var updateMyService = async (req, res, next) => {
       if (Array.isArray(skills)) {
         await tx.serviceSkill.deleteMany({ where: { serviceId: existing.id } });
         for (const raw of skills.slice(0, 15)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.serviceSkill.create({
@@ -4406,12 +4688,12 @@ var updateMine = async (req, res, next) => {
       if (Array.isArray(skills)) {
         await tx.projectSkill.deleteMany({ where: { projectId: existing.id } });
         for (const raw of skills.slice(0, 15)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.projectSkill.create({ data: { projectId: existing.id, skillId: skill.id } });
@@ -5228,7 +5510,7 @@ var createFromService = async (req, res, next) => {
 
 // server/services/review.service.ts
 init_prisma();
-import { Prisma as Prisma2 } from "@prisma/client";
+import { Prisma as Prisma3 } from "@prisma/client";
 var ReviewError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5251,20 +5533,20 @@ var recomputeRating = async (freelancerUserId) => {
   await prisma_default.freelancerProfile.update({
     where: { id: profile.id },
     data: {
-      ratingAverage: agg._count.rating > 0 ? new Prisma2.Decimal((agg._avg.rating ?? 0).toFixed(2)) : null,
+      ratingAverage: agg._count.rating > 0 ? new Prisma3.Decimal((agg._avg.rating ?? 0).toFixed(2)) : null,
       ratingCount: agg._count.rating
     }
   });
 };
 var leave = async (orderId, authorId, input) => {
   if (!inRange(input.rating)) throw new ReviewError("La note doit \xEAtre comprise entre 1 et 5.");
-  for (const [name, value] of [
+  for (const [name2, value] of [
     ["qualit\xE9", input.qualityRating],
     ["communication", input.communicationRating],
     ["respect des d\xE9lais", input.deadlineRating]
   ]) {
     if (value !== void 0 && value !== null && !inRange(value)) {
-      throw new ReviewError(`La note de ${name} doit \xEAtre comprise entre 1 et 5.`);
+      throw new ReviewError(`La note de ${name2} doit \xEAtre comprise entre 1 et 5.`);
     }
   }
   const order = await prisma_default.freelanceOrder.findUnique({
@@ -5301,7 +5583,7 @@ var leave = async (orderId, authorId, input) => {
     if (isClient) await recomputeRating(targetId);
     return review;
   } catch (err) {
-    if (err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma3.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new ReviewError("Vous avez d\xE9j\xE0 laiss\xE9 un avis sur cette commande.", 409);
     }
     throw err;
@@ -5449,7 +5731,7 @@ init_prisma();
 // server/services/portfolio.service.ts
 init_prisma();
 init_plans_service();
-import { Prisma as Prisma3 } from "@prisma/client";
+import { Prisma as Prisma4 } from "@prisma/client";
 var PortfolioError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5477,7 +5759,7 @@ var getOrCreate = async (freelancerId) => {
   try {
     return await prisma_default.portfolio.create({ data: { freelancerId } });
   } catch (err) {
-    if (err instanceof Prisma3.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma4.PrismaClientKnownRequestError && err.code === "P2002") {
       const p = await prisma_default.portfolio.findUnique({ where: { freelancerId } });
       if (p) return p;
     }
@@ -5934,7 +6216,7 @@ init_prisma();
 // server/services/marketplacePayment.service.ts
 init_prisma();
 init_credits_service();
-import { CreditEntryType as CreditEntryType5, MarketplacePaymentStatus, Prisma as Prisma4 } from "@prisma/client";
+import { CreditEntryType as CreditEntryType5, MarketplacePaymentStatus, Prisma as Prisma5 } from "@prisma/client";
 var PaymentError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5996,7 +6278,7 @@ var issueInvoice = async (paymentId) => {
       }
     });
   } catch (err) {
-    if (err instanceof Prisma4.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma5.PrismaClientKnownRequestError && err.code === "P2002") {
       await prisma_default.marketplaceInvoice.create({
         data: {
           paymentId,
@@ -7519,15 +7801,10 @@ var PreselectionService = class {
         404
       );
     }
-    if (!application.candidateScore) {
-      throw new AppError(
-        "Candidate score not found.",
-        404
-      );
-    }
-    const finalScore = application.candidateScore.finalScore ?? 0;
-    const recruiterScore = application.candidateScore.recruiterScore ?? null;
-    const aiScore = application.candidateScore.aiScore ?? null;
+    const scores = application.candidateScore;
+    const finalScore = scores?.finalScore ?? application.finalScore ?? application.aiScore ?? 0;
+    const recruiterScore = scores?.recruiterScore ?? application.recruiterScore ?? null;
+    const aiScore = scores?.aiScore ?? application.aiScore ?? null;
     const status = this.determineStatus(finalScore);
     const existingPreselection = application.preselections[0];
     if (existingPreselection) {
@@ -7658,13 +7935,25 @@ var PreselectionService = class {
       );
     }
     const recruiterScore = data.recruiterScore ?? preselection.recruiterScore;
+    const shortlisted = data.status === PreselectionStatus.SHORTLISTED;
+    const rejected = data.status === PreselectionStatus.REJECTED;
+    const earlyStage = application.status === "PENDING" || application.status === "REVIEWING";
     return prisma_default.$transaction(async (tx) => {
-      await tx.candidateScore.update({
+      await tx.candidateScore.updateMany({
         where: {
           applicationId
         },
         data: {
           recruiterScore
+        }
+      });
+      await tx.application.update({
+        where: { id: applicationId },
+        data: {
+          isPreselected: shortlisted,
+          preselectionStatus: data.status,
+          ...data.comment !== void 0 ? { preselectionComment: data.comment } : {},
+          ...rejected ? { status: "REJECTED" } : shortlisted && earlyStage ? { status: "SHORTLISTED" } : {}
         }
       });
       return tx.preselection.update({
@@ -7839,7 +8128,23 @@ var PreselectionService = class {
             include: {
               candidate: {
                 include: {
-                  user: true
+                  /* Selected, not `user: true`.
+                   *
+                   * That returned every User column — the bcrypt hash
+                   * included — to any recruiter who opened this list. A
+                   * password hash has no reason to leave the server: it is
+                   * exactly what an offline cracking attempt needs if a token
+                   * or a response is ever captured. */
+                  user: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      email: true,
+                      phone: true,
+                      avatar: { select: { url: true } }
+                    }
+                  }
                 }
               },
               job: true
@@ -8666,6 +8971,214 @@ var AIAnalysisService = class {
 };
 var aiAnalysis_service_default = new AIAnalysisService();
 
+// server/services/cvDirectory.service.ts
+init_prisma();
+import { Prisma as Prisma6 } from "@prisma/client";
+var MAX_TERMS2 = 8;
+var MAX_PER_PAGE2 = 200;
+var searchSql = (q) => {
+  const terms = q.toLowerCase().replace(/[^\p{L}\p{N}\s+#.]/gu, " ").split(/\s+/).filter((t) => t.length >= 2).slice(0, MAX_TERMS2);
+  if (!terms.length) return null;
+  const perTerm = terms.map((term) => {
+    const like = `%${term}%`;
+    return Prisma6.sql`(
+      public.dl_unaccent(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", ''))
+        ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp."currentJobTitle", '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.headline, '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.city, '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.wilaya, '')) ILIKE public.dl_unaccent(${like})
+      OR EXISTS (
+        SELECT 1 FROM unnest(cp.skills) AS s
+         WHERE public.dl_unaccent(s) ILIKE public.dl_unaccent(${like})
+      )
+      OR public.dl_unaccent(j.title) ILIKE public.dl_unaccent(${like})
+    )`;
+  });
+  return Prisma6.join(perTerm, " AND ");
+};
+var matchingCandidates = async (p, skip, take) => {
+  const where = [Prisma6.sql`a."recruiterId" = ${p.recruiterProfileId}`];
+  const having = [];
+  if (p.jobId) where.push(Prisma6.sql`a."jobId" = ${p.jobId}`);
+  if (p.wilaya) {
+    where.push(Prisma6.sql`(
+      public.dl_unaccent(coalesce(cp.wilaya, '')) ILIKE public.dl_unaccent(${p.wilaya})
+      OR public.dl_unaccent(coalesce(cp.city, '')) ILIKE public.dl_unaccent(${p.wilaya})
+    )`);
+  }
+  if (typeof p.minExperience === "number" && Number.isFinite(p.minExperience)) {
+    where.push(
+      Prisma6.sql`coalesce(cp."yearsExperience", 0) >= ${Math.trunc(p.minExperience)}`
+    );
+  }
+  if (p.hasCv === true) {
+    where.push(Prisma6.sql`(cp."resumeId" IS NOT NULL OR cp."cvBuilderData" IS NOT NULL)`);
+  }
+  if (p.availableNow === true) where.push(Prisma6.sql`cp."availableImmediately" = true`);
+  if (p.q?.trim()) {
+    const text = searchSql(p.q);
+    if (text) where.push(text);
+  }
+  if (typeof p.minScore === "number" && Number.isFinite(p.minScore)) {
+    having.push(Prisma6.sql`coalesce(max(a."aiScore"), 0) >= ${p.minScore}`);
+  }
+  if (p.preselectedOnly === true) {
+    having.push(Prisma6.sql`bool_or(coalesce(a."isPreselected", false)) = true`);
+  }
+  const whereSql = Prisma6.join(where, " AND ");
+  const havingSql = having.length ? Prisma6.sql`HAVING ${Prisma6.join(having, " AND ")}` : Prisma6.empty;
+  return prisma_default.$queryRaw`
+    SELECT cp.id,
+           count(*) OVER () AS total
+      FROM "Application" a
+      JOIN "CandidateProfile" cp ON cp.id = a."candidateId"
+      JOIN "User" u ON u.id = cp."userId"
+      JOIN "Job" j ON j.id = a."jobId"
+     WHERE ${whereSql}
+       -- A closed account is not a candidate to call.
+       AND u."deletedAt" IS NULL
+       AND u."status" <> 'DELETED'::"AccountStatus"
+     GROUP BY cp.id
+     ${havingSql}
+     ORDER BY coalesce(max(a."aiScore"), 0) DESC,
+              max(a."appliedAt") DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var hydrate2 = async (candidateIds, recruiterProfileId) => {
+  if (!candidateIds.length) return [];
+  const applications = await prisma_default.application.findMany({
+    where: { candidateId: { in: candidateIds }, recruiterId: recruiterProfileId },
+    orderBy: { appliedAt: "desc" },
+    select: {
+      id: true,
+      candidateId: true,
+      aiScore: true,
+      isPreselected: true,
+      oralPresentationScore: true,
+      appliedAt: true,
+      job: { select: { id: true, title: true, category: { select: { name: true } } } },
+      candidate: {
+        select: {
+          id: true,
+          userId: true,
+          currentJobTitle: true,
+          headline: true,
+          city: true,
+          wilaya: true,
+          skills: true,
+          yearsExperience: true,
+          availableImmediately: true,
+          resumeId: true,
+          // Only whether there is one: the builder document is the whole CV
+          // and has no business in a list.
+          cvBuilderData: true,
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              avatar: { select: { url: true } }
+            }
+          }
+        }
+      }
+    }
+  });
+  const userIds = [...new Set(applications.map((a) => a.candidate.userId))];
+  const [quizzes, presentations] = await Promise.all([
+    prisma_default.quiz.findMany({
+      where: { candidateId: { in: userIds } },
+      select: { candidateId: true, attempt: { select: { aiScore: true } } }
+    }),
+    prisma_default.oralPresentation.findMany({
+      where: { candidateId: { in: candidateIds } },
+      select: { candidateId: true, videoId: true }
+    })
+  ]);
+  const quizByUser = new Map(quizzes.map((q) => [q.candidateId, q.attempt?.aiScore ?? null]));
+  const hasPresentation = new Set(presentations.filter((p) => p.videoId).map((p) => p.candidateId));
+  const byCandidate = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const c = a.candidate;
+    const score = Math.round(a.aiScore ?? 0);
+    const existing = byCandidate.get(c.id);
+    const jobIds = new Set(existing?.jobIds ?? []);
+    const jobTitles = new Set(existing?.jobTitles ?? []);
+    const sectors = new Set(existing?.sectors ?? []);
+    if (a.job?.id) jobIds.add(a.job.id);
+    if (a.job?.title) jobTitles.add(a.job.title);
+    if (a.job?.category?.name) sectors.add(a.job.category.name);
+    const better = !existing || score > existing.aiScore;
+    const base = better ? {
+      id: c.id,
+      fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
+      email: c.user.email,
+      phone: c.user.phone ?? "",
+      avatarUrl: c.user.avatar?.url ?? null,
+      position: c.currentJobTitle || c.headline || a.job?.title || "",
+      experience: c.yearsExperience ?? 0,
+      location: c.city ?? c.wilaya ?? "",
+      skills: c.skills ?? [],
+      availableNow: c.availableImmediately,
+      aiScore: score,
+      quizScore: quizByUser.get(c.userId) != null ? Math.round(quizByUser.get(c.userId)) : void 0,
+      oralPresentationScore: a.oralPresentationScore ?? void 0,
+      hasPresentation: hasPresentation.has(c.id),
+      hasCv: Boolean(c.resumeId) || isFilled(c.cvBuilderData),
+      createdAt: a.appliedAt
+    } : existing;
+    const isPreselected = Boolean(existing?.isPreselected) || Boolean(a.isPreselected);
+    byCandidate.set(c.id, {
+      ...base,
+      isPreselected,
+      jobIds: [...jobIds],
+      jobTitles: [...jobTitles],
+      sectors: [...sectors]
+    });
+  }
+  const position = new Map(candidateIds.map((id, i) => [id, i]));
+  return [...byCandidate.values()].sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)
+  );
+};
+var isFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
+  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+);
+var searchCvDirectory = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 24) || 24, 1), MAX_PER_PAGE2);
+  const skip = (page - 1) * perPage;
+  const [rows, everyone] = await Promise.all([
+    matchingCandidates(params, skip, perPage),
+    // How many applicants the recruiter has in total, whatever the search
+    // says. The screen's headline figures are about their pipeline, not about
+    // the current query, and counting the filtered set there would make
+    // "candidats" drop every time somebody typed.
+    prisma_default.$queryRaw`
+      SELECT count(DISTINCT a."candidateId") AS total
+        FROM "Application" a
+        JOIN "CandidateProfile" cp ON cp.id = a."candidateId"
+        JOIN "User" u ON u.id = cp."userId"
+       WHERE a."recruiterId" = ${params.recruiterProfileId}
+         AND u."deletedAt" IS NULL
+         AND u."status" <> 'DELETED'::"AccountStatus"`
+  ]);
+  const total = Number(rows[0]?.total ?? 0);
+  return {
+    candidates: await hydrate2(
+      rows.map((r) => r.id),
+      params.recruiterProfileId
+    ),
+    total,
+    totalAll: Number(everyone[0]?.total ?? 0),
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage))
+  };
+};
+
 // server/controllers/application.controller.ts
 var applyToJob = async (req, res, next) => {
   try {
@@ -8933,6 +9446,49 @@ var updateApplicationStatus = async (req, res, next) => {
     next(err);
   }
 };
+var getCvDirectory = async (req, res, next) => {
+  try {
+    const me = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: { role: true, recruiterProfile: { select: { id: true } } }
+    });
+    if (!me?.recruiterProfile) {
+      return next(
+        new AppError(
+          me?.role === "ADMIN" ? "Le r\xE9pertoire CV est propre \xE0 un compte recruteur." : "Profil recruteur introuvable.",
+          403
+        )
+      );
+    }
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : void 0;
+    };
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const result = await searchCvDirectory({
+      recruiterProfileId: me.recruiterProfile.id,
+      q: str(req.query.q),
+      jobId: str(req.query.jobId),
+      wilaya: str(req.query.wilaya),
+      minExperience: num(req.query.minExperience),
+      minScore: num(req.query.minScore),
+      // Only "true" turns a filter on, so ?hasCv=maybe does not silently
+      // become "candidates without a CV".
+      hasCv: req.query.hasCv === "true" ? true : void 0,
+      availableNow: req.query.availableNow === "true" ? true : void 0,
+      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0,
+      page: num(req.query.page),
+      perPage: num(req.query.perPage)
+    });
+    res.status(200).json({
+      status: "success",
+      results: result.candidates.length,
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/application.routes.ts
 var router5 = Router5();
@@ -8940,6 +9496,12 @@ router5.use(protect);
 router5.post("/", restrictTo("CANDIDATE"), applyToJob);
 router5.get("/my", restrictTo("CANDIDATE"), getMyApplications);
 router5.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
+router5.get(
+  "/cv-directory",
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  getCvDirectory
+);
 router5.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
 var application_routes_default = router5;
 
@@ -9266,7 +9828,7 @@ var getAllUsers = async (req, res, next) => {
     });
     const shaped = users.map(({ candidateProfile, ...user }) => {
       const data = candidateProfile?.cvBuilderData;
-      const builderFilled = !!data && typeof data === "object" && Object.values(data).some(
+      const builderFilled2 = !!data && typeof data === "object" && Object.values(data).some(
         (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
       );
       return {
@@ -9274,7 +9836,7 @@ var getAllUsers = async (req, res, next) => {
         candidateProfile: candidateProfile ? {
           id: candidateProfile.id,
           hasUploadedCv: Boolean(candidateProfile.resumeId),
-          hasBuiltCv: builderFilled
+          hasBuiltCv: builderFilled2
         } : null
       };
     });
@@ -9291,7 +9853,27 @@ var updateUserStatus = async (req, res, next) => {
     if (!status || !validStatuses.includes(status)) {
       return next(new AppError(`status must be one of: ${validStatuses.join(", ")}`, 400));
     }
-    const user = await prisma_default.user.update({ where: { id }, data: { status } });
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: { role: true }
+    });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+    if (req.user?.id === id) {
+      return next(new AppError("Vous ne pouvez pas modifier votre propre statut.", 400));
+    }
+    if (target.role === "ADMIN" && !req.adminAccess?.isSuperAdmin) {
+      return next(
+        new AppError(
+          "Seul un administrateur sans restriction peut modifier un compte administrateur.",
+          403
+        )
+      );
+    }
+    const user = await prisma_default.user.update({
+      where: { id },
+      data: { status },
+      select: { id: true, email: true, role: true, status: true }
+    });
     await prisma_default.auditLog.create({
       data: {
         userId: req.user?.id,
@@ -9506,6 +10088,328 @@ var fromUploadedCv = async (asset) => {
   };
 };
 
+// server/services/adminPayments.service.ts
+init_prisma();
+var MAX_SCAN = 2e3;
+var MAX_PER_PAGE3 = 100;
+var name = (user) => user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email : "\u2014";
+var PACK_STATUS = {
+  PENDING: "PENDING",
+  PAID: "PAID",
+  FAILED: "FAILED",
+  CANCELED: "CANCELED"
+};
+var readSubscriptions = async () => {
+  const rows = await prisma_default.payment.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+      method: true,
+      status: true,
+      transactionId: true,
+      paidAt: true,
+      createdAt: true,
+      subscription: {
+        select: {
+          plan: true,
+          company: {
+            select: {
+              name: true,
+              members: {
+                where: { role: "OWNER" },
+                take: 1,
+                select: {
+                  recruiter: {
+                    select: {
+                      user: { select: { firstName: true, lastName: true, email: true } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+  return rows.map((p) => {
+    const owner = p.subscription?.company?.members[0]?.recruiter?.user ?? null;
+    return {
+      id: p.id,
+      source: "subscription",
+      // Payment has no reference of its own; the gateway's id is the only
+      // thing a payer could quote back.
+      reference: p.transactionId ?? p.id.slice(0, 8).toUpperCase(),
+      description: `Abonnement ${p.subscription?.plan ?? "\u2014"}`,
+      payer: {
+        name: name(owner),
+        email: owner?.email ?? null,
+        company: p.subscription?.company?.name ?? null
+      },
+      amount: p.amount,
+      currency: p.currency.toUpperCase(),
+      method: p.method,
+      status: p.status ?? "PENDING",
+      invoiceNumber: null,
+      receiptUrl: null,
+      paidAt: p.paidAt,
+      createdAt: p.createdAt
+    };
+  });
+};
+var readPackOrders = async () => {
+  const rows = await prisma_default.packOrder.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      packId: true,
+      jobs: true,
+      amount: true,
+      currency: true,
+      status: true,
+      checkoutId: true,
+      invoiceNumber: true,
+      paidAt: true,
+      createdAt: true,
+      company: { select: { name: true } },
+      buyer: { select: { firstName: true, lastName: true, email: true } }
+    }
+  });
+  return rows.map((o) => ({
+    id: o.id,
+    source: "pack",
+    reference: o.invoiceNumber ?? o.checkoutId ?? o.id.slice(0, 8).toUpperCase(),
+    description: `Pack annonces ${o.packId} \xB7 ${o.jobs} annonce(s)`,
+    payer: {
+      name: name(o.buyer),
+      email: o.buyer?.email ?? null,
+      company: o.company?.name ?? null
+    },
+    // Whole dinars on this table, where the others carry decimals.
+    amount: o.amount,
+    currency: o.currency.toUpperCase(),
+    method: "CARD",
+    status: PACK_STATUS[o.status] ?? "PENDING",
+    invoiceNumber: o.invoiceNumber,
+    receiptUrl: null,
+    paidAt: o.paidAt,
+    createdAt: o.createdAt
+  }));
+};
+var readMarketplace = async () => {
+  const rows = await prisma_default.marketplacePayment.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      reference: true,
+      amount: true,
+      currency: true,
+      method: true,
+      status: true,
+      paidAt: true,
+      createdAt: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+      creditPack: { select: { name: true, credits: true } },
+      subscription: { select: { plan: { select: { name: true } } } },
+      receipt: { select: { url: true } },
+      invoice: { select: { number: true } }
+    }
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    source: "marketplace",
+    reference: p.reference,
+    description: p.creditPack ? `Cr\xE9dits \xB7 ${p.creditPack.name} (${p.creditPack.credits})` : p.subscription?.plan?.name ? `Abonnement freelance \xB7 ${p.subscription.plan.name}` : "Achat marketplace",
+    payer: {
+      name: name(p.user),
+      email: p.user?.email ?? null,
+      company: null
+    },
+    amount: Number(p.amount),
+    currency: p.currency.toUpperCase(),
+    method: p.method,
+    status: p.status,
+    invoiceNumber: p.invoice?.number ?? null,
+    // The proof behind a manual transfer. Approving one without looking at it
+    // is granting credits because somebody said so.
+    receiptUrl: p.receipt?.url ?? null,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt
+  }));
+};
+var matches = (row, p) => {
+  if (p.source && row.source !== p.source) return false;
+  if (p.status && row.status !== p.status) return false;
+  if (p.method && row.method !== p.method) return false;
+  if (p.q) {
+    const needle = p.q.toLowerCase();
+    const haystack = [
+      row.reference,
+      row.invoiceNumber ?? "",
+      row.description,
+      row.payer.name,
+      row.payer.email ?? "",
+      row.payer.company ?? ""
+    ].join(" ").toLowerCase();
+    if (!haystack.includes(needle)) return false;
+  }
+  const when = row.paidAt ?? row.createdAt;
+  if (p.from) {
+    const from = new Date(p.from);
+    if (!Number.isNaN(from.getTime()) && when < from) return false;
+  }
+  if (p.to) {
+    const to = new Date(p.to);
+    if (!Number.isNaN(to.getTime())) {
+      to.setHours(23, 59, 59, 999);
+      if (when > to) return false;
+    }
+  }
+  return true;
+};
+var summarise = (rows) => {
+  const paid = rows.filter((r) => r.status === "PAID");
+  const startOfMonth = /* @__PURE__ */ new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+  const sum = (list) => Math.round(list.reduce((total, r) => total + r.amount, 0));
+  const perSource = (source) => sum(paid.filter((r) => r.source === source));
+  return {
+    /* Summed without converting between currencies. Everything on the
+     * platform is priced in dinars; adding two currencies into one number
+     * would be a figure that is simply wrong, so the breakdown below says
+     * which currencies are present instead. */
+    currencies: [...new Set(rows.map((r) => r.currency))],
+    revenue: sum(paid),
+    revenueThisMonth: sum(
+      paid.filter((r) => (r.paidAt ?? r.createdAt) >= startOfMonth)
+    ),
+    bySource: {
+      subscription: perSource("subscription"),
+      pack: perSource("pack"),
+      marketplace: perSource("marketplace")
+    },
+    counts: {
+      all: rows.length,
+      paid: paid.length,
+      pending: rows.filter((r) => r.status === "PENDING").length,
+      // The queue a human has to work through, and the only count here that
+      // is a to-do rather than a fact.
+      awaitingReview: rows.filter((r) => r.status === "AWAITING_REVIEW").length,
+      failed: rows.filter((r) => r.status === "FAILED" || r.status === "EXPIRED").length,
+      refunded: rows.filter((r) => r.status === "REFUNDED").length,
+      rejected: rows.filter((r) => r.status === "REJECTED").length
+    },
+    pendingAmount: sum(
+      rows.filter((r) => r.status === "PENDING" || r.status === "AWAITING_REVIEW")
+    )
+  };
+};
+var listPayments = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 25) || 25, 1), MAX_PER_PAGE3);
+  const [subscriptions, packs, marketplace] = await Promise.all([
+    readSubscriptions(),
+    readPackOrders(),
+    readMarketplace()
+  ]);
+  const everything = [...subscriptions, ...packs, ...marketplace];
+  const truncated = subscriptions.length === MAX_SCAN || packs.length === MAX_SCAN || marketplace.length === MAX_SCAN;
+  const filtered = everything.filter((row) => matches(row, params)).sort(
+    (a, b) => (b.paidAt ?? b.createdAt).getTime() - (a.paidAt ?? a.createdAt).getTime()
+  );
+  const start2 = (page - 1) * perPage;
+  return {
+    payments: filtered.slice(start2, start2 + perPage),
+    total: filtered.length,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(filtered.length / perPage)),
+    /* Totals over everything that matched, not over the page: a page of
+     * twenty-five tells an admin nothing about what the platform earned. */
+    summary: summarise(filtered),
+    truncated,
+    scanLimit: MAX_SCAN
+  };
+};
+
+// server/utils/adminScopes.ts
+var ADMIN_SCOPES = [
+  "overview",
+  "plans",
+  "payments",
+  "users",
+  "jobs",
+  "schedules",
+  "emails",
+  "crm",
+  "preselection",
+  "freelance_moderation",
+  "team_tasks"
+];
+var SCOPE_LABELS = {
+  overview: {
+    label: "Aper\xE7u",
+    description: "Les chiffres de la plateforme."
+  },
+  plans: {
+    label: "Plans recruteurs",
+    description: "Changer le plan d'une entreprise et cr\xE9diter des packs d'annonces. Touche \xE0 ce qui a \xE9t\xE9 pay\xE9."
+  },
+  payments: {
+    label: "Paiements",
+    description: "Consulter tous les paiements. Lecture seule."
+  },
+  users: {
+    label: "Comptes",
+    description: "Voir, modifier, suspendre et supprimer des comptes. Ne permet jamais de cr\xE9er un administrateur."
+  },
+  jobs: {
+    label: "Offres",
+    description: "Modifier et supprimer les offres d'emploi."
+  },
+  schedules: {
+    label: "Agenda",
+    description: "L'agenda de l'\xE9quipe."
+  },
+  emails: {
+    label: "E-mails group\xE9s",
+    description: "\xC9crire \xE0 des milliers de comptes d'un seul envoi. \xC0 n'accorder qu'en connaissance de cause."
+  },
+  crm: {
+    label: "CRM",
+    description: "Les prospects et leurs notes."
+  },
+  preselection: {
+    label: "Pr\xE9s\xE9lection Corporate",
+    description: "D\xE9cider \xE0 la place d'un recruteur Corporate."
+  },
+  freelance_moderation: {
+    label: "Mod\xE9ration freelance",
+    description: "Valider services et projets, lire les messages signal\xE9s, et approuver les virements \u2014 ce qui accorde des cr\xE9dits."
+  },
+  team_tasks: {
+    label: "T\xE2ches d'\xE9quipe",
+    description: "Le tableau des t\xE2ches internes."
+  }
+};
+var VALID = new Set(ADMIN_SCOPES);
+var isAdminScope = (value) => typeof value === "string" && VALID.has(value);
+var normaliseScopes = (value) => {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(isAdminScope))];
+};
+var canUseScope = (user, scope2) => {
+  if (!user || user.role !== "ADMIN") return false;
+  if (user.isSuperAdmin) return true;
+  return Array.isArray(user.adminScopes) && user.adminScopes.includes(scope2);
+};
+
 // server/controllers/adminManage.controller.ts
 var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
   data: {
@@ -9562,6 +10466,15 @@ var updateUser = async (req, res, next) => {
     if (role !== void 0 && !ROLES.includes(role)) {
       return next(new AppError(`role must be one of: ${ROLES.join(", ")}`, 400));
     }
+    const touchingAdmin = role === "ADMIN" || target.role === "ADMIN";
+    if (touchingAdmin && !req.adminAccess?.isSuperAdmin) {
+      return next(
+        new AppError(
+          "Seul un administrateur sans restriction peut g\xE9rer un compte administrateur.",
+          403
+        )
+      );
+    }
     if (status !== void 0 && !STATUSES.includes(status)) {
       return next(new AppError(`status must be one of: ${STATUSES.join(", ")}`, 400));
     }
@@ -9617,6 +10530,14 @@ var deleteUser = async (req, res, next) => {
     const target = await prisma_default.user.findUnique({ where: { id } });
     if (!target) return next(new AppError("Compte introuvable.", 404));
     if (target.role === "ADMIN") {
+      if (!req.adminAccess?.isSuperAdmin) {
+        return next(
+          new AppError(
+            "Seul un administrateur sans restriction peut supprimer un compte administrateur.",
+            403
+          )
+        );
+      }
       const admins = await prisma_default.user.count({
         where: { role: "ADMIN", status: { not: "DELETED" } }
       });
@@ -9843,6 +10764,145 @@ var getUserDetail = async (req, res, next) => {
         }
       }
     });
+  } catch (err) {
+    next(err);
+  }
+};
+var getPayments = async (req, res, next) => {
+  try {
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : void 0;
+    };
+    const SOURCES = ["subscription", "pack", "marketplace"];
+    const source = str(req.query.source);
+    if (source && !SOURCES.includes(source)) {
+      return next(new AppError(`source must be one of: ${SOURCES.join(", ")}`, 400));
+    }
+    const data = await listPayments({
+      source,
+      status: str(req.query.status),
+      method: str(req.query.method),
+      q: str(req.query.q),
+      from: str(req.query.from),
+      to: str(req.query.to),
+      page: num(req.query.page),
+      perPage: num(req.query.perPage)
+    });
+    res.status(200).json({ status: "success", results: data.payments.length, data });
+  } catch (err) {
+    next(err);
+  }
+};
+var listAdminScopes = async (_req, res, next) => {
+  try {
+    res.status(200).json({
+      status: "success",
+      data: {
+        scopes: ADMIN_SCOPES.map((key) => ({ key, ...SCOPE_LABELS[key] }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listAdminAccess = async (req, res, next) => {
+  try {
+    const admins = await prisma_default.user.findMany({
+      where: { role: "ADMIN", deletedAt: null },
+      orderBy: [{ isSuperAdmin: "desc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        status: true,
+        isSuperAdmin: true,
+        adminScopes: true,
+        createdAt: true
+      }
+    });
+    res.status(200).json({
+      status: "success",
+      results: admins.length,
+      data: {
+        admins: admins.map((a) => ({
+          ...a,
+          // Said plainly, because an administrator with neither is an account
+          // that can sign in and reach nothing — easy to create by accident.
+          hasNoAccess: !a.isSuperAdmin && a.adminScopes.length === 0,
+          isMe: a.id === req.user.id
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateAdminAccess = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isSuperAdmin, scopes } = req.body;
+    if (req.user.id === id) {
+      return next(
+        new AppError("Vous ne pouvez pas modifier vos propres autorisations.", 400)
+      );
+    }
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, isSuperAdmin: true, deletedAt: true }
+    });
+    if (!target || target.deletedAt) {
+      return next(new AppError("Compte introuvable.", 404));
+    }
+    if (target.role !== "ADMIN") {
+      return next(
+        new AppError(
+          "Ce compte n'est pas administrateur. Changez son r\xF4le depuis Comptes d'abord.",
+          400
+        )
+      );
+    }
+    const makeSuper = typeof isSuperAdmin === "boolean" ? isSuperAdmin : target.isSuperAdmin;
+    if (target.isSuperAdmin && !makeSuper) {
+      const others = await prisma_default.user.count({
+        where: {
+          role: "ADMIN",
+          isSuperAdmin: true,
+          deletedAt: null,
+          status: { notIn: ["SUSPENDED", "DELETED"] },
+          id: { not: target.id }
+        }
+      });
+      if (others === 0) {
+        return next(
+          new AppError(
+            "C'est le dernier administrateur sans restriction. Nommez-en un autre avant de limiter celui-ci.",
+            400
+          )
+        );
+      }
+    }
+    const updated = await prisma_default.user.update({
+      where: { id: target.id },
+      data: {
+        isSuperAdmin: makeSuper,
+        /* Kept even for an unrestricted administrator rather than cleared: if
+         * their unrestricted status is removed later, the areas they were
+         * trusted with are still on the record instead of silently becoming
+         * none. */
+        ...scopes !== void 0 ? { adminScopes: normaliseScopes(scopes) } : {}
+      },
+      select: {
+        id: true,
+        email: true,
+        isSuperAdmin: true,
+        adminScopes: true
+      }
+    });
+    await audit(req, "UPDATE_ADMIN_ACCESS", "User", target.id);
+    res.status(200).json({ status: "success", data: { admin: updated } });
   } catch (err) {
     next(err);
   }
@@ -10543,8 +11603,8 @@ var listMembers = async (_req, res, next) => {
 };
 var createMember = async (req, res, next) => {
   try {
-    const { name, role, userId } = req.body;
-    const clean2 = String(name ?? "").trim();
+    const { name: name2, role, userId } = req.body;
+    const clean2 = String(name2 ?? "").trim();
     if (!clean2) return next(new AppError("Le nom est obligatoire.", 400));
     const count = await prisma_default.teamMember.count();
     const member = await prisma_default.teamMember.create({
@@ -10563,14 +11623,14 @@ var createMember = async (req, res, next) => {
 };
 var updateMember = async (req, res, next) => {
   try {
-    const { name, role, active, position } = req.body;
-    if (name !== void 0 && !String(name).trim()) {
+    const { name: name2, role, active, position } = req.body;
+    if (name2 !== void 0 && !String(name2).trim()) {
       return next(new AppError("Le nom ne peut pas \xEAtre vide.", 400));
     }
     const member = await prisma_default.teamMember.update({
       where: { id: req.params.id },
       data: {
-        ...name !== void 0 ? { name: String(name).trim() } : {},
+        ...name2 !== void 0 ? { name: String(name2).trim() } : {},
         ...role !== void 0 ? { role: role ? String(role).trim() : null } : {},
         ...active !== void 0 ? { active: Boolean(active) } : {},
         ...position !== void 0 ? { position: Number(position) } : {}
@@ -10766,55 +11826,107 @@ var carryOver = async (req, res, next) => {
   }
 };
 
+// server/middleware/adminScope.middleware.ts
+var requireAdminScope = (scope2) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return next(new AppError("Not authorized to access this route", 401));
+      }
+      const account = await readAdminAccess(req.user.id);
+      if (!account || account.role !== "ADMIN" || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
+        return next(new AppError("You do not have permission to perform this action", 403));
+      }
+      if (!canUseScope(account, scope2)) {
+        return next(
+          new AppError(
+            `Acc\xE8s limit\xE9 : \xAB ${SCOPE_LABELS[scope2].label} \xBB ne fait pas partie de vos autorisations.`,
+            403
+          )
+        );
+      }
+      req.adminAccess = {
+        isSuperAdmin: account.isSuperAdmin,
+        scopes: account.adminScopes
+      };
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+};
+var requireSuperAdmin = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return next(new AppError("Not authorized to access this route", 401));
+    }
+    const account = await readAdminAccess(req.user.id);
+    if (!account || account.role !== "ADMIN" || !account.isSuperAdmin || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
+      return next(
+        new AppError("R\xE9serv\xE9 \xE0 un administrateur sans restriction.", 403)
+      );
+    }
+    req.adminAccess = { isSuperAdmin: true, scopes: [] };
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router7 = Router7();
 router7.use(protect);
 router7.use(restrictTo("ADMIN"));
-router7.get("/stats", getStats);
-router7.get("/companies", getAllCompanies);
-router7.get("/companies/:id", getCompany);
-router7.patch("/companies/:id/plan", updateCompanyPlan);
-router7.patch("/companies/:id/postings", grantCompanyPostings);
-router7.get("/users", getAllUsers);
-router7.patch("/users/:id/status", updateUserStatus);
-router7.get("/users/:id", getUserDetail);
-router7.patch("/users/:id", updateUser);
-router7.post("/users/:id/send-verification", sendVerificationLink);
-router7.delete("/users/:id", deleteUser);
-router7.get("/jobs", getAllJobsAdmin);
-router7.patch("/jobs/:id", updateJobAdmin);
-router7.delete("/jobs/:id", deleteJobAdmin);
-router7.get("/schedules", listSchedules);
-router7.post("/schedules", createSchedule);
-router7.patch("/schedules/:id", updateSchedule);
-router7.delete("/schedules/:id", deleteSchedule);
-router7.post("/emails/send", sendBroadcast);
-router7.post("/emails/preview", sendBroadcastPreview);
-router7.get("/freelance/moderation", listQueue);
-router7.get("/freelance/moderation/stats", getQueueStats);
-router7.get("/freelance/moderation/history", listHistory);
-router7.post("/freelance/moderation/services/:id/approve", approveService);
-router7.post("/freelance/moderation/services/:id/reject", rejectService);
-router7.get("/freelance/moderation/projects", listProjectQueue);
-router7.post("/freelance/moderation/projects/:id/approve", approveProject);
-router7.post("/freelance/moderation/projects/:id/reject", rejectProject);
-router7.get("/freelance/moderation/messages", listFlaggedMessages);
-router7.post("/freelance/moderation/messages/:id/clear", clearMessageFlag);
-router7.get("/team/board", getBoard);
-router7.post("/team/carry-over", carryOver);
-router7.get("/team/members", listMembers);
-router7.post("/team/members", createMember);
-router7.patch("/team/members/:id", updateMember);
-router7.delete("/team/members/:id", deleteMember);
-router7.post("/team/tasks", createTask);
-router7.get("/team/tasks/:id", getTask);
-router7.patch("/team/tasks/:id", updateTask);
-router7.delete("/team/tasks/:id", deleteTask);
-router7.get("/freelance/payments/pending", listPendingReceipts);
-router7.post("/freelance/payments/:id/approve", approveReceipt);
-router7.post("/freelance/payments/:id/reject", rejectReceipt);
-router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
-router7.post("/preselections/:applicationId", adminPreselect);
+var scope = requireAdminScope;
+router7.get("/stats", scope("overview"), getStats);
+router7.get("/companies", scope("plans"), getAllCompanies);
+router7.get("/companies/:id", scope("plans"), getCompany);
+router7.patch("/companies/:id/plan", scope("plans"), updateCompanyPlan);
+router7.patch("/companies/:id/postings", scope("plans"), grantCompanyPostings);
+router7.get("/users", scope("users"), getAllUsers);
+router7.patch("/users/:id/status", scope("users"), updateUserStatus);
+router7.get("/users/:id", scope("users"), getUserDetail);
+router7.patch("/users/:id", scope("users"), updateUser);
+router7.post("/users/:id/send-verification", scope("users"), sendVerificationLink);
+router7.delete("/users/:id", scope("users"), deleteUser);
+router7.get("/payments", scope("payments"), getPayments);
+router7.get("/access", requireSuperAdmin, listAdminAccess);
+router7.get("/access/scopes", requireSuperAdmin, listAdminScopes);
+router7.patch("/access/:id", requireSuperAdmin, updateAdminAccess);
+router7.get("/jobs", scope("jobs"), getAllJobsAdmin);
+router7.patch("/jobs/:id", scope("jobs"), updateJobAdmin);
+router7.delete("/jobs/:id", scope("jobs"), deleteJobAdmin);
+router7.get("/schedules", scope("schedules"), listSchedules);
+router7.post("/schedules", scope("schedules"), createSchedule);
+router7.patch("/schedules/:id", scope("schedules"), updateSchedule);
+router7.delete("/schedules/:id", scope("schedules"), deleteSchedule);
+router7.post("/emails/send", scope("emails"), sendBroadcast);
+router7.post("/emails/preview", scope("emails"), sendBroadcastPreview);
+router7.get("/freelance/moderation", scope("freelance_moderation"), listQueue);
+router7.get("/freelance/moderation/stats", scope("freelance_moderation"), getQueueStats);
+router7.get("/freelance/moderation/history", scope("freelance_moderation"), listHistory);
+router7.post("/freelance/moderation/services/:id/approve", scope("freelance_moderation"), approveService);
+router7.post("/freelance/moderation/services/:id/reject", scope("freelance_moderation"), rejectService);
+router7.get("/freelance/moderation/projects", scope("freelance_moderation"), listProjectQueue);
+router7.post("/freelance/moderation/projects/:id/approve", scope("freelance_moderation"), approveProject);
+router7.post("/freelance/moderation/projects/:id/reject", scope("freelance_moderation"), rejectProject);
+router7.get("/freelance/moderation/messages", scope("freelance_moderation"), listFlaggedMessages);
+router7.post("/freelance/moderation/messages/:id/clear", scope("freelance_moderation"), clearMessageFlag);
+router7.get("/team/board", scope("team_tasks"), getBoard);
+router7.post("/team/carry-over", scope("team_tasks"), carryOver);
+router7.get("/team/members", scope("team_tasks"), listMembers);
+router7.post("/team/members", scope("team_tasks"), createMember);
+router7.patch("/team/members/:id", scope("team_tasks"), updateMember);
+router7.delete("/team/members/:id", scope("team_tasks"), deleteMember);
+router7.post("/team/tasks", scope("team_tasks"), createTask);
+router7.get("/team/tasks/:id", scope("team_tasks"), getTask);
+router7.patch("/team/tasks/:id", scope("team_tasks"), updateTask);
+router7.delete("/team/tasks/:id", scope("team_tasks"), deleteTask);
+router7.get("/freelance/payments/pending", scope("freelance_moderation"), listPendingReceipts);
+router7.post("/freelance/payments/:id/approve", scope("freelance_moderation"), approveReceipt);
+router7.post("/freelance/payments/:id/reject", scope("freelance_moderation"), rejectReceipt);
+router7.get("/preselections/corporate-pending", scope("preselection"), getCorporatePendingPreselections);
+router7.post("/preselections/:applicationId", scope("preselection"), adminPreselect);
 var admin_routes_default = router7;
 
 // server/routes/crm.routes.ts
@@ -11136,9 +12248,9 @@ var updateMyCompany = async (req, res, next) => {
       return v.length ? v : null;
     };
     if (body.name !== void 0) {
-      const name = text(body.name);
-      if (!name) return next(new AppError("The company name is required.", 400));
-      data.name = name;
+      const name2 = text(body.name);
+      if (!name2) return next(new AppError("The company name is required.", 400));
+      data.name = name2;
     }
     if (body.description !== void 0) data.description = text(body.description);
     if (body.industry !== void 0) data.industry = text(body.industry);
@@ -11662,6 +12774,253 @@ var payment_routes_default = router10;
 // server/routes/preselection.routes.ts
 import { Router as Router11 } from "express";
 
+// server/services/preselectionByOffer.service.ts
+init_prisma();
+var MAX_SKILLS = 12;
+var APPLICATION_SELECT = {
+  id: true,
+  status: true,
+  preselectionStatus: true,
+  isPreselected: true,
+  preselectionScore: true,
+  preselectionComment: true,
+  aiScore: true,
+  quizScore: true,
+  oralPresentationScore: true,
+  finalScore: true,
+  coverLetter: true,
+  appliedAt: true,
+  updatedAt: true,
+  cv: { select: { url: true, fileName: true } },
+  // Why the score is what it is. A number with no reason behind it is not
+  // something a recruiter can act on or defend.
+  aianalysis: {
+    select: { strengths: true, weaknesses: true, recommendations: true, overallScore: true }
+  },
+  candidate: {
+    select: {
+      id: true,
+      headline: true,
+      bio: true,
+      currentJobTitle: true,
+      city: true,
+      wilaya: true,
+      skills: true,
+      yearsExperience: true,
+      availableImmediately: true,
+      desiredSalary: true,
+      linkedinUrl: true,
+      githubUrl: true,
+      portfolioUrl: true,
+      resumeId: true,
+      cvBuilderData: true,
+      user: {
+        // Selected, never `user: true`. That returns every column including
+        // the bcrypt hash, which is exactly what the recruiter list elsewhere
+        // in this feature was doing.
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          avatar: { select: { url: true } }
+        }
+      },
+      oralPresentation: { select: { videoId: true } }
+    }
+  }
+};
+var cvHighlights = (data) => {
+  if (!data || typeof data !== "object") return { lastRole: null, education: null, languages: [] };
+  const d = data;
+  const first = (key) => Array.isArray(d[key]) ? d[key][0] : null;
+  const experience = first("experiences");
+  const education = first("education");
+  const text = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
+  const join = (parts) => {
+    const kept = parts.filter(Boolean);
+    return kept.length ? kept.join(" \xB7 ") : null;
+  };
+  return {
+    lastRole: experience ? join([text(experience.title) ?? text(experience.position), text(experience.company)]) : null,
+    education: education ? join([text(education.degree) ?? text(education.title), text(education.school)]) : null,
+    languages: Array.isArray(d.languages) ? d.languages.map(
+      (l) => typeof l === "string" ? l : text(l?.name)
+    ).filter((l) => Boolean(l)).slice(0, 6) : []
+  };
+};
+var builderFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
+  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+);
+var shape = (a) => {
+  const c = a.candidate;
+  const highlights = cvHighlights(c.cvBuilderData);
+  return {
+    applicationId: a.id,
+    candidateId: c.id,
+    fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
+    email: c.user.email,
+    phone: c.user.phone ?? "",
+    avatarUrl: c.user.avatar?.url ?? null,
+    position: c.currentJobTitle || c.headline || "",
+    headline: c.headline ?? null,
+    summary: c.bio ?? null,
+    location: c.city ?? c.wilaya ?? "",
+    wilaya: c.wilaya ?? null,
+    experience: c.yearsExperience ?? 0,
+    // Capped: a candidate who listed forty skills would push everyone else
+    // off the screen, and the rest are on their profile.
+    skills: (c.skills ?? []).slice(0, MAX_SKILLS),
+    skillsTotal: (c.skills ?? []).length,
+    availableNow: c.availableImmediately,
+    desiredSalary: c.desiredSalary ?? null,
+    lastRole: highlights.lastRole,
+    education: highlights.education,
+    languages: highlights.languages,
+    links: {
+      linkedin: c.linkedinUrl ?? null,
+      github: c.githubUrl ?? null,
+      portfolio: c.portfolioUrl ?? null
+    },
+    cvUrl: a.cv?.url ?? null,
+    hasCv: Boolean(c.resumeId) || builderFilled(c.cvBuilderData),
+    hasPresentation: Boolean(c.oralPresentation?.videoId),
+    coverLetter: a.coverLetter ?? null,
+    aiScore: Math.round(a.aiScore ?? 0),
+    quizScore: a.quizScore != null ? Math.round(a.quizScore) : null,
+    oralPresentationScore: a.oralPresentationScore != null ? Math.round(a.oralPresentationScore) : null,
+    finalScore: a.finalScore != null ? Math.round(a.finalScore) : null,
+    preselectionScore: a.preselectionScore != null ? Math.round(a.preselectionScore) : null,
+    strengths: a.aianalysis?.strengths ?? [],
+    weaknesses: a.aianalysis?.weaknesses ?? [],
+    recommendations: a.aianalysis?.recommendations ?? [],
+    status: a.status,
+    preselectionStatus: a.preselectionStatus,
+    isPreselected: a.isPreselected,
+    preselectionComment: a.preselectionComment ?? null,
+    appliedAt: a.appliedAt,
+    updatedAt: a.updatedAt
+  };
+};
+var countOf = (rows) => {
+  const by = (s) => rows.filter((r) => r.status === s).length;
+  const scored = rows.filter((r) => r.aiScore > 0);
+  return {
+    total: rows.length,
+    preselected: rows.filter((r) => r.isPreselected).length,
+    pending: by("PENDING") + by("REVIEWING"),
+    shortlisted: by("SHORTLISTED"),
+    interview: by("INTERVIEW"),
+    hired: by("HIRED"),
+    rejected: by("REJECTED"),
+    withCv: rows.filter((r) => r.hasCv).length,
+    // Averaged over the scored ones only: counting an unscored application as
+    // zero would make the average say the shortlist is weak when it is simply
+    // not analysed yet.
+    averageScore: scored.length ? Math.round(scored.reduce((sum, r) => sum + r.aiScore, 0) / scored.length) : null
+  };
+};
+var listByOffer = async (params) => {
+  const recruiter = await prisma_default.user.findUnique({
+    where: { id: params.recruiterUserId },
+    select: { recruiterProfile: { select: { id: true } } }
+  });
+  if (!recruiter?.recruiterProfile) return null;
+  const term = params.q?.trim();
+  const applications = await prisma_default.application.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { jobId: params.jobId } : {},
+      ...params.status ? { status: params.status } : {},
+      ...params.preselectedOnly ? { isPreselected: true } : {},
+      // A closed account is not a candidate to call.
+      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } },
+      ...term ? {
+        OR: [
+          { candidate: { user: { firstName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { user: { lastName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { currentJobTitle: { contains: term, mode: "insensitive" } } },
+          { candidate: { headline: { contains: term, mode: "insensitive" } } },
+          { candidate: { skills: { has: term } } }
+        ]
+      } : {}
+    },
+    select: { ...APPLICATION_SELECT, jobId: true },
+    /* Nulls last, explicitly.
+     *
+     * Postgres puts NULLs first in a DESC sort, so an application nobody has
+     * analysed yet led the offer — above the best-scoring candidate. The
+     * unscored ones belong at the bottom, newest first, which is also the
+     * order in which they are worth looking at by hand. */
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "desc" }]
+  });
+  const jobs = await prisma_default.job.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { id: params.jobId } : {}
+    },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      wilaya: true,
+      type: true,
+      status: true,
+      publishedAt: true,
+      createdAt: true,
+      expiresAt: true,
+      category: { select: { name: true } }
+    },
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+  });
+  const byJob = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const list = byJob.get(a.jobId) ?? [];
+    list.push(shape(a));
+    byJob.set(a.jobId, list);
+  }
+  const offers = jobs.map((job) => {
+    const candidates = byJob.get(job.id) ?? [];
+    return {
+      id: job.id,
+      title: job.title,
+      location: job.location,
+      wilaya: job.wilaya,
+      type: job.type,
+      status: job.status,
+      sector: job.category?.name ?? null,
+      publishedAt: job.publishedAt,
+      // Said per offer rather than worked out from a date in the UI: an
+      // expired offer still collecting applications is worth noticing.
+      expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
+      counts: countOf(candidates),
+      candidates
+    };
+  });
+  offers.sort((a, b) => b.counts.total - a.counts.total);
+  const everyCandidate = offers.flatMap((o) => o.candidates);
+  return {
+    offers,
+    totals: {
+      offers: offers.length,
+      offersWithCandidates: offers.filter((o) => o.counts.total > 0).length,
+      candidates: everyCandidate.length,
+      preselected: everyCandidate.filter((c) => c.isPreselected).length,
+      ...(() => {
+        const all = countOf(everyCandidate);
+        return {
+          pending: all.pending,
+          shortlisted: all.shortlisted,
+          interview: all.interview,
+          hired: all.hired,
+          rejected: all.rejected,
+          averageScore: all.averageScore
+        };
+      })()
+    }
+  };
+};
+
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
   try {
@@ -11861,9 +13220,28 @@ var deletePreselection = async (req, res, next) => {
     next(err);
   }
 };
+var getPreselectionByOffer = async (req, res, next) => {
+  try {
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const result = await listByOffer({
+      recruiterUserId: req.user.id,
+      jobId: str(req.query.jobId),
+      status: str(req.query.status),
+      q: str(req.query.q),
+      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0
+    });
+    if (!result) {
+      return next(new AppError("Profil recruteur introuvable.", 404));
+    }
+    res.status(200).json({ status: "success", data: result });
+  } catch (err) {
+    next(err);
+  }
+};
 var preselection_controller_default = {
   getMyPreselection,
   getPreselection,
+  getPreselectionByOffer,
   shortlistCandidate,
   rejectCandidate,
   reviewCandidate,
@@ -11919,6 +13297,13 @@ router11.patch(
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
+);
+router11.get(
+  "/recruiter/by-offer",
+  protect,
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  preselection_controller_default.getPreselectionByOffer
 );
 router11.get(
   "/recruiter",
@@ -13575,7 +14960,17 @@ var updateMyProfile2 = async (req, res, next) => {
     const [updatedUser, updatedProfile] = await prisma_default.$transaction([
       prisma_default.user.update({
         where: { id: user.id },
-        data: userData
+        data: userData,
+        // Named: a write that returns every column fails against a schema
+        // whose migration has not run, and the response needs only these.
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          preferredLanguage: true
+        }
       }),
       prisma_default.candidateProfile.update({
         where: { id: user.candidateProfile.id },

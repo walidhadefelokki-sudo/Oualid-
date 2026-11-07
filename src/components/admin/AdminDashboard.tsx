@@ -1,18 +1,49 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet, KeyRound } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
 import SchedulesTab from "./SchedulesTab";
 import FreelanceModerationTab from "./FreelanceModerationTab";
 import TeamTasksTab from "./TeamTasksTab";
+import PaymentsTab from "./PaymentsTab";
+import AdminAccessTab from "./AdminAccessTab";
+import api from "../../services/api";
 import adminService, {
   AdminStats,
   Company,
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks";
+type Tab = "overview" | "plans" | "payments" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks" | "admin-access";
+
+/**
+ * What this administrator may reach.
+ *
+ * Read from /auth/me rather than carried in the token: a JWT here lasts
+ * thirty days, so a revoked permission would keep its menu entry for a month.
+ * Null while it is being fetched — the sidebar renders nothing rather than
+ * flashing entries that are about to disappear.
+ */
+interface AdminAccess {
+  isSuperAdmin: boolean;
+  scopes: string[];
+}
+
+/** The scope each tab needs. The server enforces the same mapping per route;
+ *  this only avoids offering a page that would answer 403. */
+const TAB_SCOPE: Record<Exclude<Tab, "admin-access">, string> = {
+  overview: "overview",
+  plans: "plans",
+  payments: "payments",
+  users: "users",
+  jobs: "jobs",
+  schedules: "schedules",
+  crm: "crm",
+  preselection: "preselection",
+  "freelance-moderation": "freelance_moderation",
+  "team-tasks": "team_tasks",
+};
 
 interface AdminDashboardProps {
   onGoHome: () => void;
@@ -23,6 +54,51 @@ const PLAN_OPTIONS: Array<"FREE" | "PREMIUM" | "CORPORATE"> = ["FREE", "PREMIUM"
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
   const [tab, setTab] = useState<Tab>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [access, setAccess] = useState<AdminAccess | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get("/auth/me")
+      .then(({ data }) => {
+        if (cancelled) return;
+        const u = data.data.user;
+        setAccess({
+          isSuperAdmin: Boolean(u.isSuperAdmin),
+          scopes: Array.isArray(u.adminScopes) ? u.adminScopes : [],
+        });
+      })
+      .catch(() => {
+        // Fail closed. A failed read must not hand somebody the whole menu;
+        // every route checks again anyway, so the worst case is an empty
+        // sidebar and a visible reason.
+        if (!cancelled) setAccess({ isSuperAdmin: false, scopes: [] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allowed = (t: Tab) => {
+    if (!access) return false;
+    if (access.isSuperAdmin) return true;
+    // Granting access is never delegated: see AdminAccessTab.
+    if (t === "admin-access") return false;
+    return access.scopes.includes(TAB_SCOPE[t]);
+  };
+
+  /* Land on something this administrator can actually open. Overview is the
+     default and a limited administrator may not have it, in which case the
+     first permitted section is a better welcome than a 403. */
+  useEffect(() => {
+    if (!access || allowed(tab)) return;
+
+    const first = (Object.keys(TAB_SCOPE) as Tab[]).find(allowed);
+    if (first) setTab(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
 
   /* Choosing a section closes the drawer — on a phone it covers the very
      content you just asked to see. On desktop the sidebar is always in the
@@ -40,15 +116,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
       </div>
 
       <nav className="flex flex-col gap-1">
-        <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => go("overview")} />
-        <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => go("plans")} />
-        <SidebarItem icon={<Users size={18} />} label="Comptes" active={tab === "users"} onClick={() => go("users")} />
-        <SidebarItem icon={<Briefcase size={18} />} label="Offres" active={tab === "jobs"} onClick={() => go("jobs")} />
-        <SidebarItem icon={<CalendarDays size={18} />} label="Agenda" active={tab === "schedules"} onClick={() => go("schedules")} />
-        <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => go("crm")} />
-        <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => go("preselection")} />
-        <SidebarItem icon={<ShieldCheck size={18} />} label="Modération freelance" active={tab === "freelance-moderation"} onClick={() => go("freelance-moderation")} />
-        <SidebarItem icon={<ListTodo size={18} />} label="Tâches d'équipe" active={tab === "team-tasks"} onClick={() => go("team-tasks")} />
+        {/* Only what this administrator may open. Hiding an entry is not
+            access control — every route checks as well — but offering a page
+            that answers 403 is not an interface. */}
+        {allowed("overview") && <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => go("overview")} />}
+        {allowed("plans") && <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => go("plans")} />}
+        {allowed("payments") && <SidebarItem icon={<Wallet size={18} />} label="Paiements" active={tab === "payments"} onClick={() => go("payments")} />}
+        {allowed("users") && <SidebarItem icon={<Users size={18} />} label="Comptes" active={tab === "users"} onClick={() => go("users")} />}
+        {allowed("jobs") && <SidebarItem icon={<Briefcase size={18} />} label="Offres" active={tab === "jobs"} onClick={() => go("jobs")} />}
+        {allowed("schedules") && <SidebarItem icon={<CalendarDays size={18} />} label="Agenda" active={tab === "schedules"} onClick={() => go("schedules")} />}
+        {allowed("crm") && <SidebarItem icon={<Contact size={18} />} label="CRM" active={tab === "crm"} onClick={() => go("crm")} />}
+        {allowed("preselection") && <SidebarItem icon={<ClipboardCheck size={18} />} label="Présélection Corporate" active={tab === "preselection"} onClick={() => go("preselection")} />}
+        {allowed("freelance-moderation") && <SidebarItem icon={<ShieldCheck size={18} />} label="Modération freelance" active={tab === "freelance-moderation"} onClick={() => go("freelance-moderation")} />}
+        {allowed("team-tasks") && <SidebarItem icon={<ListTodo size={18} />} label="Tâches d'équipe" active={tab === "team-tasks"} onClick={() => go("team-tasks")} />}
+        {allowed("admin-access") && <SidebarItem icon={<KeyRound size={18} />} label="Accès admin" active={tab === "admin-access"} onClick={() => go("admin-access")} />}
       </nav>
 
       <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
@@ -97,15 +178,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
-          {tab === "overview" && <OverviewTab />}
-          {tab === "plans" && <PlansTab />}
-          {tab === "users" && <UsersTab />}
-          {tab === "jobs" && <JobsTab />}
-          {tab === "schedules" && <SchedulesTab />}
-          {tab === "crm" && <CrmTab />}
-          {tab === "preselection" && <PreselectionTab />}
-          {tab === "freelance-moderation" && <FreelanceModerationTab />}
-          {tab === "team-tasks" && <TeamTasksTab />}
+          {/* An administrator with no section at all. Says so, rather than
+              showing an empty frame they would read as a broken page. */}
+          {access && !access.isSuperAdmin && access.scopes.length === 0 && (
+            <div className="bg-white rounded-xl p-12 text-center max-w-xl mx-auto">
+              <KeyRound size={28} className="mx-auto text-primary/25" />
+              <p className="mt-3 font-bold text-primary/70">Aucune section ne vous est accordée</p>
+              <p className="mt-1 text-sm text-primary/50">
+                Votre compte est administrateur mais aucune section ne lui a encore été
+                attribuée. Demandez à un administrateur sans restriction de vous en
+                accorder depuis « Accès admin ».
+              </p>
+            </div>
+          )}
+
+          {allowed("overview") && tab === "overview" && <OverviewTab />}
+          {allowed("plans") && tab === "plans" && <PlansTab />}
+          {allowed("payments") && tab === "payments" && <PaymentsTab />}
+          {allowed("users") && tab === "users" && <UsersTab />}
+          {allowed("jobs") && tab === "jobs" && <JobsTab />}
+          {allowed("schedules") && tab === "schedules" && <SchedulesTab />}
+          {allowed("crm") && tab === "crm" && <CrmTab />}
+          {allowed("preselection") && tab === "preselection" && <PreselectionTab />}
+          {allowed("freelance-moderation") && tab === "freelance-moderation" && <FreelanceModerationTab />}
+          {allowed("team-tasks") && tab === "team-tasks" && <TeamTasksTab />}
+          {allowed("admin-access") && tab === "admin-access" && <AdminAccessTab />}
         </main>
       </div>
     </div>

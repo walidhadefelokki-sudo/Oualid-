@@ -84,6 +84,9 @@ export interface PreselectionOfferCounts {
 export interface PreselectionOffer {
   id: string;
   title: string;
+  /** Set on the admin screen, which spans every company. A recruiter looking
+   *  at their own offers already knows whose they are. */
+  company?: string | null;
   location: string;
   wilaya: string | null;
   type: string;

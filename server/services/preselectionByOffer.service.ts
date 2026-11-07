@@ -349,4 +349,101 @@ export const listByOffer = async (params: PreselectionByOfferParams) => {
   };
 };
 
-export default { listByOffer };
+
+
+/* -------------------------------------------------------------------------- */
+/*                        Corporate preselection, for staff                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Candidatures waiting on a decision from the platform team.
+ *
+ * A CORPORATE company can have the preselection done for it, so these
+ * applications sit at preselectionStatus PENDING until somebody here decides.
+ * The admin screen used to list them flat — one row per application, name,
+ * e-mail, "poste @ entreprise" and two buttons — so a reviewer judged
+ * candidates for a developer post and an accountant post in one undifferentiated
+ * column, with nothing to compare them on beyond a name.
+ *
+ * Grouped by offer and carrying the same detail as the recruiter's own screen,
+ * because it is the same decision: ranked within the post, with the CV
+ * highlights, the skills and the reasons behind the score.
+ *
+ * Unscoped by recruiter — that is the point of this one. It is reached only
+ * through the admin "preselection" scope.
+ */
+export const listCorporatePendingByOffer = async () => {
+  const applications = await prisma.application.findMany({
+    where: {
+      preselectionStatus: "PENDING",
+      job: { company: { plan: "CORPORATE" } },
+      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } },
+    },
+    select: { ...APPLICATION_SELECT, jobId: true },
+    // Nulls last, or an unanalysed application leads its offer. See listByOffer.
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "asc" }],
+  });
+
+  if (!applications.length) {
+    return { offers: [], totals: { offers: 0, candidates: 0, companies: 0 } };
+  }
+
+  const jobs = await prisma.job.findMany({
+    where: { id: { in: [...new Set(applications.map((a) => a.jobId))] } },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      wilaya: true,
+      type: true,
+      status: true,
+      publishedAt: true,
+      expiresAt: true,
+      category: { select: { name: true } },
+      company: { select: { name: true } },
+    },
+  });
+
+  const byJob = new Map<string, ReturnType<typeof shape>[]>();
+  for (const a of applications) {
+    const list = byJob.get(a.jobId) ?? [];
+    list.push(shape(a));
+    byJob.set(a.jobId, list);
+  }
+
+  /* Only offers that actually have something waiting. Unlike the recruiter's
+   * screen, an offer with nothing pending is not this reviewer's business —
+   * they are working a queue, not managing a pipeline. */
+  const offers = jobs
+    .map((job) => {
+      const candidates = byJob.get(job.id) ?? [];
+      return {
+        id: job.id,
+        title: job.title,
+        company: job.company?.name ?? null,
+        location: job.location,
+        wilaya: job.wilaya,
+        type: job.type,
+        status: job.status,
+        sector: job.category?.name ?? null,
+        publishedAt: job.publishedAt,
+        expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
+        counts: countOf(candidates),
+        candidates,
+      };
+    })
+    .filter((o) => o.counts.total > 0)
+    // The longest-waiting queue first: these are people expecting an answer.
+    .sort((a, b) => b.counts.total - a.counts.total);
+
+  return {
+    offers,
+    totals: {
+      offers: offers.length,
+      candidates: applications.length,
+      companies: new Set(jobs.map((j) => j.company?.name).filter(Boolean)).size,
+    },
+  };
+};
+
+export default { listByOffer, listCorporatePendingByOffer };

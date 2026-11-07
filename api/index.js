@@ -11826,6 +11826,556 @@ var carryOver = async (req, res, next) => {
   }
 };
 
+// server/services/preselectionByOffer.service.ts
+init_prisma();
+var MAX_SKILLS = 12;
+var APPLICATION_SELECT = {
+  id: true,
+  status: true,
+  preselectionStatus: true,
+  isPreselected: true,
+  preselectionScore: true,
+  preselectionComment: true,
+  aiScore: true,
+  quizScore: true,
+  oralPresentationScore: true,
+  finalScore: true,
+  coverLetter: true,
+  appliedAt: true,
+  updatedAt: true,
+  cv: { select: { url: true, fileName: true } },
+  // Why the score is what it is. A number with no reason behind it is not
+  // something a recruiter can act on or defend.
+  aianalysis: {
+    select: { strengths: true, weaknesses: true, recommendations: true, overallScore: true }
+  },
+  candidate: {
+    select: {
+      id: true,
+      headline: true,
+      bio: true,
+      currentJobTitle: true,
+      city: true,
+      wilaya: true,
+      skills: true,
+      yearsExperience: true,
+      availableImmediately: true,
+      desiredSalary: true,
+      linkedinUrl: true,
+      githubUrl: true,
+      portfolioUrl: true,
+      resumeId: true,
+      cvBuilderData: true,
+      user: {
+        // Selected, never `user: true`. That returns every column including
+        // the bcrypt hash, which is exactly what the recruiter list elsewhere
+        // in this feature was doing.
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          avatar: { select: { url: true } }
+        }
+      },
+      oralPresentation: { select: { videoId: true } }
+    }
+  }
+};
+var cvHighlights = (data) => {
+  if (!data || typeof data !== "object") return { lastRole: null, education: null, languages: [] };
+  const d = data;
+  const first = (key) => Array.isArray(d[key]) ? d[key][0] : null;
+  const experience = first("experiences");
+  const education = first("education");
+  const text = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
+  const join = (parts) => {
+    const kept = parts.filter(Boolean);
+    return kept.length ? kept.join(" \xB7 ") : null;
+  };
+  return {
+    lastRole: experience ? join([text(experience.title) ?? text(experience.position), text(experience.company)]) : null,
+    education: education ? join([text(education.degree) ?? text(education.title), text(education.school)]) : null,
+    languages: Array.isArray(d.languages) ? d.languages.map(
+      (l) => typeof l === "string" ? l : text(l?.name)
+    ).filter((l) => Boolean(l)).slice(0, 6) : []
+  };
+};
+var builderFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
+  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+);
+var shape = (a) => {
+  const c = a.candidate;
+  const highlights = cvHighlights(c.cvBuilderData);
+  return {
+    applicationId: a.id,
+    candidateId: c.id,
+    fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
+    email: c.user.email,
+    phone: c.user.phone ?? "",
+    avatarUrl: c.user.avatar?.url ?? null,
+    position: c.currentJobTitle || c.headline || "",
+    headline: c.headline ?? null,
+    summary: c.bio ?? null,
+    location: c.city ?? c.wilaya ?? "",
+    wilaya: c.wilaya ?? null,
+    experience: c.yearsExperience ?? 0,
+    // Capped: a candidate who listed forty skills would push everyone else
+    // off the screen, and the rest are on their profile.
+    skills: (c.skills ?? []).slice(0, MAX_SKILLS),
+    skillsTotal: (c.skills ?? []).length,
+    availableNow: c.availableImmediately,
+    desiredSalary: c.desiredSalary ?? null,
+    lastRole: highlights.lastRole,
+    education: highlights.education,
+    languages: highlights.languages,
+    links: {
+      linkedin: c.linkedinUrl ?? null,
+      github: c.githubUrl ?? null,
+      portfolio: c.portfolioUrl ?? null
+    },
+    cvUrl: a.cv?.url ?? null,
+    hasCv: Boolean(c.resumeId) || builderFilled(c.cvBuilderData),
+    hasPresentation: Boolean(c.oralPresentation?.videoId),
+    coverLetter: a.coverLetter ?? null,
+    aiScore: Math.round(a.aiScore ?? 0),
+    quizScore: a.quizScore != null ? Math.round(a.quizScore) : null,
+    oralPresentationScore: a.oralPresentationScore != null ? Math.round(a.oralPresentationScore) : null,
+    finalScore: a.finalScore != null ? Math.round(a.finalScore) : null,
+    preselectionScore: a.preselectionScore != null ? Math.round(a.preselectionScore) : null,
+    strengths: a.aianalysis?.strengths ?? [],
+    weaknesses: a.aianalysis?.weaknesses ?? [],
+    recommendations: a.aianalysis?.recommendations ?? [],
+    status: a.status,
+    preselectionStatus: a.preselectionStatus,
+    isPreselected: a.isPreselected,
+    preselectionComment: a.preselectionComment ?? null,
+    appliedAt: a.appliedAt,
+    updatedAt: a.updatedAt
+  };
+};
+var countOf = (rows) => {
+  const by = (s) => rows.filter((r) => r.status === s).length;
+  const scored = rows.filter((r) => r.aiScore > 0);
+  return {
+    total: rows.length,
+    preselected: rows.filter((r) => r.isPreselected).length,
+    pending: by("PENDING") + by("REVIEWING"),
+    shortlisted: by("SHORTLISTED"),
+    interview: by("INTERVIEW"),
+    hired: by("HIRED"),
+    rejected: by("REJECTED"),
+    withCv: rows.filter((r) => r.hasCv).length,
+    // Averaged over the scored ones only: counting an unscored application as
+    // zero would make the average say the shortlist is weak when it is simply
+    // not analysed yet.
+    averageScore: scored.length ? Math.round(scored.reduce((sum, r) => sum + r.aiScore, 0) / scored.length) : null
+  };
+};
+var listByOffer = async (params) => {
+  const recruiter = await prisma_default.user.findUnique({
+    where: { id: params.recruiterUserId },
+    select: { recruiterProfile: { select: { id: true } } }
+  });
+  if (!recruiter?.recruiterProfile) return null;
+  const term = params.q?.trim();
+  const applications = await prisma_default.application.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { jobId: params.jobId } : {},
+      ...params.status ? { status: params.status } : {},
+      ...params.preselectedOnly ? { isPreselected: true } : {},
+      // A closed account is not a candidate to call.
+      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } },
+      ...term ? {
+        OR: [
+          { candidate: { user: { firstName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { user: { lastName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { currentJobTitle: { contains: term, mode: "insensitive" } } },
+          { candidate: { headline: { contains: term, mode: "insensitive" } } },
+          { candidate: { skills: { has: term } } }
+        ]
+      } : {}
+    },
+    select: { ...APPLICATION_SELECT, jobId: true },
+    /* Nulls last, explicitly.
+     *
+     * Postgres puts NULLs first in a DESC sort, so an application nobody has
+     * analysed yet led the offer — above the best-scoring candidate. The
+     * unscored ones belong at the bottom, newest first, which is also the
+     * order in which they are worth looking at by hand. */
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "desc" }]
+  });
+  const jobs = await prisma_default.job.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { id: params.jobId } : {}
+    },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      wilaya: true,
+      type: true,
+      status: true,
+      publishedAt: true,
+      createdAt: true,
+      expiresAt: true,
+      category: { select: { name: true } }
+    },
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+  });
+  const byJob = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const list = byJob.get(a.jobId) ?? [];
+    list.push(shape(a));
+    byJob.set(a.jobId, list);
+  }
+  const offers = jobs.map((job) => {
+    const candidates = byJob.get(job.id) ?? [];
+    return {
+      id: job.id,
+      title: job.title,
+      location: job.location,
+      wilaya: job.wilaya,
+      type: job.type,
+      status: job.status,
+      sector: job.category?.name ?? null,
+      publishedAt: job.publishedAt,
+      // Said per offer rather than worked out from a date in the UI: an
+      // expired offer still collecting applications is worth noticing.
+      expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
+      counts: countOf(candidates),
+      candidates
+    };
+  });
+  offers.sort((a, b) => b.counts.total - a.counts.total);
+  const everyCandidate = offers.flatMap((o) => o.candidates);
+  return {
+    offers,
+    totals: {
+      offers: offers.length,
+      offersWithCandidates: offers.filter((o) => o.counts.total > 0).length,
+      candidates: everyCandidate.length,
+      preselected: everyCandidate.filter((c) => c.isPreselected).length,
+      ...(() => {
+        const all = countOf(everyCandidate);
+        return {
+          pending: all.pending,
+          shortlisted: all.shortlisted,
+          interview: all.interview,
+          hired: all.hired,
+          rejected: all.rejected,
+          averageScore: all.averageScore
+        };
+      })()
+    }
+  };
+};
+var listCorporatePendingByOffer = async () => {
+  const applications = await prisma_default.application.findMany({
+    where: {
+      preselectionStatus: "PENDING",
+      job: { company: { plan: "CORPORATE" } },
+      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } }
+    },
+    select: { ...APPLICATION_SELECT, jobId: true },
+    // Nulls last, or an unanalysed application leads its offer. See listByOffer.
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "asc" }]
+  });
+  if (!applications.length) {
+    return { offers: [], totals: { offers: 0, candidates: 0, companies: 0 } };
+  }
+  const jobs = await prisma_default.job.findMany({
+    where: { id: { in: [...new Set(applications.map((a) => a.jobId))] } },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      wilaya: true,
+      type: true,
+      status: true,
+      publishedAt: true,
+      expiresAt: true,
+      category: { select: { name: true } },
+      company: { select: { name: true } }
+    }
+  });
+  const byJob = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const list = byJob.get(a.jobId) ?? [];
+    list.push(shape(a));
+    byJob.set(a.jobId, list);
+  }
+  const offers = jobs.map((job) => {
+    const candidates = byJob.get(job.id) ?? [];
+    return {
+      id: job.id,
+      title: job.title,
+      company: job.company?.name ?? null,
+      location: job.location,
+      wilaya: job.wilaya,
+      type: job.type,
+      status: job.status,
+      sector: job.category?.name ?? null,
+      publishedAt: job.publishedAt,
+      expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
+      counts: countOf(candidates),
+      candidates
+    };
+  }).filter((o) => o.counts.total > 0).sort((a, b) => b.counts.total - a.counts.total);
+  return {
+    offers,
+    totals: {
+      offers: offers.length,
+      candidates: applications.length,
+      companies: new Set(jobs.map((j) => j.company?.name).filter(Boolean)).size
+    }
+  };
+};
+
+// server/controllers/preselection.controller.ts
+var getMyPreselection = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.getMyPreselection(
+      req.params.applicationId,
+      req.user.id
+    );
+    res.status(200).json({
+      status: "success",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getPreselection = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.getPreselection(
+      req.params.applicationId,
+      req.user.id,
+      req.user.role
+    );
+    res.status(200).json({
+      status: "success",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var shortlistCandidate = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.shortlistCandidate(
+      req.params.applicationId,
+      req.user.id,
+      req.body.comment
+    );
+    res.status(200).json({
+      status: "success",
+      message: "Candidate shortlisted successfully.",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var rejectCandidate = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.rejectCandidate(
+      req.params.applicationId,
+      req.user.id,
+      req.body.comment
+    );
+    res.status(200).json({
+      status: "success",
+      message: "Candidate rejected successfully.",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var reviewCandidate = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.reviewCandidate(
+      req.params.applicationId,
+      req.user.id,
+      {
+        status: req.body.status,
+        recruiterScore: req.body.recruiterScore,
+        comment: req.body.comment
+      }
+    );
+    res.status(200).json({
+      status: "success",
+      message: "Candidate reviewed successfully.",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateComment = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.updateComment(
+      req.params.applicationId,
+      req.user.id,
+      req.body.comment
+    );
+    res.status(200).json({
+      status: "success",
+      message: "Comment updated successfully.",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getRecruiterPreselections = async (req, res, next) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const status = req.query.status ? req.query.status : void 0;
+    const result = await preselection_service_default.getRecruiterPreselections(
+      req.user.id,
+      page,
+      limit,
+      status
+    );
+    res.status(200).json({
+      status: "success",
+      ...result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getRecruiterStatistics = async (req, res, next) => {
+  try {
+    const statistics = await preselection_service_default.getRecruiterStatistics(
+      req.user.id
+    );
+    res.status(200).json({
+      status: "success",
+      data: statistics
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getRanking = async (req, res, next) => {
+  try {
+    const limit = Number(req.query.limit) || 20;
+    const ranking = await preselection_service_default.getRanking(
+      req.user.id,
+      limit
+    );
+    res.status(200).json({
+      status: "success",
+      data: ranking
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getAllPreselections = async (req, res, next) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const result = await preselection_service_default.getAllPreselections(
+      page,
+      limit
+    );
+    res.status(200).json({
+      status: "success",
+      ...result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getAdminStatistics = async (req, res, next) => {
+  try {
+    const statistics = await preselection_service_default.getAdminStatistics();
+    res.status(200).json({
+      status: "success",
+      data: statistics
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var recalculatePreselection = async (req, res, next) => {
+  try {
+    const preselection = await preselection_service_default.recalculate(
+      req.params.applicationId
+    );
+    res.status(200).json({
+      status: "success",
+      message: "Preselection recalculated successfully.",
+      data: preselection
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var deletePreselection = async (req, res, next) => {
+  try {
+    const result = await preselection_service_default.deletePreselection(
+      req.params.applicationId
+    );
+    res.status(200).json({
+      status: "success",
+      ...result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var getPreselectionByOffer = async (req, res, next) => {
+  try {
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const result = await listByOffer({
+      recruiterUserId: req.user.id,
+      jobId: str(req.query.jobId),
+      status: str(req.query.status),
+      q: str(req.query.q),
+      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0
+    });
+    if (!result) {
+      return next(new AppError("Profil recruteur introuvable.", 404));
+    }
+    res.status(200).json({ status: "success", data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+var getCorporatePendingByOffer = async (req, res, next) => {
+  try {
+    res.status(200).json({ status: "success", data: await listCorporatePendingByOffer() });
+  } catch (err) {
+    next(err);
+  }
+};
+var preselection_controller_default = {
+  getCorporatePendingByOffer,
+  getMyPreselection,
+  getPreselection,
+  getPreselectionByOffer,
+  shortlistCandidate,
+  rejectCandidate,
+  reviewCandidate,
+  updateComment,
+  getRecruiterPreselections,
+  getRecruiterStatistics,
+  getRanking,
+  getAllPreselections,
+  getAdminStatistics,
+  recalculatePreselection,
+  deletePreselection
+};
+
 // server/middleware/adminScope.middleware.ts
 var requireAdminScope = (scope2) => {
   return async (req, res, next) => {
@@ -11926,6 +12476,7 @@ router7.get("/freelance/payments/pending", scope("freelance_moderation"), listPe
 router7.post("/freelance/payments/:id/approve", scope("freelance_moderation"), approveReceipt);
 router7.post("/freelance/payments/:id/reject", scope("freelance_moderation"), rejectReceipt);
 router7.get("/preselections/corporate-pending", scope("preselection"), getCorporatePendingPreselections);
+router7.get("/preselections/corporate-pending/by-offer", scope("preselection"), getCorporatePendingByOffer);
 router7.post("/preselections/:applicationId", scope("preselection"), adminPreselect);
 var admin_routes_default = router7;
 
@@ -12773,489 +13324,6 @@ var payment_routes_default = router10;
 
 // server/routes/preselection.routes.ts
 import { Router as Router11 } from "express";
-
-// server/services/preselectionByOffer.service.ts
-init_prisma();
-var MAX_SKILLS = 12;
-var APPLICATION_SELECT = {
-  id: true,
-  status: true,
-  preselectionStatus: true,
-  isPreselected: true,
-  preselectionScore: true,
-  preselectionComment: true,
-  aiScore: true,
-  quizScore: true,
-  oralPresentationScore: true,
-  finalScore: true,
-  coverLetter: true,
-  appliedAt: true,
-  updatedAt: true,
-  cv: { select: { url: true, fileName: true } },
-  // Why the score is what it is. A number with no reason behind it is not
-  // something a recruiter can act on or defend.
-  aianalysis: {
-    select: { strengths: true, weaknesses: true, recommendations: true, overallScore: true }
-  },
-  candidate: {
-    select: {
-      id: true,
-      headline: true,
-      bio: true,
-      currentJobTitle: true,
-      city: true,
-      wilaya: true,
-      skills: true,
-      yearsExperience: true,
-      availableImmediately: true,
-      desiredSalary: true,
-      linkedinUrl: true,
-      githubUrl: true,
-      portfolioUrl: true,
-      resumeId: true,
-      cvBuilderData: true,
-      user: {
-        // Selected, never `user: true`. That returns every column including
-        // the bcrypt hash, which is exactly what the recruiter list elsewhere
-        // in this feature was doing.
-        select: {
-          firstName: true,
-          lastName: true,
-          email: true,
-          phone: true,
-          avatar: { select: { url: true } }
-        }
-      },
-      oralPresentation: { select: { videoId: true } }
-    }
-  }
-};
-var cvHighlights = (data) => {
-  if (!data || typeof data !== "object") return { lastRole: null, education: null, languages: [] };
-  const d = data;
-  const first = (key) => Array.isArray(d[key]) ? d[key][0] : null;
-  const experience = first("experiences");
-  const education = first("education");
-  const text = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
-  const join = (parts) => {
-    const kept = parts.filter(Boolean);
-    return kept.length ? kept.join(" \xB7 ") : null;
-  };
-  return {
-    lastRole: experience ? join([text(experience.title) ?? text(experience.position), text(experience.company)]) : null,
-    education: education ? join([text(education.degree) ?? text(education.title), text(education.school)]) : null,
-    languages: Array.isArray(d.languages) ? d.languages.map(
-      (l) => typeof l === "string" ? l : text(l?.name)
-    ).filter((l) => Boolean(l)).slice(0, 6) : []
-  };
-};
-var builderFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
-  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
-);
-var shape = (a) => {
-  const c = a.candidate;
-  const highlights = cvHighlights(c.cvBuilderData);
-  return {
-    applicationId: a.id,
-    candidateId: c.id,
-    fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
-    email: c.user.email,
-    phone: c.user.phone ?? "",
-    avatarUrl: c.user.avatar?.url ?? null,
-    position: c.currentJobTitle || c.headline || "",
-    headline: c.headline ?? null,
-    summary: c.bio ?? null,
-    location: c.city ?? c.wilaya ?? "",
-    wilaya: c.wilaya ?? null,
-    experience: c.yearsExperience ?? 0,
-    // Capped: a candidate who listed forty skills would push everyone else
-    // off the screen, and the rest are on their profile.
-    skills: (c.skills ?? []).slice(0, MAX_SKILLS),
-    skillsTotal: (c.skills ?? []).length,
-    availableNow: c.availableImmediately,
-    desiredSalary: c.desiredSalary ?? null,
-    lastRole: highlights.lastRole,
-    education: highlights.education,
-    languages: highlights.languages,
-    links: {
-      linkedin: c.linkedinUrl ?? null,
-      github: c.githubUrl ?? null,
-      portfolio: c.portfolioUrl ?? null
-    },
-    cvUrl: a.cv?.url ?? null,
-    hasCv: Boolean(c.resumeId) || builderFilled(c.cvBuilderData),
-    hasPresentation: Boolean(c.oralPresentation?.videoId),
-    coverLetter: a.coverLetter ?? null,
-    aiScore: Math.round(a.aiScore ?? 0),
-    quizScore: a.quizScore != null ? Math.round(a.quizScore) : null,
-    oralPresentationScore: a.oralPresentationScore != null ? Math.round(a.oralPresentationScore) : null,
-    finalScore: a.finalScore != null ? Math.round(a.finalScore) : null,
-    preselectionScore: a.preselectionScore != null ? Math.round(a.preselectionScore) : null,
-    strengths: a.aianalysis?.strengths ?? [],
-    weaknesses: a.aianalysis?.weaknesses ?? [],
-    recommendations: a.aianalysis?.recommendations ?? [],
-    status: a.status,
-    preselectionStatus: a.preselectionStatus,
-    isPreselected: a.isPreselected,
-    preselectionComment: a.preselectionComment ?? null,
-    appliedAt: a.appliedAt,
-    updatedAt: a.updatedAt
-  };
-};
-var countOf = (rows) => {
-  const by = (s) => rows.filter((r) => r.status === s).length;
-  const scored = rows.filter((r) => r.aiScore > 0);
-  return {
-    total: rows.length,
-    preselected: rows.filter((r) => r.isPreselected).length,
-    pending: by("PENDING") + by("REVIEWING"),
-    shortlisted: by("SHORTLISTED"),
-    interview: by("INTERVIEW"),
-    hired: by("HIRED"),
-    rejected: by("REJECTED"),
-    withCv: rows.filter((r) => r.hasCv).length,
-    // Averaged over the scored ones only: counting an unscored application as
-    // zero would make the average say the shortlist is weak when it is simply
-    // not analysed yet.
-    averageScore: scored.length ? Math.round(scored.reduce((sum, r) => sum + r.aiScore, 0) / scored.length) : null
-  };
-};
-var listByOffer = async (params) => {
-  const recruiter = await prisma_default.user.findUnique({
-    where: { id: params.recruiterUserId },
-    select: { recruiterProfile: { select: { id: true } } }
-  });
-  if (!recruiter?.recruiterProfile) return null;
-  const term = params.q?.trim();
-  const applications = await prisma_default.application.findMany({
-    where: {
-      recruiterId: recruiter.recruiterProfile.id,
-      ...params.jobId ? { jobId: params.jobId } : {},
-      ...params.status ? { status: params.status } : {},
-      ...params.preselectedOnly ? { isPreselected: true } : {},
-      // A closed account is not a candidate to call.
-      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } },
-      ...term ? {
-        OR: [
-          { candidate: { user: { firstName: { contains: term, mode: "insensitive" } } } },
-          { candidate: { user: { lastName: { contains: term, mode: "insensitive" } } } },
-          { candidate: { currentJobTitle: { contains: term, mode: "insensitive" } } },
-          { candidate: { headline: { contains: term, mode: "insensitive" } } },
-          { candidate: { skills: { has: term } } }
-        ]
-      } : {}
-    },
-    select: { ...APPLICATION_SELECT, jobId: true },
-    /* Nulls last, explicitly.
-     *
-     * Postgres puts NULLs first in a DESC sort, so an application nobody has
-     * analysed yet led the offer — above the best-scoring candidate. The
-     * unscored ones belong at the bottom, newest first, which is also the
-     * order in which they are worth looking at by hand. */
-    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "desc" }]
-  });
-  const jobs = await prisma_default.job.findMany({
-    where: {
-      recruiterId: recruiter.recruiterProfile.id,
-      ...params.jobId ? { id: params.jobId } : {}
-    },
-    select: {
-      id: true,
-      title: true,
-      location: true,
-      wilaya: true,
-      type: true,
-      status: true,
-      publishedAt: true,
-      createdAt: true,
-      expiresAt: true,
-      category: { select: { name: true } }
-    },
-    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
-  });
-  const byJob = /* @__PURE__ */ new Map();
-  for (const a of applications) {
-    const list = byJob.get(a.jobId) ?? [];
-    list.push(shape(a));
-    byJob.set(a.jobId, list);
-  }
-  const offers = jobs.map((job) => {
-    const candidates = byJob.get(job.id) ?? [];
-    return {
-      id: job.id,
-      title: job.title,
-      location: job.location,
-      wilaya: job.wilaya,
-      type: job.type,
-      status: job.status,
-      sector: job.category?.name ?? null,
-      publishedAt: job.publishedAt,
-      // Said per offer rather than worked out from a date in the UI: an
-      // expired offer still collecting applications is worth noticing.
-      expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
-      counts: countOf(candidates),
-      candidates
-    };
-  });
-  offers.sort((a, b) => b.counts.total - a.counts.total);
-  const everyCandidate = offers.flatMap((o) => o.candidates);
-  return {
-    offers,
-    totals: {
-      offers: offers.length,
-      offersWithCandidates: offers.filter((o) => o.counts.total > 0).length,
-      candidates: everyCandidate.length,
-      preselected: everyCandidate.filter((c) => c.isPreselected).length,
-      ...(() => {
-        const all = countOf(everyCandidate);
-        return {
-          pending: all.pending,
-          shortlisted: all.shortlisted,
-          interview: all.interview,
-          hired: all.hired,
-          rejected: all.rejected,
-          averageScore: all.averageScore
-        };
-      })()
-    }
-  };
-};
-
-// server/controllers/preselection.controller.ts
-var getMyPreselection = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.getMyPreselection(
-      req.params.applicationId,
-      req.user.id
-    );
-    res.status(200).json({
-      status: "success",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getPreselection = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.getPreselection(
-      req.params.applicationId,
-      req.user.id,
-      req.user.role
-    );
-    res.status(200).json({
-      status: "success",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var shortlistCandidate = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.shortlistCandidate(
-      req.params.applicationId,
-      req.user.id,
-      req.body.comment
-    );
-    res.status(200).json({
-      status: "success",
-      message: "Candidate shortlisted successfully.",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var rejectCandidate = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.rejectCandidate(
-      req.params.applicationId,
-      req.user.id,
-      req.body.comment
-    );
-    res.status(200).json({
-      status: "success",
-      message: "Candidate rejected successfully.",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var reviewCandidate = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.reviewCandidate(
-      req.params.applicationId,
-      req.user.id,
-      {
-        status: req.body.status,
-        recruiterScore: req.body.recruiterScore,
-        comment: req.body.comment
-      }
-    );
-    res.status(200).json({
-      status: "success",
-      message: "Candidate reviewed successfully.",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var updateComment = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.updateComment(
-      req.params.applicationId,
-      req.user.id,
-      req.body.comment
-    );
-    res.status(200).json({
-      status: "success",
-      message: "Comment updated successfully.",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getRecruiterPreselections = async (req, res, next) => {
-  try {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
-    const status = req.query.status ? req.query.status : void 0;
-    const result = await preselection_service_default.getRecruiterPreselections(
-      req.user.id,
-      page,
-      limit,
-      status
-    );
-    res.status(200).json({
-      status: "success",
-      ...result
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getRecruiterStatistics = async (req, res, next) => {
-  try {
-    const statistics = await preselection_service_default.getRecruiterStatistics(
-      req.user.id
-    );
-    res.status(200).json({
-      status: "success",
-      data: statistics
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getRanking = async (req, res, next) => {
-  try {
-    const limit = Number(req.query.limit) || 20;
-    const ranking = await preselection_service_default.getRanking(
-      req.user.id,
-      limit
-    );
-    res.status(200).json({
-      status: "success",
-      data: ranking
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getAllPreselections = async (req, res, next) => {
-  try {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const result = await preselection_service_default.getAllPreselections(
-      page,
-      limit
-    );
-    res.status(200).json({
-      status: "success",
-      ...result
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getAdminStatistics = async (req, res, next) => {
-  try {
-    const statistics = await preselection_service_default.getAdminStatistics();
-    res.status(200).json({
-      status: "success",
-      data: statistics
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var recalculatePreselection = async (req, res, next) => {
-  try {
-    const preselection = await preselection_service_default.recalculate(
-      req.params.applicationId
-    );
-    res.status(200).json({
-      status: "success",
-      message: "Preselection recalculated successfully.",
-      data: preselection
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var deletePreselection = async (req, res, next) => {
-  try {
-    const result = await preselection_service_default.deletePreselection(
-      req.params.applicationId
-    );
-    res.status(200).json({
-      status: "success",
-      ...result
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-var getPreselectionByOffer = async (req, res, next) => {
-  try {
-    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
-    const result = await listByOffer({
-      recruiterUserId: req.user.id,
-      jobId: str(req.query.jobId),
-      status: str(req.query.status),
-      q: str(req.query.q),
-      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0
-    });
-    if (!result) {
-      return next(new AppError("Profil recruteur introuvable.", 404));
-    }
-    res.status(200).json({ status: "success", data: result });
-  } catch (err) {
-    next(err);
-  }
-};
-var preselection_controller_default = {
-  getMyPreselection,
-  getPreselection,
-  getPreselectionByOffer,
-  shortlistCandidate,
-  rejectCandidate,
-  reviewCandidate,
-  updateComment,
-  getRecruiterPreselections,
-  getRecruiterStatistics,
-  getRanking,
-  getAllPreselections,
-  getAdminStatistics,
-  recalculatePreselection,
-  deletePreselection
-};
-
-// server/routes/preselection.routes.ts
 var router11 = Router11();
 router11.get(
   "/application/:applicationId",

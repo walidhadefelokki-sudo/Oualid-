@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet, KeyRound } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet, KeyRound, RefreshCw } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
@@ -7,6 +7,11 @@ import SchedulesTab from "./SchedulesTab";
 import FreelanceModerationTab from "./FreelanceModerationTab";
 import TeamTasksTab from "./TeamTasksTab";
 import PaymentsTab from "./PaymentsTab";
+import { OfferSection } from "../recruiter/PreselectionByOffer";
+import type {
+  PreselectionByOfferResult,
+  PreselectionCandidateRow,
+} from "../../services/preselectionByOffer.service";
 import AdminAccessTab from "./AdminAccessTab";
 import api from "../../services/api";
 import adminService, {
@@ -470,29 +475,75 @@ const PlanBadge: React.FC<{ plan: string }> = ({ plan }) => {
 // CORPORATE PRESELECTION OVERRIDE
 // ============================================================
 
+/**
+ * Corporate candidatures waiting on a decision from the platform team.
+ *
+ * This was a flat list: one row per application, a name, an e-mail,
+ * "poste @ entreprise" and two buttons. Candidates for a developer post and
+ * for an accountant post sat in one undifferentiated column, and there was
+ * nothing to decide on — no CV, no skills, no score, no reason.
+ *
+ * It is now the offer, as a card, with its candidatures inside it — the same
+ * component the recruiter's own preselection screen uses, because it is the
+ * same decision taken by a different person.
+ */
 const PreselectionTab: React.FC = () => {
-  const [apps, setApps] = useState<CorporatePendingApplication[]>([]);
+  const [data, setData] = useState<PreselectionByOfferResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
-    adminService
-      .getCorporatePendingPreselections()
-      .then(setApps)
-      .catch((e) => setError(e?.response?.data?.message || "Échec du chargement des candidatures"))
+    setError(null);
+    api
+      .get("/admin/preselections/corporate-pending/by-offer")
+      .then(({ data: body }) => setData(body.data))
+      .catch((e) =>
+        setError(e?.response?.data?.message || "Échec du chargement des candidatures")
+      )
       .finally(() => setLoading(false));
   };
 
   useEffect(load, []);
 
-  const decide = async (applicationId: string, status: "SHORTLISTED" | "REJECTED") => {
-    const comment = window.prompt("Commentaire facultatif pour cette décision :") || undefined;
-    setActingId(applicationId);
+  /**
+   * Records a decision and takes the candidate off the queue.
+   *
+   * Removed locally rather than refetching: the decision moves them out of
+   * PENDING, so the next load would drop them anyway, and a reviewer working
+   * through a list should not have it rebuild under them after every click.
+   * An offer left with nobody goes too.
+   */
+  const decide = async (
+    candidate: PreselectionCandidateRow,
+    status: "SHORTLISTED" | "REJECTED"
+  ) => {
+    const verb = status === "SHORTLISTED" ? "présélectionner" : "rejeter";
+    if (!window.confirm(`Voulez-vous ${verb} ${candidate.fullName} ?`)) return;
+
+    const comment = window.prompt("Commentaire facultatif :") || undefined;
+
+    setActingId(candidate.applicationId);
     try {
-      await adminService.adminPreselect(applicationId, { status, comment });
-      setApps((prev) => prev.filter((a) => a.id !== applicationId));
+      await adminService.adminPreselect(candidate.applicationId, { status, comment });
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              offers: prev.offers
+                .map((o) => ({
+                  ...o,
+                  candidates: o.candidates.filter(
+                    (c) => c.applicationId !== candidate.applicationId
+                  ),
+                }))
+                .filter((o) => o.candidates.length > 0),
+              totals: { ...prev.totals, candidates: Math.max(0, prev.totals.candidates - 1) },
+            }
+          : prev
+      );
     } catch (e: any) {
       alert(e?.response?.data?.message || "Échec de l'enregistrement de la décision");
     } finally {
@@ -502,48 +553,74 @@ const PreselectionTab: React.FC = () => {
 
   if (error) return <ErrorBox message={error} />;
 
+  const totals = data?.totals;
+
   return (
     <div>
-      <h1 className="text-2xl font-display mb-2">Présélection Corporate</h1>
+      <div className="flex items-center gap-3 mb-2">
+        <h1 className="text-2xl font-display">Présélection Corporate</h1>
+        <button
+          onClick={load}
+          aria-label="Rafraîchir"
+          className="p-2 rounded-lg border border-primary/20 text-primary/60 hover:text-primary"
+        >
+          <RefreshCw size={15} />
+        </button>
+      </div>
+
       <p className="text-sm text-primary/60 mb-6">
-        Candidatures des entreprises au plan CORPORATE en attente d'une décision admin.
+        Candidatures des entreprises au plan CORPORATE en attente d'une décision.
+        Les candidats sont classés au sein de chaque offre — les comparer d'un poste
+        à l'autre n'aurait pas de sens.
       </p>
+
+      {totals && totals.candidates > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-6 max-w-lg">
+          <div className="rounded-xl border-2 border-primary/12 bg-white px-4 py-3">
+            <p className="text-[11px] font-black uppercase tracking-widest text-primary/45">
+              En attente
+            </p>
+            <p className="mt-1 text-2xl font-display font-bold text-primary">
+              {totals.candidates}
+            </p>
+          </div>
+          <div className="rounded-xl border-2 border-primary/12 bg-white px-4 py-3">
+            <p className="text-[11px] font-black uppercase tracking-widest text-primary/45">
+              Offres
+            </p>
+            <p className="mt-1 text-2xl font-display font-bold text-primary">
+              {totals.offers}
+            </p>
+          </div>
+          <div className="rounded-xl border-2 border-primary/12 bg-white px-4 py-3">
+            <p className="text-[11px] font-black uppercase tracking-widest text-primary/45">
+              Entreprises
+            </p>
+            <p className="mt-1 text-2xl font-display font-bold text-primary">
+              {(totals as { companies?: number }).companies ?? "—"}
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <LoadingBox />
-      ) : apps.length === 0 ? (
+      ) : !data || data.offers.length === 0 ? (
         <EmptyBox message="Rien en attente — tout est à jour." />
       ) : (
-        <div className="flex flex-col gap-3">
-          {apps.map((a) => (
-            <div key={a.id} className="bg-white rounded-xl p-4 shadow-sm flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">
-                  {a.candidate.user.firstName || ""} {a.candidate.user.lastName || ""}
-                  <span className="text-primary/50 font-normal"> — {a.candidate.user.email}</span>
-                </p>
-                <p className="text-sm text-primary/70">
-                  {a.job.title} @ {a.job.company.name}
-                </p>
-                <p className="text-xs text-primary/40 mt-1">Candidature déposée le {new Date(a.appliedAt).toLocaleDateString()}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  disabled={actingId === a.id}
-                  onClick={() => decide(a.id, "SHORTLISTED")}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50"
-                >
-                  Présélectionner
-                </button>
-                <button
-                  disabled={actingId === a.id}
-                  onClick={() => decide(a.id, "REJECTED")}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-primary/20 text-primary text-sm font-semibold disabled:opacity-50"
-                >
-                  Rejeter
-                </button>
-              </div>
-            </div>
+        <div className="space-y-5">
+          {data.offers.map((offer, i) => (
+            <OfferSection
+              key={offer.id}
+              offer={offer}
+              /* The first one open: a reviewer is here to work through a
+                 queue, not to click an accordion before starting. */
+              defaultOpen={i === 0}
+              busyApplicationId={actingId}
+              onOpenCV={(c) => c.cvUrl && window.open(c.cvUrl, "_blank", "noopener")}
+              onShortlist={(c) => decide(c, "SHORTLISTED")}
+              onReject={(c) => decide(c, "REJECTED")}
+            />
           ))}
         </div>
       )}

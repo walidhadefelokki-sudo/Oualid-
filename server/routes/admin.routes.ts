@@ -6,6 +6,7 @@ import * as adminEmail from "../controllers/adminEmail.controller";
 import * as freelanceModeration from "../controllers/freelanceModeration.controller";
 import * as teamTask from "../controllers/teamTask.controller";
 import * as marketplacePayment from "../controllers/marketplacePayment.controller";
+import * as preselection from "../controllers/preselection.controller";
 import { protect } from "../middleware/auth.middleware";
 import { restrictTo } from "../middleware/role.middleware";
 import {
@@ -114,6 +115,8 @@ router.post("/freelance/payments/:id/reject", scope("freelance_moderation"), mar
 
 // Corporate preselection override
 router.get("/preselections/corporate-pending", scope("preselection"), adminController.getCorporatePendingPreselections);
+// The same queue, grouped by the offer each candidate answered.
+router.get("/preselections/corporate-pending/by-offer", scope("preselection"), preselection.getCorporatePendingByOffer);
 router.post("/preselections/:applicationId", scope("preselection"), adminController.adminPreselect);
 
 export default router;

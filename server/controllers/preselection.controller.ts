@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import { PreselectionStatus } from "@prisma/client";
 import preselectionService from "../services/preselection.service";
-import { listByOffer } from "../services/preselectionByOffer.service";
+import {
+  listByOffer,
+  listCorporatePendingByOffer,
+} from "../services/preselectionByOffer.service";
 import { AppError } from "../middleware/error.middleware";
 
 // ============================================================
@@ -345,7 +348,27 @@ export const getPreselectionByOffer = async (
   }
 };
 
+/**
+ * Corporate candidatures awaiting a decision from the platform team,
+ * grouped by the offer they answered.
+ *
+ * The flat list this replaces put candidates for unrelated posts in one
+ * column, which is not a comparison anybody can make.
+ */
+export const getCorporatePendingByOffer = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    res.status(200).json({ status: "success", data: await listCorporatePendingByOffer() });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export default {
+  getCorporatePendingByOffer,
   getMyPreselection,
   getPreselection,
   getPreselectionByOffer,

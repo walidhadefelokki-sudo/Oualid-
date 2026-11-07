@@ -813,6 +813,24 @@ model User {
   status        AccountStatus @default(PENDING)
   emailVerified Boolean       @default(false)
 
+  /// Unrestricted administrator.
+  ///
+  /// Only meaningful with role ADMIN. Defaults to false so that an
+  /// administrator created without anyone deciding what they may touch can
+  /// reach nothing, rather than everything — the dangerous default is the one
+  /// nobody notices. The administrators that existed before this column are
+  /// backfilled to true by the migration, because they genuinely were
+  /// unrestricted.
+  isSuperAdmin Boolean @default(false)
+
+  /// Which admin areas a limited administrator may use.
+  ///
+  /// Ignored when isSuperAdmin is true. The values are the admin screens
+  /// themselves — "users", "payments", "jobs" … — kept as strings rather than
+  /// an enum so adding a screen does not need a migration, and validated
+  /// against one list in adminScopes.ts.
+  adminScopes String[]
+
   firstName         String?
   lastName          String?
   phone             String?

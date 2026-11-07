@@ -359,6 +359,11 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
         role: true,
         status: true,
         emailVerified: true,
+        // The admin sidebar hides what this account cannot reach, so it has
+        // to know. Enforcement is on the routes either way — this only stops
+        // the UI offering a screen that would answer 403.
+        isSuperAdmin: true,
+        adminScopes: true,
         firstName: true,
         lastName: true,
         phone: true,

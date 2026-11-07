@@ -1756,6 +1756,11 @@ var getMe = async (req, res, next) => {
         role: true,
         status: true,
         emailVerified: true,
+        // The admin sidebar hides what this account cannot reach, so it has
+        // to know. Enforcement is on the routes either way — this only stops
+        // the UI offering a screen that would answer 403.
+        isSuperAdmin: true,
+        adminScopes: true,
         firstName: true,
         lastName: true,
         phone: true,
@@ -9735,6 +9740,22 @@ var updateUserStatus = async (req, res, next) => {
     if (!status || !validStatuses.includes(status)) {
       return next(new AppError(`status must be one of: ${validStatuses.join(", ")}`, 400));
     }
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: { role: true }
+    });
+    if (!target) return next(new AppError("Compte introuvable.", 404));
+    if (req.user?.id === id) {
+      return next(new AppError("Vous ne pouvez pas modifier votre propre statut.", 400));
+    }
+    if (target.role === "ADMIN" && !req.adminAccess?.isSuperAdmin) {
+      return next(
+        new AppError(
+          "Seul un administrateur sans restriction peut modifier un compte administrateur.",
+          403
+        )
+      );
+    }
     const user = await prisma_default.user.update({ where: { id }, data: { status } });
     await prisma_default.auditLog.create({
       data: {
@@ -10200,6 +10221,78 @@ var listPayments = async (params) => {
   };
 };
 
+// server/utils/adminScopes.ts
+var ADMIN_SCOPES = [
+  "overview",
+  "plans",
+  "payments",
+  "users",
+  "jobs",
+  "schedules",
+  "emails",
+  "crm",
+  "preselection",
+  "freelance_moderation",
+  "team_tasks"
+];
+var SCOPE_LABELS = {
+  overview: {
+    label: "Aper\xE7u",
+    description: "Les chiffres de la plateforme."
+  },
+  plans: {
+    label: "Plans recruteurs",
+    description: "Changer le plan d'une entreprise et cr\xE9diter des packs d'annonces. Touche \xE0 ce qui a \xE9t\xE9 pay\xE9."
+  },
+  payments: {
+    label: "Paiements",
+    description: "Consulter tous les paiements. Lecture seule."
+  },
+  users: {
+    label: "Comptes",
+    description: "Voir, modifier, suspendre et supprimer des comptes. Ne permet jamais de cr\xE9er un administrateur."
+  },
+  jobs: {
+    label: "Offres",
+    description: "Modifier et supprimer les offres d'emploi."
+  },
+  schedules: {
+    label: "Agenda",
+    description: "L'agenda de l'\xE9quipe."
+  },
+  emails: {
+    label: "E-mails group\xE9s",
+    description: "\xC9crire \xE0 des milliers de comptes d'un seul envoi. \xC0 n'accorder qu'en connaissance de cause."
+  },
+  crm: {
+    label: "CRM",
+    description: "Les prospects et leurs notes."
+  },
+  preselection: {
+    label: "Pr\xE9s\xE9lection Corporate",
+    description: "D\xE9cider \xE0 la place d'un recruteur Corporate."
+  },
+  freelance_moderation: {
+    label: "Mod\xE9ration freelance",
+    description: "Valider services et projets, lire les messages signal\xE9s, et approuver les virements \u2014 ce qui accorde des cr\xE9dits."
+  },
+  team_tasks: {
+    label: "T\xE2ches d'\xE9quipe",
+    description: "Le tableau des t\xE2ches internes."
+  }
+};
+var VALID = new Set(ADMIN_SCOPES);
+var isAdminScope = (value) => typeof value === "string" && VALID.has(value);
+var normaliseScopes = (value) => {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(isAdminScope))];
+};
+var canUseScope = (user, scope2) => {
+  if (!user || user.role !== "ADMIN") return false;
+  if (user.isSuperAdmin) return true;
+  return Array.isArray(user.adminScopes) && user.adminScopes.includes(scope2);
+};
+
 // server/controllers/adminManage.controller.ts
 var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
   data: {
@@ -10256,6 +10349,15 @@ var updateUser = async (req, res, next) => {
     if (role !== void 0 && !ROLES.includes(role)) {
       return next(new AppError(`role must be one of: ${ROLES.join(", ")}`, 400));
     }
+    const touchingAdmin = role === "ADMIN" || target.role === "ADMIN";
+    if (touchingAdmin && !req.adminAccess?.isSuperAdmin) {
+      return next(
+        new AppError(
+          "Seul un administrateur sans restriction peut g\xE9rer un compte administrateur.",
+          403
+        )
+      );
+    }
     if (status !== void 0 && !STATUSES.includes(status)) {
       return next(new AppError(`status must be one of: ${STATUSES.join(", ")}`, 400));
     }
@@ -10311,6 +10413,14 @@ var deleteUser = async (req, res, next) => {
     const target = await prisma_default.user.findUnique({ where: { id } });
     if (!target) return next(new AppError("Compte introuvable.", 404));
     if (target.role === "ADMIN") {
+      if (!req.adminAccess?.isSuperAdmin) {
+        return next(
+          new AppError(
+            "Seul un administrateur sans restriction peut supprimer un compte administrateur.",
+            403
+          )
+        );
+      }
       const admins = await prisma_default.user.count({
         where: { role: "ADMIN", status: { not: "DELETED" } }
       });
@@ -10564,6 +10674,118 @@ var getPayments = async (req, res, next) => {
       perPage: num(req.query.perPage)
     });
     res.status(200).json({ status: "success", results: data.payments.length, data });
+  } catch (err) {
+    next(err);
+  }
+};
+var listAdminScopes = async (_req, res, next) => {
+  try {
+    res.status(200).json({
+      status: "success",
+      data: {
+        scopes: ADMIN_SCOPES.map((key) => ({ key, ...SCOPE_LABELS[key] }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var listAdminAccess = async (req, res, next) => {
+  try {
+    const admins = await prisma_default.user.findMany({
+      where: { role: "ADMIN", deletedAt: null },
+      orderBy: [{ isSuperAdmin: "desc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        status: true,
+        isSuperAdmin: true,
+        adminScopes: true,
+        createdAt: true
+      }
+    });
+    res.status(200).json({
+      status: "success",
+      results: admins.length,
+      data: {
+        admins: admins.map((a) => ({
+          ...a,
+          // Said plainly, because an administrator with neither is an account
+          // that can sign in and reach nothing — easy to create by accident.
+          hasNoAccess: !a.isSuperAdmin && a.adminScopes.length === 0,
+          isMe: a.id === req.user.id
+        }))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+var updateAdminAccess = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isSuperAdmin, scopes } = req.body;
+    if (req.user.id === id) {
+      return next(
+        new AppError("Vous ne pouvez pas modifier vos propres autorisations.", 400)
+      );
+    }
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, isSuperAdmin: true, deletedAt: true }
+    });
+    if (!target || target.deletedAt) {
+      return next(new AppError("Compte introuvable.", 404));
+    }
+    if (target.role !== "ADMIN") {
+      return next(
+        new AppError(
+          "Ce compte n'est pas administrateur. Changez son r\xF4le depuis Comptes d'abord.",
+          400
+        )
+      );
+    }
+    const makeSuper = typeof isSuperAdmin === "boolean" ? isSuperAdmin : target.isSuperAdmin;
+    if (target.isSuperAdmin && !makeSuper) {
+      const others = await prisma_default.user.count({
+        where: {
+          role: "ADMIN",
+          isSuperAdmin: true,
+          deletedAt: null,
+          status: { notIn: ["SUSPENDED", "DELETED"] },
+          id: { not: target.id }
+        }
+      });
+      if (others === 0) {
+        return next(
+          new AppError(
+            "C'est le dernier administrateur sans restriction. Nommez-en un autre avant de limiter celui-ci.",
+            400
+          )
+        );
+      }
+    }
+    const updated = await prisma_default.user.update({
+      where: { id: target.id },
+      data: {
+        isSuperAdmin: makeSuper,
+        /* Kept even for an unrestricted administrator rather than cleared: if
+         * their unrestricted status is removed later, the areas they were
+         * trusted with are still on the record instead of silently becoming
+         * none. */
+        ...scopes !== void 0 ? { adminScopes: normaliseScopes(scopes) } : {}
+      },
+      select: {
+        id: true,
+        email: true,
+        isSuperAdmin: true,
+        adminScopes: true
+      }
+    });
+    await audit(req, "UPDATE_ADMIN_ACCESS", "User", target.id);
+    res.status(200).json({ status: "success", data: { admin: updated } });
   } catch (err) {
     next(err);
   }
@@ -11487,56 +11709,120 @@ var carryOver = async (req, res, next) => {
   }
 };
 
+// server/middleware/adminScope.middleware.ts
+init_prisma();
+var requireAdminScope = (scope2) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return next(new AppError("Not authorized to access this route", 401));
+      }
+      const account = await prisma_default.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          role: true,
+          status: true,
+          deletedAt: true,
+          isSuperAdmin: true,
+          adminScopes: true
+        }
+      });
+      if (!account || account.role !== "ADMIN" || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
+        return next(new AppError("You do not have permission to perform this action", 403));
+      }
+      if (!canUseScope(account, scope2)) {
+        return next(
+          new AppError(
+            `Acc\xE8s limit\xE9 : \xAB ${SCOPE_LABELS[scope2].label} \xBB ne fait pas partie de vos autorisations.`,
+            403
+          )
+        );
+      }
+      req.adminAccess = {
+        isSuperAdmin: account.isSuperAdmin,
+        scopes: account.adminScopes
+      };
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+};
+var requireSuperAdmin = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return next(new AppError("Not authorized to access this route", 401));
+    }
+    const account = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: { role: true, status: true, deletedAt: true, isSuperAdmin: true }
+    });
+    if (!account || account.role !== "ADMIN" || !account.isSuperAdmin || account.status === "SUSPENDED" || account.status === "DELETED" || account.deletedAt) {
+      return next(
+        new AppError("R\xE9serv\xE9 \xE0 un administrateur sans restriction.", 403)
+      );
+    }
+    req.adminAccess = { isSuperAdmin: true, scopes: [] };
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 // server/routes/admin.routes.ts
 var router7 = Router7();
 router7.use(protect);
 router7.use(restrictTo("ADMIN"));
-router7.get("/stats", getStats);
-router7.get("/companies", getAllCompanies);
-router7.get("/companies/:id", getCompany);
-router7.patch("/companies/:id/plan", updateCompanyPlan);
-router7.patch("/companies/:id/postings", grantCompanyPostings);
-router7.get("/users", getAllUsers);
-router7.patch("/users/:id/status", updateUserStatus);
-router7.get("/users/:id", getUserDetail);
-router7.patch("/users/:id", updateUser);
-router7.post("/users/:id/send-verification", sendVerificationLink);
-router7.delete("/users/:id", deleteUser);
-router7.get("/payments", getPayments);
-router7.get("/jobs", getAllJobsAdmin);
-router7.patch("/jobs/:id", updateJobAdmin);
-router7.delete("/jobs/:id", deleteJobAdmin);
-router7.get("/schedules", listSchedules);
-router7.post("/schedules", createSchedule);
-router7.patch("/schedules/:id", updateSchedule);
-router7.delete("/schedules/:id", deleteSchedule);
-router7.post("/emails/send", sendBroadcast);
-router7.post("/emails/preview", sendBroadcastPreview);
-router7.get("/freelance/moderation", listQueue);
-router7.get("/freelance/moderation/stats", getQueueStats);
-router7.get("/freelance/moderation/history", listHistory);
-router7.post("/freelance/moderation/services/:id/approve", approveService);
-router7.post("/freelance/moderation/services/:id/reject", rejectService);
-router7.get("/freelance/moderation/projects", listProjectQueue);
-router7.post("/freelance/moderation/projects/:id/approve", approveProject);
-router7.post("/freelance/moderation/projects/:id/reject", rejectProject);
-router7.get("/freelance/moderation/messages", listFlaggedMessages);
-router7.post("/freelance/moderation/messages/:id/clear", clearMessageFlag);
-router7.get("/team/board", getBoard);
-router7.post("/team/carry-over", carryOver);
-router7.get("/team/members", listMembers);
-router7.post("/team/members", createMember);
-router7.patch("/team/members/:id", updateMember);
-router7.delete("/team/members/:id", deleteMember);
-router7.post("/team/tasks", createTask);
-router7.get("/team/tasks/:id", getTask);
-router7.patch("/team/tasks/:id", updateTask);
-router7.delete("/team/tasks/:id", deleteTask);
-router7.get("/freelance/payments/pending", listPendingReceipts);
-router7.post("/freelance/payments/:id/approve", approveReceipt);
-router7.post("/freelance/payments/:id/reject", rejectReceipt);
-router7.get("/preselections/corporate-pending", getCorporatePendingPreselections);
-router7.post("/preselections/:applicationId", adminPreselect);
+var scope = requireAdminScope;
+router7.get("/stats", scope("overview"), getStats);
+router7.get("/companies", scope("plans"), getAllCompanies);
+router7.get("/companies/:id", scope("plans"), getCompany);
+router7.patch("/companies/:id/plan", scope("plans"), updateCompanyPlan);
+router7.patch("/companies/:id/postings", scope("plans"), grantCompanyPostings);
+router7.get("/users", scope("users"), getAllUsers);
+router7.patch("/users/:id/status", scope("users"), updateUserStatus);
+router7.get("/users/:id", scope("users"), getUserDetail);
+router7.patch("/users/:id", scope("users"), updateUser);
+router7.post("/users/:id/send-verification", scope("users"), sendVerificationLink);
+router7.delete("/users/:id", scope("users"), deleteUser);
+router7.get("/payments", scope("payments"), getPayments);
+router7.get("/access", requireSuperAdmin, listAdminAccess);
+router7.get("/access/scopes", requireSuperAdmin, listAdminScopes);
+router7.patch("/access/:id", requireSuperAdmin, updateAdminAccess);
+router7.get("/jobs", scope("jobs"), getAllJobsAdmin);
+router7.patch("/jobs/:id", scope("jobs"), updateJobAdmin);
+router7.delete("/jobs/:id", scope("jobs"), deleteJobAdmin);
+router7.get("/schedules", scope("schedules"), listSchedules);
+router7.post("/schedules", scope("schedules"), createSchedule);
+router7.patch("/schedules/:id", scope("schedules"), updateSchedule);
+router7.delete("/schedules/:id", scope("schedules"), deleteSchedule);
+router7.post("/emails/send", scope("emails"), sendBroadcast);
+router7.post("/emails/preview", scope("emails"), sendBroadcastPreview);
+router7.get("/freelance/moderation", scope("freelance_moderation"), listQueue);
+router7.get("/freelance/moderation/stats", scope("freelance_moderation"), getQueueStats);
+router7.get("/freelance/moderation/history", scope("freelance_moderation"), listHistory);
+router7.post("/freelance/moderation/services/:id/approve", scope("freelance_moderation"), approveService);
+router7.post("/freelance/moderation/services/:id/reject", scope("freelance_moderation"), rejectService);
+router7.get("/freelance/moderation/projects", scope("freelance_moderation"), listProjectQueue);
+router7.post("/freelance/moderation/projects/:id/approve", scope("freelance_moderation"), approveProject);
+router7.post("/freelance/moderation/projects/:id/reject", scope("freelance_moderation"), rejectProject);
+router7.get("/freelance/moderation/messages", scope("freelance_moderation"), listFlaggedMessages);
+router7.post("/freelance/moderation/messages/:id/clear", scope("freelance_moderation"), clearMessageFlag);
+router7.get("/team/board", scope("team_tasks"), getBoard);
+router7.post("/team/carry-over", scope("team_tasks"), carryOver);
+router7.get("/team/members", scope("team_tasks"), listMembers);
+router7.post("/team/members", scope("team_tasks"), createMember);
+router7.patch("/team/members/:id", scope("team_tasks"), updateMember);
+router7.delete("/team/members/:id", scope("team_tasks"), deleteMember);
+router7.post("/team/tasks", scope("team_tasks"), createTask);
+router7.get("/team/tasks/:id", scope("team_tasks"), getTask);
+router7.patch("/team/tasks/:id", scope("team_tasks"), updateTask);
+router7.delete("/team/tasks/:id", scope("team_tasks"), deleteTask);
+router7.get("/freelance/payments/pending", scope("freelance_moderation"), listPendingReceipts);
+router7.post("/freelance/payments/:id/approve", scope("freelance_moderation"), approveReceipt);
+router7.post("/freelance/payments/:id/reject", scope("freelance_moderation"), rejectReceipt);
+router7.get("/preselections/corporate-pending", scope("preselection"), getCorporatePendingPreselections);
+router7.post("/preselections/:applicationId", scope("preselection"), adminPreselect);
 var admin_routes_default = router7;
 
 // server/routes/crm.routes.ts

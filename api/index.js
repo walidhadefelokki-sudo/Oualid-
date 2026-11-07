@@ -41,7 +41,7 @@ __export(credits_service_exports, {
   refundFor: () => refundFor,
   spend: () => spend
 });
-import { CreditEntryType, Prisma } from "@prisma/client";
+import { CreditEntryType, Prisma as Prisma2 } from "@prisma/client";
 var InsufficientCreditsError, getOrCreateWallet, getBalance, move, spend, grant, refundFor, history, getCreditCosts, credits_service_default;
 var init_credits_service = __esm({
   "server/services/credits.service.ts"() {
@@ -60,7 +60,7 @@ var init_credits_service = __esm({
       try {
         return await tx.creditWallet.create({ data: { userId } });
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
           const wallet = await tx.creditWallet.findUnique({ where: { userId } });
           if (wallet) return wallet;
         }
@@ -111,10 +111,10 @@ var init_credits_service = __esm({
             });
             return { balance: next, entryId: entry.id, replayed: false };
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+          { isolationLevel: Prisma2.TransactionIsolationLevel.Serializable }
         );
       } catch (err) {
-        if (idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (idempotencyKey && err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
           const winner = await prisma_default.creditLedgerEntry.findUnique({
             where: { idempotencyKey },
             select: { id: true, balanceAfter: true }
@@ -2407,6 +2407,150 @@ var getMatchedJobsForCandidate = async (userId, limit = 6) => {
   return scored.filter((m) => m.score > 0).sort((a, b) => b.score - a.score || (b.job.publishedAt?.getTime() ?? 0) - (a.job.publishedAt?.getTime() ?? 0)).slice(0, limit);
 };
 
+// server/services/jobSearch.service.ts
+init_prisma();
+import { Prisma } from "@prisma/client";
+var CONFIG = "public.french_unaccent";
+var SIMILARITY_FLOOR = 0.45;
+var MAX_TERMS = 10;
+var MAX_PER_PAGE = 60;
+var buildTsQuery = (raw) => {
+  const terms = raw.toLowerCase().replace(/[^\p{L}\p{N}\s+#]/gu, " ").split(/\s+/).filter((t) => t.length >= 2).slice(0, MAX_TERMS);
+  if (!terms.length) return null;
+  return terms.map((t) => `${t.replace(/[+#]/g, "")}:*`).filter(Boolean).join(" & ");
+};
+var filterSql = (p) => {
+  const parts = [Prisma.sql`j."status" = 'PUBLISHED'::"JobStatus"`];
+  parts.push(Prisma.sql`(j."expiresAt" IS NULL OR j."expiresAt" > now())`);
+  if (p.location) {
+    parts.push(
+      Prisma.sql`public.dl_unaccent(j."location") ILIKE public.dl_unaccent(${`%${p.location}%`})`
+    );
+  }
+  if (p.wilaya) {
+    parts.push(
+      Prisma.sql`public.dl_unaccent(coalesce(j."wilaya", '')) ILIKE public.dl_unaccent(${p.wilaya})`
+    );
+  }
+  if (p.type) parts.push(Prisma.sql`j."type" = ${p.type}::"JobType"`);
+  if (p.experienceLevel) {
+    parts.push(Prisma.sql`j."experienceLevel" = ${p.experienceLevel}::"ExperienceLevel"`);
+  }
+  if (p.categoryId) parts.push(Prisma.sql`j."categoryId" = ${p.categoryId}`);
+  if (p.categorySlug) {
+    parts.push(
+      Prisma.sql`j."categoryId" IN (SELECT id FROM "JobCategory" WHERE slug = ${p.categorySlug})`
+    );
+  }
+  if (p.remote === true) parts.push(Prisma.sql`j."remote" = true`);
+  if (p.featured === true) parts.push(Prisma.sql`j."featured" = true`);
+  if (typeof p.salaryMin === "number" && Number.isFinite(p.salaryMin)) {
+    parts.push(
+      Prisma.sql`(j."salaryMax" IS NULL AND j."salaryMin" IS NULL
+                  OR coalesce(j."salaryMax", j."salaryMin") >= ${Math.trunc(p.salaryMin)})`
+    );
+  }
+  return parts;
+};
+var DOCUMENT = Prisma.sql`(
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.title, '')), 'A') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.location, '')), 'B') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.wilaya, '')), 'B') ||
+  setweight(to_tsvector('public.french_unaccent', coalesce(j.description, '')), 'C')
+)`;
+var rankedIds = async (tsquery, params, skip, take) => {
+  const where = Prisma.join(filterSql(params), " AND ");
+  return prisma_default.$queryRaw`
+    SELECT j.id,
+           count(*) OVER() AS total
+      FROM "Job" j
+      LEFT JOIN "Company" c ON c.id = j."companyId"
+     WHERE ${where}
+       AND (
+         ${DOCUMENT} @@ to_tsquery(${CONFIG}::regconfig, ${tsquery})
+         -- The employer's name, which cannot live in the index expression
+         -- because it is in another table. Backed by Company_name_trgm_idx.
+         OR public.dl_unaccent(c.name) ILIKE public.dl_unaccent(${`%${params.q ?? ""}%`})
+       )
+     ORDER BY j."featured" DESC,
+              ts_rank(${DOCUMENT}, to_tsquery(${CONFIG}::regconfig, ${tsquery})) DESC,
+              j."publishedAt" DESC NULLS LAST,
+              j."createdAt" DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var similarIds = async (raw, params, skip, take) => {
+  const where = Prisma.join(filterSql(params), " AND ");
+  return prisma_default.$queryRaw`
+    SELECT j.id,
+           count(*) OVER() AS total
+      FROM "Job" j
+     WHERE ${where}
+       AND word_similarity(public.dl_unaccent(${raw}), public.dl_unaccent(j.title))
+             > ${SIMILARITY_FLOOR}
+     ORDER BY word_similarity(public.dl_unaccent(${raw}), public.dl_unaccent(j.title)) DESC,
+              j."featured" DESC,
+              j."createdAt" DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var JOB_INCLUDE = {
+  company: { select: { name: true, logo: { select: { url: true } } } },
+  category: { select: { name: true, slug: true } }
+};
+var searchJobs = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 20) || 20, 1), MAX_PER_PAGE);
+  const skip = (page - 1) * perPage;
+  const tsquery = params.q?.trim() ? buildTsQuery(params.q) : null;
+  if (!tsquery) {
+    const where = Prisma.join(filterSql(params), " AND ");
+    const [rows2, counted] = await Promise.all([
+      prisma_default.$queryRaw`
+        SELECT j.id FROM "Job" j
+         WHERE ${where}
+         ORDER BY j."featured" DESC,
+                  j."publishedAt" DESC NULLS LAST,
+                  j."createdAt" DESC
+         LIMIT ${perPage} OFFSET ${skip}`,
+      prisma_default.$queryRaw`
+        SELECT count(*) AS total FROM "Job" j WHERE ${where}`
+    ]);
+    const total2 = Number(counted[0]?.total ?? 0);
+    return {
+      jobs: await hydrate(rows2.map((r) => r.id)),
+      total: total2,
+      page,
+      perPage,
+      totalPages: Math.max(1, Math.ceil(total2 / perPage)),
+      didYouMean: false
+    };
+  }
+  let rows = await rankedIds(tsquery, params, skip, perPage);
+  let didYouMean = false;
+  const singleTerm = tsquery.split("&").length === 1;
+  if (!rows.length && page === 1 && singleTerm && params.q) {
+    rows = await similarIds(params.q.trim(), params, 0, perPage);
+    didYouMean = rows.length > 0;
+  }
+  const total = Number(rows[0]?.total ?? 0);
+  return {
+    jobs: await hydrate(rows.map((r) => r.id)),
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+    didYouMean
+  };
+};
+var hydrate = async (ids) => {
+  if (!ids.length) return [];
+  const jobs = await prisma_default.job.findMany({
+    where: { id: { in: ids } },
+    include: JOB_INCLUDE
+  });
+  const position = new Map(ids.map((id, i) => [id, i]));
+  return jobs.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+};
+
 // server/controllers/job.controller.ts
 var slugify3 = (title) => {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -2415,36 +2559,56 @@ var slugify3 = (title) => {
 };
 var getAllJobs = async (req, res, next) => {
   try {
-    const { title, location, type, categoryId, categorySlug, wilaya, featured, limit } = req.query;
+    const {
+      q,
+      title,
+      location,
+      type,
+      experienceLevel,
+      categoryId,
+      categorySlug,
+      wilaya,
+      remote,
+      salaryMin,
+      featured,
+      limit,
+      page,
+      perPage
+    } = req.query;
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
     const featuredOnly = featured === "true" ? true : void 0;
+    const remoteOnly = remote === "true" ? true : void 0;
+    const salaryFloor = Number(salaryMin);
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 60) : void 0;
-    const jobs = await prisma_default.job.findMany({
-      where: {
-        title: title ? { contains: title, mode: "insensitive" } : void 0,
-        location: location ? { contains: location, mode: "insensitive" } : void 0,
-        type,
-        categoryId: categoryId ? categoryId : void 0,
-        // Lets the frontend filter by the stable slug it already knows ("it",
-        // "health", …) without first resolving it to a uuid.
-        category: categorySlug ? { slug: categorySlug } : void 0,
-        wilaya: wilaya ? { equals: wilaya, mode: "insensitive" } : void 0,
-        featured: featuredOnly,
-        status: "PUBLISHED"
-      },
-      include: {
-        recruiter: true,
-        company: true,
-        category: true
-      },
-      // Featured first so promoted postings lead any list they appear in.
-      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-      take
+    const size = Number(perPage) || (Number.isFinite(parsedLimit) ? parsedLimit : void 0);
+    const result = await searchJobs({
+      q: str(q) ?? str(title),
+      location: str(location),
+      wilaya: str(wilaya),
+      type: str(type),
+      experienceLevel: str(experienceLevel),
+      categoryId: str(categoryId),
+      categorySlug: str(categorySlug),
+      remote: remoteOnly,
+      featured: featuredOnly,
+      salaryMin: Number.isFinite(salaryFloor) ? salaryFloor : void 0,
+      page: Number(page) || 1,
+      perPage: size
     });
     res.status(200).json({
       status: "success",
-      results: jobs.length,
-      data: { jobs }
+      results: result.jobs.length,
+      data: {
+        jobs: result.jobs,
+        total: result.total,
+        page: result.page,
+        perPage: result.perPage,
+        totalPages: result.totalPages,
+        // True when nothing matched the words and the results below came from
+        // similarity instead, so the page can say so rather than presenting a
+        // guess as an answer.
+        didYouMean: result.didYouMean
+      }
     });
   } catch (err) {
     next(err);
@@ -2614,7 +2778,7 @@ var createJob = async (req, res, next) => {
     );
     (async () => {
       try {
-        const matchingCandidates = await prisma_default.candidateProfile.findMany({
+        const matchingCandidates2 = await prisma_default.candidateProfile.findMany({
           where: {
             skills: {
               hasSome: title.split(" ")
@@ -2623,11 +2787,11 @@ var createJob = async (req, res, next) => {
           include: { user: true }
         });
         await notifyJobMatch({
-          candidateUserIds: matchingCandidates.map((c) => c.userId),
+          candidateUserIds: matchingCandidates2.map((c) => c.userId),
           jobTitle: job.title,
           company: membership.company.name
         });
-        for (const candidate of matchingCandidates) {
+        for (const candidate of matchingCandidates2) {
           await sendJobMatchEmail(
             candidate.user.email,
             job.title,
@@ -5228,7 +5392,7 @@ var createFromService = async (req, res, next) => {
 
 // server/services/review.service.ts
 init_prisma();
-import { Prisma as Prisma2 } from "@prisma/client";
+import { Prisma as Prisma3 } from "@prisma/client";
 var ReviewError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5251,7 +5415,7 @@ var recomputeRating = async (freelancerUserId) => {
   await prisma_default.freelancerProfile.update({
     where: { id: profile.id },
     data: {
-      ratingAverage: agg._count.rating > 0 ? new Prisma2.Decimal((agg._avg.rating ?? 0).toFixed(2)) : null,
+      ratingAverage: agg._count.rating > 0 ? new Prisma3.Decimal((agg._avg.rating ?? 0).toFixed(2)) : null,
       ratingCount: agg._count.rating
     }
   });
@@ -5301,7 +5465,7 @@ var leave = async (orderId, authorId, input) => {
     if (isClient) await recomputeRating(targetId);
     return review;
   } catch (err) {
-    if (err instanceof Prisma2.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma3.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new ReviewError("Vous avez d\xE9j\xE0 laiss\xE9 un avis sur cette commande.", 409);
     }
     throw err;
@@ -5449,7 +5613,7 @@ init_prisma();
 // server/services/portfolio.service.ts
 init_prisma();
 init_plans_service();
-import { Prisma as Prisma3 } from "@prisma/client";
+import { Prisma as Prisma4 } from "@prisma/client";
 var PortfolioError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5477,7 +5641,7 @@ var getOrCreate = async (freelancerId) => {
   try {
     return await prisma_default.portfolio.create({ data: { freelancerId } });
   } catch (err) {
-    if (err instanceof Prisma3.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma4.PrismaClientKnownRequestError && err.code === "P2002") {
       const p = await prisma_default.portfolio.findUnique({ where: { freelancerId } });
       if (p) return p;
     }
@@ -5934,7 +6098,7 @@ init_prisma();
 // server/services/marketplacePayment.service.ts
 init_prisma();
 init_credits_service();
-import { CreditEntryType as CreditEntryType5, MarketplacePaymentStatus, Prisma as Prisma4 } from "@prisma/client";
+import { CreditEntryType as CreditEntryType5, MarketplacePaymentStatus, Prisma as Prisma5 } from "@prisma/client";
 var PaymentError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -5996,7 +6160,7 @@ var issueInvoice = async (paymentId) => {
       }
     });
   } catch (err) {
-    if (err instanceof Prisma4.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof Prisma5.PrismaClientKnownRequestError && err.code === "P2002") {
       await prisma_default.marketplaceInvoice.create({
         data: {
           paymentId,
@@ -8666,6 +8830,214 @@ var AIAnalysisService = class {
 };
 var aiAnalysis_service_default = new AIAnalysisService();
 
+// server/services/cvDirectory.service.ts
+init_prisma();
+import { Prisma as Prisma6 } from "@prisma/client";
+var MAX_TERMS2 = 8;
+var MAX_PER_PAGE2 = 200;
+var searchSql = (q) => {
+  const terms = q.toLowerCase().replace(/[^\p{L}\p{N}\s+#.]/gu, " ").split(/\s+/).filter((t) => t.length >= 2).slice(0, MAX_TERMS2);
+  if (!terms.length) return null;
+  const perTerm = terms.map((term) => {
+    const like = `%${term}%`;
+    return Prisma6.sql`(
+      public.dl_unaccent(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", ''))
+        ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp."currentJobTitle", '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.headline, '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.city, '')) ILIKE public.dl_unaccent(${like})
+      OR public.dl_unaccent(coalesce(cp.wilaya, '')) ILIKE public.dl_unaccent(${like})
+      OR EXISTS (
+        SELECT 1 FROM unnest(cp.skills) AS s
+         WHERE public.dl_unaccent(s) ILIKE public.dl_unaccent(${like})
+      )
+      OR public.dl_unaccent(j.title) ILIKE public.dl_unaccent(${like})
+    )`;
+  });
+  return Prisma6.join(perTerm, " AND ");
+};
+var matchingCandidates = async (p, skip, take) => {
+  const where = [Prisma6.sql`a."recruiterId" = ${p.recruiterProfileId}`];
+  const having = [];
+  if (p.jobId) where.push(Prisma6.sql`a."jobId" = ${p.jobId}`);
+  if (p.wilaya) {
+    where.push(Prisma6.sql`(
+      public.dl_unaccent(coalesce(cp.wilaya, '')) ILIKE public.dl_unaccent(${p.wilaya})
+      OR public.dl_unaccent(coalesce(cp.city, '')) ILIKE public.dl_unaccent(${p.wilaya})
+    )`);
+  }
+  if (typeof p.minExperience === "number" && Number.isFinite(p.minExperience)) {
+    where.push(
+      Prisma6.sql`coalesce(cp."yearsExperience", 0) >= ${Math.trunc(p.minExperience)}`
+    );
+  }
+  if (p.hasCv === true) {
+    where.push(Prisma6.sql`(cp."resumeId" IS NOT NULL OR cp."cvBuilderData" IS NOT NULL)`);
+  }
+  if (p.availableNow === true) where.push(Prisma6.sql`cp."availableImmediately" = true`);
+  if (p.q?.trim()) {
+    const text = searchSql(p.q);
+    if (text) where.push(text);
+  }
+  if (typeof p.minScore === "number" && Number.isFinite(p.minScore)) {
+    having.push(Prisma6.sql`coalesce(max(a."aiScore"), 0) >= ${p.minScore}`);
+  }
+  if (p.preselectedOnly === true) {
+    having.push(Prisma6.sql`bool_or(coalesce(a."isPreselected", false)) = true`);
+  }
+  const whereSql = Prisma6.join(where, " AND ");
+  const havingSql = having.length ? Prisma6.sql`HAVING ${Prisma6.join(having, " AND ")}` : Prisma6.empty;
+  return prisma_default.$queryRaw`
+    SELECT cp.id,
+           count(*) OVER () AS total
+      FROM "Application" a
+      JOIN "CandidateProfile" cp ON cp.id = a."candidateId"
+      JOIN "User" u ON u.id = cp."userId"
+      JOIN "Job" j ON j.id = a."jobId"
+     WHERE ${whereSql}
+       -- A closed account is not a candidate to call.
+       AND u."deletedAt" IS NULL
+       AND u."status" <> 'DELETED'::"AccountStatus"
+     GROUP BY cp.id
+     ${havingSql}
+     ORDER BY coalesce(max(a."aiScore"), 0) DESC,
+              max(a."appliedAt") DESC
+     LIMIT ${take} OFFSET ${skip}`;
+};
+var hydrate2 = async (candidateIds, recruiterProfileId) => {
+  if (!candidateIds.length) return [];
+  const applications = await prisma_default.application.findMany({
+    where: { candidateId: { in: candidateIds }, recruiterId: recruiterProfileId },
+    orderBy: { appliedAt: "desc" },
+    select: {
+      id: true,
+      candidateId: true,
+      aiScore: true,
+      isPreselected: true,
+      oralPresentationScore: true,
+      appliedAt: true,
+      job: { select: { id: true, title: true, category: { select: { name: true } } } },
+      candidate: {
+        select: {
+          id: true,
+          userId: true,
+          currentJobTitle: true,
+          headline: true,
+          city: true,
+          wilaya: true,
+          skills: true,
+          yearsExperience: true,
+          availableImmediately: true,
+          resumeId: true,
+          // Only whether there is one: the builder document is the whole CV
+          // and has no business in a list.
+          cvBuilderData: true,
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              avatar: { select: { url: true } }
+            }
+          }
+        }
+      }
+    }
+  });
+  const userIds = [...new Set(applications.map((a) => a.candidate.userId))];
+  const [quizzes, presentations] = await Promise.all([
+    prisma_default.quiz.findMany({
+      where: { candidateId: { in: userIds } },
+      select: { candidateId: true, attempt: { select: { aiScore: true } } }
+    }),
+    prisma_default.oralPresentation.findMany({
+      where: { candidateId: { in: candidateIds } },
+      select: { candidateId: true, videoId: true }
+    })
+  ]);
+  const quizByUser = new Map(quizzes.map((q) => [q.candidateId, q.attempt?.aiScore ?? null]));
+  const hasPresentation = new Set(presentations.filter((p) => p.videoId).map((p) => p.candidateId));
+  const byCandidate = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const c = a.candidate;
+    const score = Math.round(a.aiScore ?? 0);
+    const existing = byCandidate.get(c.id);
+    const jobIds = new Set(existing?.jobIds ?? []);
+    const jobTitles = new Set(existing?.jobTitles ?? []);
+    const sectors = new Set(existing?.sectors ?? []);
+    if (a.job?.id) jobIds.add(a.job.id);
+    if (a.job?.title) jobTitles.add(a.job.title);
+    if (a.job?.category?.name) sectors.add(a.job.category.name);
+    const better = !existing || score > existing.aiScore;
+    const base = better ? {
+      id: c.id,
+      fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
+      email: c.user.email,
+      phone: c.user.phone ?? "",
+      avatarUrl: c.user.avatar?.url ?? null,
+      position: c.currentJobTitle || c.headline || a.job?.title || "",
+      experience: c.yearsExperience ?? 0,
+      location: c.city ?? c.wilaya ?? "",
+      skills: c.skills ?? [],
+      availableNow: c.availableImmediately,
+      aiScore: score,
+      quizScore: quizByUser.get(c.userId) != null ? Math.round(quizByUser.get(c.userId)) : void 0,
+      oralPresentationScore: a.oralPresentationScore ?? void 0,
+      hasPresentation: hasPresentation.has(c.id),
+      hasCv: Boolean(c.resumeId) || isFilled(c.cvBuilderData),
+      createdAt: a.appliedAt
+    } : existing;
+    const isPreselected = Boolean(existing?.isPreselected) || Boolean(a.isPreselected);
+    byCandidate.set(c.id, {
+      ...base,
+      isPreselected,
+      jobIds: [...jobIds],
+      jobTitles: [...jobTitles],
+      sectors: [...sectors]
+    });
+  }
+  const position = new Map(candidateIds.map((id, i) => [id, i]));
+  return [...byCandidate.values()].sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)
+  );
+};
+var isFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
+  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+);
+var searchCvDirectory = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 24) || 24, 1), MAX_PER_PAGE2);
+  const skip = (page - 1) * perPage;
+  const [rows, everyone] = await Promise.all([
+    matchingCandidates(params, skip, perPage),
+    // How many applicants the recruiter has in total, whatever the search
+    // says. The screen's headline figures are about their pipeline, not about
+    // the current query, and counting the filtered set there would make
+    // "candidats" drop every time somebody typed.
+    prisma_default.$queryRaw`
+      SELECT count(DISTINCT a."candidateId") AS total
+        FROM "Application" a
+        JOIN "CandidateProfile" cp ON cp.id = a."candidateId"
+        JOIN "User" u ON u.id = cp."userId"
+       WHERE a."recruiterId" = ${params.recruiterProfileId}
+         AND u."deletedAt" IS NULL
+         AND u."status" <> 'DELETED'::"AccountStatus"`
+  ]);
+  const total = Number(rows[0]?.total ?? 0);
+  return {
+    candidates: await hydrate2(
+      rows.map((r) => r.id),
+      params.recruiterProfileId
+    ),
+    total,
+    totalAll: Number(everyone[0]?.total ?? 0),
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage))
+  };
+};
+
 // server/controllers/application.controller.ts
 var applyToJob = async (req, res, next) => {
   try {
@@ -8933,6 +9305,49 @@ var updateApplicationStatus = async (req, res, next) => {
     next(err);
   }
 };
+var getCvDirectory = async (req, res, next) => {
+  try {
+    const me = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      select: { role: true, recruiterProfile: { select: { id: true } } }
+    });
+    if (!me?.recruiterProfile) {
+      return next(
+        new AppError(
+          me?.role === "ADMIN" ? "Le r\xE9pertoire CV est propre \xE0 un compte recruteur." : "Profil recruteur introuvable.",
+          403
+        )
+      );
+    }
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : void 0;
+    };
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const result = await searchCvDirectory({
+      recruiterProfileId: me.recruiterProfile.id,
+      q: str(req.query.q),
+      jobId: str(req.query.jobId),
+      wilaya: str(req.query.wilaya),
+      minExperience: num(req.query.minExperience),
+      minScore: num(req.query.minScore),
+      // Only "true" turns a filter on, so ?hasCv=maybe does not silently
+      // become "candidates without a CV".
+      hasCv: req.query.hasCv === "true" ? true : void 0,
+      availableNow: req.query.availableNow === "true" ? true : void 0,
+      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0,
+      page: num(req.query.page),
+      perPage: num(req.query.perPage)
+    });
+    res.status(200).json({
+      status: "success",
+      results: result.candidates.length,
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/routes/application.routes.ts
 var router5 = Router5();
@@ -8940,6 +9355,12 @@ router5.use(protect);
 router5.post("/", restrictTo("CANDIDATE"), applyToJob);
 router5.get("/my", restrictTo("CANDIDATE"), getMyApplications);
 router5.get("/job/:jobId", restrictTo("RECRUITER", "ADMIN"), getJobApplications);
+router5.get(
+  "/cv-directory",
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  getCvDirectory
+);
 router5.patch("/:id/status", restrictTo("RECRUITER", "ADMIN"), updateApplicationStatus);
 var application_routes_default = router5;
 

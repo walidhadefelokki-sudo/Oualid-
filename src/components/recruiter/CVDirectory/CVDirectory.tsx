@@ -57,6 +57,29 @@ interface CVDirectoryProps {
 
   recruiterPlan: "free" | "paid" | "corporate";
 
+  /**
+   * The search term, held by the parent because the server does the matching.
+   *
+   * It used to be local state filtered with `String.includes`, which could
+   * not see accents — "belkacem" never found "Belkacém" — and never looked at
+   * a candidate's skills. Lifting it means the term reaches Postgres, where it
+   * is matched against the name, headline, job title, city, wilaya, skills and
+   * the offers the person answered.
+   *
+   * Omit both and the box falls back to local state, so the component still
+   * works on its own.
+   */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+
+  /**
+   * Every applicant the recruiter has, whatever the search says.
+   *
+   * The headline figures are about their pipeline, so counting the filtered
+   * set there would make "candidats" drop every time somebody typed.
+   */
+  totalAll?: number;
+
   onOpenCV?: (candidate: CandidateCV) => void;
 
   onRefresh?: () => void;
@@ -97,6 +120,9 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   candidates,
   recruiterPlan,
   loading = false,
+  searchValue,
+  onSearchChange,
+  totalAll,
   onOpenCV,
   onRefresh,
 }) => {
@@ -104,7 +130,14 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   /*                                 STATE                                  */
   /* ---------------------------------------------------------------------- */
 
-  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+
+  /* Controlled by the parent when it supplies a handler, local otherwise. The
+     server-side search needs the term outside this component, and a
+     standalone render should still have a working box. */
+  const serverDriven = onSearchChange !== undefined;
+  const search = serverDriven ? searchValue ?? "" : localSearch;
+  const setSearch = serverDriven ? onSearchChange : setLocalSearch;
 
   const [locationFilter, setLocationFilter] =
     useState("Tous");
@@ -160,22 +193,20 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
   const filteredCandidates = useMemo(() => {
     let data = [...candidates];
 
-    /* Search */
-
-    if (search.trim()) {
+    /* Search
+     *
+     * Only when nothing upstream is doing it. With the server driving, these
+     * rows have already been matched on name, headline, job title, city,
+     * wilaya, skills and the offers answered — reapplying the old substring
+     * rule here would drop everything found by a skill or an offer title. */
+    if (!serverDriven && search.trim()) {
       const value = search.toLowerCase();
 
       data = data.filter(
         (candidate) =>
-          candidate.fullName
-            .toLowerCase()
-            .includes(value) ||
-          candidate.position
-            .toLowerCase()
-            .includes(value) ||
-          candidate.location
-            .toLowerCase()
-            .includes(value)
+          candidate.fullName.toLowerCase().includes(value) ||
+          candidate.position.toLowerCase().includes(value) ||
+          candidate.location.toLowerCase().includes(value)
       );
     }
 
@@ -305,7 +336,8 @@ const CVDirectory: React.FC<CVDirectoryProps> = ({
 
   const stats = useMemo(() => {
     return {
-      total: candidates.length,
+      // The pipeline, not the current query — see totalAll.
+      total: totalAll ?? candidates.length,
 
       preselected:
         candidates.filter(

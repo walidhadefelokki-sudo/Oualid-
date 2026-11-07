@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
+import cvDirectoryService from "../services/cvDirectory.service";
 import SubscriptionBanner from "./recruiter/SubscriptionBanner";
 import SubscriptionStatus from "./recruiter/SubscriptionStatus";
 import InvoiceList from "./recruiter/InvoiceList";
@@ -2108,6 +2109,58 @@ export default function Dashboard({
     return [...byCandidate.values()];
   }, [candidatesByJob]);
 
+  /* The CV directory, loaded from its own endpoint.
+   *
+   * It used to be derived from candidateList above, which the browser builds
+   * by fetching the recruiter's offers and then their applicants one request
+   * per offer — fifty offers meant fifty-one requests before the screen could
+   * draw. Searching it happened here too, with String.includes, so it could
+   * not see accents and never looked at a candidate's skills.
+   *
+   * The term is held here rather than inside CVDirectory because the server
+   * is what matches it now. */
+  const [cvSearch, setCvSearch] = useState('');
+  const [cvRows, setCvRows] = useState<any[]>([]);
+  const [cvTotalAll, setCvTotalAll] = useState(0);
+  const [loadingCvDirectory, setLoadingCvDirectory] = useState(false);
+
+  const loadCvDirectory = React.useCallback(
+    async (term: string) => {
+      try {
+        setLoadingCvDirectory(true);
+        const page = await cvDirectoryService.search({
+          q: term.trim() || undefined,
+          // The screen derives its filter dropdowns and its own 10-per-page
+          // paging from the set it holds, so it is given the whole thing
+          // rather than a page the dropdowns would then be narrowed to.
+          perPage: 200,
+        });
+        setCvRows(page.candidates);
+        setCvTotalAll(page.totalAll);
+      } catch (error) {
+        console.error('Failed to load the CV directory:', error);
+        setCvRows([]);
+        setCvTotalAll(0);
+      } finally {
+        setLoadingCvDirectory(false);
+      }
+    },
+    []
+  );
+
+  /* Debounced, because this now runs as the recruiter types rather than over
+     an array already in memory. */
+  useEffect(() => {
+    if (user?.role !== 'employer' || !access.repertoireCv) return;
+
+    const timer = setTimeout(
+      () => loadCvDirectory(cvSearch),
+      cvSearch.trim() ? 350 : 0
+    );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvSearch, user?.role, access.repertoireCv]);
+
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
 
   // --- Real CV behind the recruiter's candidate viewer --------------------
@@ -2510,28 +2563,56 @@ export default function Dashboard({
 
   const [realJobs, setRealJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  /** Total across every page, and whether the spelling was corrected. */
+  const [jobsTotal, setJobsTotal] = useState(0);
+  const [jobsCorrected, setJobsCorrected] = useState(false);
 
+  /* Searching happens on the server.
+   *
+   * This used to fetch every published offer and filter it here with
+   * String.includes, which could not see accents — "developpeur" found
+   * nothing against "Développeur" — never looked past the title and the
+   * company name, and grew heavier with every offer posted.
+   *
+   * Debounced, because it now runs as the reader types rather than over an
+   * array already in memory. 350ms is below the point where typing feels
+   * laggy and well above one request per character.
+   */
   useEffect(() => {
     let cancelled = false;
 
-    const loadJobs = async () => {
+    const timer = setTimeout(async () => {
       try {
         setLoadingJobs(true);
-        const jobs = await jobService.getAllJobs();
-        if (!cancelled) {
-          setRealJobs(jobs.map(mapBackendJobToFrontend));
-        }
+        const page = await jobService.searchJobs({
+          q: searchQuery.trim() || undefined,
+          wilaya: selectedWilaya || undefined,
+          type: (selectedType as any) || undefined,
+          perPage: 60,
+        });
+
+        if (cancelled) return;
+        setRealJobs(page.jobs.map(mapBackendJobToFrontend));
+        setJobsTotal(page.total);
+        setJobsCorrected(page.didYouMean);
       } catch (error) {
         console.error('Failed to load jobs:', error);
-        if (!cancelled) setRealJobs([]);
+        if (!cancelled) {
+          setRealJobs([]);
+          setJobsTotal(0);
+          setJobsCorrected(false);
+        }
       } finally {
         if (!cancelled) setLoadingJobs(false);
       }
-    };
+    }, searchQuery.trim() ? 350 : 0);
 
-    loadJobs();
-    return () => { cancelled = true; };
-  }, [language]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, searchQuery, selectedWilaya, selectedType]);
 
   const handleLogout = async () => {
     try {
@@ -3509,10 +3590,13 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
           return (
             <CVDirectory
-              candidates={candidateList}
+              candidates={cvRows}
               recruiterPlan={recruiterTier}
-              loading={loadingCandidates}
-              onRefresh={loadCandidates}
+              loading={loadingCvDirectory}
+              searchValue={cvSearch}
+              onSearchChange={setCvSearch}
+              totalAll={cvTotalAll}
+              onRefresh={() => loadCvDirectory(cvSearch)}
               onOpenCV={handleOpenCV}
             />
           );
@@ -5769,15 +5853,14 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           </div>
         );
       case 'jobs':
-        const filteredJobs = realJobs.filter(job => {
-          const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                               job.company.toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesWilaya = !selectedWilaya || job.location === selectedWilaya;
-          const matchesType = !selectedType || job.type === selectedType;
-          const matchesSector = !selectedSector || job.sector === selectedSector;
-          
-          return matchesSearch && matchesWilaya && matchesType && matchesSector;
-        });
+        /* The term, the wilaya and the contract type are applied by the
+           server — see the effect above. What is left here is the sector,
+           which this screen holds as a translated label while the API filters
+           on a slug; matching it locally avoids inventing a mapping between
+           the two. */
+        const filteredJobs = realJobs.filter(
+          (job) => !selectedSector || job.sector === selectedSector
+        );
 
         const JOB_TYPES = language === 'ar' 
           ? ['دوام كامل', 'عقد محدد المدة', 'تدريب', 'عمل حر', 'تمهين']
@@ -5812,9 +5895,26 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <p className="text-gray-500 mt-1">{t('jobsSubtitle')}</p>
               </div>
               <div className="text-sm font-bold text-[#F68D58] bg-orange-50 px-4 py-2 rounded-full">
-                {t('offersFound', { count: filteredJobs.length })}
+                {/* The server's total, which counts every match rather than
+                    only what is on this page. The sector filter still runs in
+                    the browser, so while that one is narrowing the honest
+                    number is the local one. */}
+                {t('offersFound', {
+                  count: selectedSector ? filteredJobs.length : jobsTotal,
+                })}
               </div>
             </div>
+
+            {/* A search that matched nothing was answered by similarity
+                instead. Saying so is the difference between a helpful guess
+                and results that look wrong for no reason. */}
+            {jobsCorrected && searchQuery.trim() && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                {isRTL
+                  ? `لا توجد نتيجة مطابقة لـ "${searchQuery.trim()}". هذه أقرب العروض.`
+                  : `Aucun résultat exact pour « ${searchQuery.trim()} ». Voici les offres les plus proches.`}
+              </p>
+            )}
 
             {/* Main Search Bar */}
             <div className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center gap-4 ${isRTL ? 'md:flex-row-reverse' : ''}`}>

@@ -90,9 +90,6 @@ export const consumeEmailVerificationToken = async (
         emailVerified: true,
         ...(record.user.status === "PENDING" ? { status: "ACTIVE" as const } : {}),
       },
-      // Named so the write does not return every column; see the note in
-      // auth.controller on why an implicit select is a liability here.
-      select: { id: true },
     }),
   ]);
 

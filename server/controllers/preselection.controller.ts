@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { PreselectionStatus } from "@prisma/client";
 import preselectionService from "../services/preselection.service";
-import { listByOffer } from "../services/preselectionByOffer.service";
-import { AppError } from "../middleware/error.middleware";
 
 // ============================================================
 // Candidate
@@ -311,44 +309,9 @@ export const deletePreselection = async (
   }
 };
 
-/**
- * Preselection grouped by offer.
- *
- * One request for the whole screen. Comparing two candidates only means
- * something inside a single offer, so the offer is the unit here rather than
- * a flat ranking that mixes applicants to unrelated posts.
- */
-export const getPreselectionByOffer = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const str = (v: unknown) =>
-      typeof v === "string" && v.trim() ? v.trim() : undefined;
-
-    const result = await listByOffer({
-      recruiterUserId: req.user.id,
-      jobId: str(req.query.jobId),
-      status: str(req.query.status),
-      q: str(req.query.q),
-      preselectedOnly: req.query.preselectedOnly === "true" ? true : undefined,
-    });
-
-    if (!result) {
-      return next(new AppError("Profil recruteur introuvable.", 404));
-    }
-
-    res.status(200).json({ status: "success", data: result });
-  } catch (err) {
-    next(err);
-  }
-};
-
 export default {
   getMyPreselection,
   getPreselection,
-  getPreselectionByOffer,
   shortlistCandidate,
   rejectCandidate,
   reviewCandidate,

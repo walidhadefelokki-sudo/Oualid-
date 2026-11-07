@@ -420,33 +420,16 @@ export default function App() {
 
   const [isSearching, setIsSearching] = useState(false);
 
-  /**
-   * Takes the landing page's search where it was going.
-   *
-   * It used to wait a second and a half and then change view, discarding both
-   * the term and the wilaya — so the box on the front page did nothing but
-   * look like a search.
-   *
-   * The query travels in the address rather than through state: the reader
-   * may land on the dashboard directly, or go via the sign-in modal and
-   * arrive afterwards, and a URL survives both. It also makes a search
-   * shareable and survives a refresh.
-   */
   const handleSearch = () => {
-    const params = new URLSearchParams({ tab: 'jobs' });
-    if (searchQuery.trim()) params.set('q', searchQuery.trim());
-    if (searchLocation) params.set('wilaya', searchLocation);
-
-    window.history.replaceState({}, '', `/dashboard?${params.toString()}`);
-
-    // No artificial delay. The wait belongs to the request the dashboard is
-    // about to make, and it reports its own progress.
-    if (user || isDemo) {
-      setView('dashboard');
-    } else {
-      // The address is already set, so signing in lands on the results.
-      setIsLoginOpen(true);
-    }
+    setIsSearching(true);
+    setTimeout(() => {
+      setIsSearching(false);
+      if (user || isDemo) {
+        setView('dashboard');
+      } else {
+        setIsLoginOpen(true);
+      }
+    }, 1500);
   };
 
   /**

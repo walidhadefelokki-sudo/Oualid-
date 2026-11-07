@@ -67,50 +67,16 @@ export interface CreateJobPayload {
  * when present, so `getAllJobs()` with no argument behaves exactly as before.
  */
 export interface JobFilters {
-  /**
-   * What the user typed.
-   *
-   * Matched against the offer's title, description, location and the
-   * employer's name, accent-insensitively, every word required and treated as
-   * a prefix — so "dev full" finds "Développeur Full Stack".
-   */
-  q?: string;
-  /** The old name for `q`. Kept working; prefer `q`. */
   title?: string;
   location?: string;
   wilaya?: string;
   type?: JobType;
-  experienceLevel?: ExperienceLevel;
   categoryId?: string;
   /** Filter by the sector's stable slug ("it", "health", …). */
   categorySlug?: string;
-  /** Only offers that can be done remotely. */
-  remote?: boolean;
-  /**
-   * Offers paying at least this much. Offers that publish no figure are kept:
-   * most do not publish one, and dropping them would read as an empty market.
-   */
-  salaryMin?: number;
   featured?: boolean;
-  /** Page size. `perPage` means the same thing; both are clamped to 60. */
+  /** Server clamps this to 60. */
   limit?: number;
-  page?: number;
-  perPage?: number;
-}
-
-/** A page of search results, with what the page needs to say about itself. */
-export interface JobSearchPage {
-  jobs: PublicJob[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-  /**
-   * The words matched nothing and these results came from spelling
-   * similarity instead. Worth saying out loud rather than presenting a guess
-   * as an answer.
-   */
-  didYouMean: boolean;
 }
 
 // Every field is optional: the recruiter's edit form sends the whole form
@@ -129,26 +95,6 @@ class JobService {
   async getAllJobs(filters: JobFilters = {}): Promise<PublicJob[]> {
     const response = await api.get("/jobs", { params: filters });
     return response.data.data.jobs;
-  }
-
-  /**
-   * The same endpoint, keeping the page counts.
-   *
-   * `getAllJobs` above throws them away, which is right for the landing
-   * page's fixed-size strips and wrong for a search results list that has to
-   * say how many there are and offer a second page.
-   */
-  async searchJobs(filters: JobFilters = {}): Promise<JobSearchPage> {
-    const { data } = await api.get("/jobs", { params: filters });
-    const d = data.data;
-    return {
-      jobs: d.jobs ?? [],
-      total: d.total ?? d.jobs?.length ?? 0,
-      page: d.page ?? 1,
-      perPage: d.perPage ?? d.jobs?.length ?? 0,
-      totalPages: d.totalPages ?? 1,
-      didYouMean: Boolean(d.didYouMean),
-    };
   }
 
   /**

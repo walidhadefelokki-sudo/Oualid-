@@ -219,22 +219,7 @@ export const googleAuthSession = async (req: Request, res: Response, next: NextF
     }
 
     const prisma = (await import("../utils/prisma")).default;
-    /* Columns named explicitly: an implicit select asks for every column in
-     * the schema, so one added by a pending migration refuses the statement
-     * and takes Google sign-in down with it. */
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        deletedAt: true,
-        firstName: true,
-        lastName: true,
-        emailVerified: true,
-      },
-    });
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
 
     if (!user) {
       return next(new AppError("Account no longer exists.", 401));

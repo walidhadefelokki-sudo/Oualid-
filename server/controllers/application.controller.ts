@@ -11,7 +11,6 @@ import {
   notifyApplicationStatus,
   notifyNewApplication,
 } from "../services/notification.service";
-import { searchCvDirectory } from "../services/cvDirectory.service";
 
 export const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -358,69 +357,6 @@ export const updateApplicationStatus = async (req: Request, res: Response, next:
     res.status(200).json({
       status: "success",
       data: { application: updatedApplication },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * The recruiter's CV directory, searched and paged on the server.
- *
- * Replaces the browser fetching every offer and then its applicants one
- * request at a time. The route is gated on the Corporate plan by middleware;
- * this only resolves which recruiter is asking, because the directory is
- * scoped to their own applicants and a client-supplied recruiter id would be
- * every recruiter's applicants.
- */
-export const getCvDirectory = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const me = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { role: true, recruiterProfile: { select: { id: true } } },
-    });
-
-    if (!me?.recruiterProfile) {
-      // An administrator has no recruiter profile and therefore no applicants
-      // of their own. Answering with somebody else's would be worse than
-      // saying so.
-      return next(
-        new AppError(
-          me?.role === "ADMIN"
-            ? "Le répertoire CV est propre à un compte recruteur."
-            : "Profil recruteur introuvable.",
-          403
-        )
-      );
-    }
-
-    const num = (v: unknown) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
-    };
-    const str = (v: unknown) =>
-      typeof v === "string" && v.trim() ? v.trim() : undefined;
-
-    const result = await searchCvDirectory({
-      recruiterProfileId: me.recruiterProfile.id,
-      q: str(req.query.q),
-      jobId: str(req.query.jobId),
-      wilaya: str(req.query.wilaya),
-      minExperience: num(req.query.minExperience),
-      minScore: num(req.query.minScore),
-      // Only "true" turns a filter on, so ?hasCv=maybe does not silently
-      // become "candidates without a CV".
-      hasCv: req.query.hasCv === "true" ? true : undefined,
-      availableNow: req.query.availableNow === "true" ? true : undefined,
-      preselectedOnly: req.query.preselectedOnly === "true" ? true : undefined,
-      page: num(req.query.page),
-      perPage: num(req.query.perPage),
-    });
-
-    res.status(200).json({
-      status: "success",
-      results: result.candidates.length,
-      data: result,
     });
   } catch (err) {
     next(err);

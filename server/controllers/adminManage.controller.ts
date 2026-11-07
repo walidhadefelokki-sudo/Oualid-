@@ -11,12 +11,6 @@ import {
   verificationUrl,
 } from "../services/emailVerification.service";
 import { sendVerifyEmail } from "../utils/email";
-import { listPayments } from "../services/adminPayments.service";
-import {
-  ADMIN_SCOPES,
-  SCOPE_LABELS,
-  normaliseScopes,
-} from "../utils/adminScopes";
 
 /**
  * Super-admin management of accounts and offers.
@@ -129,24 +123,6 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     if (role !== undefined && !ROLES.includes(role as never)) {
       return next(new AppError(`role must be one of: ${ROLES.join(", ")}`, 400));
     }
-
-    /* Only an unrestricted administrator may make or unmake an administrator.
-     *
-     * Without this, the "users" scope is the whole platform: a limited
-     * administrator could promote a second account to ADMIN, sign into it, and
-     * from there grant themselves everything. Nor may they suspend or edit an
-     * existing administrator, which would be a way to remove the people who
-     * can revoke their own access. */
-    const touchingAdmin = role === "ADMIN" || target.role === "ADMIN";
-
-    if (touchingAdmin && !req.adminAccess?.isSuperAdmin) {
-      return next(
-        new AppError(
-          "Seul un administrateur sans restriction peut gérer un compte administrateur.",
-          403
-        )
-      );
-    }
     if (status !== undefined && !STATUSES.includes(status as never)) {
       return next(new AppError(`status must be one of: ${STATUSES.join(", ")}`, 400));
     }
@@ -221,17 +197,6 @@ export const deleteUser = async (req: Request, res: Response, next: NextFunction
     if (!target) return next(new AppError("Compte introuvable.", 404));
 
     if (target.role === "ADMIN") {
-      /* Only an unrestricted administrator may remove another one. Otherwise
-       * the "users" scope is a way to delete the people who can revoke it. */
-      if (!req.adminAccess?.isSuperAdmin) {
-        return next(
-          new AppError(
-            "Seul un administrateur sans restriction peut supprimer un compte administrateur.",
-            403
-          )
-        );
-      }
-
       const admins = await prisma.user.count({
         where: { role: "ADMIN", status: { not: "DELETED" } },
       });
@@ -530,206 +495,6 @@ export const getUserDetail = async (req: Request, res: Response, next: NextFunct
         },
       },
     });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/* ============================================================== payments === */
-
-/**
- * Every payment on the platform, in one list.
- *
- * Money arrives through three unrelated tables — subscription instalments,
- * annonce packs and marketplace credits — and none of it was visible together
- * anywhere in the admin. The merging and the totals live in
- * adminPayments.service; this reads the query string.
- */
-export const getPayments = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const str = (v: unknown) =>
-      typeof v === "string" && v.trim() ? v.trim() : undefined;
-    const num = (v: unknown) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
-    };
-
-    const SOURCES = ["subscription", "pack", "marketplace"];
-    const source = str(req.query.source);
-
-    if (source && !SOURCES.includes(source)) {
-      return next(new AppError(`source must be one of: ${SOURCES.join(", ")}`, 400));
-    }
-
-    const data = await listPayments({
-      source: source as never,
-      status: str(req.query.status),
-      method: str(req.query.method),
-      q: str(req.query.q),
-      from: str(req.query.from),
-      to: str(req.query.to),
-      page: num(req.query.page),
-      perPage: num(req.query.perPage),
-    });
-
-    res.status(200).json({ status: "success", results: data.payments.length, data });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/* ========================================================== admin access === */
-
-/** The areas that can be granted, with what each one actually permits. */
-export const listAdminScopes = async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    res.status(200).json({
-      status: "success",
-      data: {
-        scopes: ADMIN_SCOPES.map((key) => ({ key, ...SCOPE_LABELS[key] })),
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** Every administrator and what they may reach. */
-export const listAdminAccess = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: "ADMIN", deletedAt: null },
-      orderBy: [{ isSuperAdmin: "desc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        status: true,
-        isSuperAdmin: true,
-        adminScopes: true,
-        createdAt: true,
-      },
-    });
-
-    res.status(200).json({
-      status: "success",
-      results: admins.length,
-      data: {
-        admins: admins.map((a) => ({
-          ...a,
-          // Said plainly, because an administrator with neither is an account
-          // that can sign in and reach nothing — easy to create by accident.
-          hasNoAccess: !a.isSuperAdmin && a.adminScopes.length === 0,
-          isMe: a.id === req.user!.id,
-        })),
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * Sets what one administrator may reach.
- *
- * Three refusals, each for the same reason — nobody should be able to widen
- * their own access or quietly remove the last person who could fix things:
- *
- *   you cannot edit your own access;
- *   the last unrestricted administrator cannot be demoted;
- *   promoting an account to administrator is not done here, and granting
- *   scopes to a non-administrator would be an administrator in all but name.
- */
-export const updateAdminAccess = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const { isSuperAdmin, scopes } = req.body as {
-      isSuperAdmin?: boolean;
-      scopes?: unknown;
-    };
-
-    if (req.user!.id === id) {
-      return next(
-        new AppError("Vous ne pouvez pas modifier vos propres autorisations.", 400)
-      );
-    }
-
-    const target = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true, role: true, isSuperAdmin: true, deletedAt: true },
-    });
-
-    if (!target || target.deletedAt) {
-      return next(new AppError("Compte introuvable.", 404));
-    }
-
-    if (target.role !== "ADMIN") {
-      // Granting scopes to a candidate would be an administrator in all but
-      // name, and the role change belongs on the account screen where it is
-      // visible as what it is.
-      return next(
-        new AppError(
-          "Ce compte n'est pas administrateur. Changez son rôle depuis Comptes d'abord.",
-          400
-        )
-      );
-    }
-
-    const makeSuper = typeof isSuperAdmin === "boolean" ? isSuperAdmin : target.isSuperAdmin;
-
-    /* Nobody may demote the last unrestricted administrator: there would be
-     * no one left who could grant access back, including to themselves, and
-     * the only way out would be the database.
-     *
-     * A backstop rather than the thing holding that invariant. The two rules
-     * above already guarantee it — only an unrestricted administrator reaches
-     * this handler, and nobody may edit their own access, so the caller is
-     * always a second unrestricted administrator and this count is never
-     * zero. Kept because it is one query and it is the rule that would break
-     * first if either of those is ever relaxed. */
-    if (target.isSuperAdmin && !makeSuper) {
-      const others = await prisma.user.count({
-        where: {
-          role: "ADMIN",
-          isSuperAdmin: true,
-          deletedAt: null,
-          status: { notIn: ["SUSPENDED", "DELETED"] },
-          id: { not: target.id },
-        },
-      });
-
-      if (others === 0) {
-        return next(
-          new AppError(
-            "C'est le dernier administrateur sans restriction. Nommez-en un autre avant de limiter celui-ci.",
-            400
-          )
-        );
-      }
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: target.id },
-      data: {
-        isSuperAdmin: makeSuper,
-        /* Kept even for an unrestricted administrator rather than cleared: if
-         * their unrestricted status is removed later, the areas they were
-         * trusted with are still on the record instead of silently becoming
-         * none. */
-        ...(scopes !== undefined ? { adminScopes: normaliseScopes(scopes) } : {}),
-      },
-      select: {
-        id: true,
-        email: true,
-        isSuperAdmin: true,
-        adminScopes: true,
-      },
-    });
-
-    await audit(req, "UPDATE_ADMIN_ACCESS", "User", target.id);
-
-    res.status(200).json({ status: "success", data: { admin: updated } });
   } catch (err) {
     next(err);
   }

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import CVBuilder from "./cv/CVBuilder";
 import CVDocument, { CVDocumentData } from "./cv/CVDocument";
 import CVDirectory from "./recruiter/CVDirectory";
-import cvDirectoryService from "../services/cvDirectory.service";
 import SubscriptionBanner from "./recruiter/SubscriptionBanner";
 import SubscriptionStatus from "./recruiter/SubscriptionStatus";
 import InvoiceList from "./recruiter/InvoiceList";
@@ -15,12 +14,6 @@ import RecruiterPlanCard, {
 import QuizResults from "./recruiter/QuizResults";
 import OralPresentationResults from "./recruiter/OralPresentationResults";
 import PreselectedCandidates from "./recruiter/PreselectedCandidates";
-import PreselectionByOffer from "./recruiter/PreselectionByOffer";
-import preselectionByOfferService from "../services/preselectionByOffer.service";
-import type {
-  PreselectionByOfferResult,
-  PreselectionCandidateRow,
-} from "../services/preselectionByOffer.service";
 import AIFilterResults, { AICandidate } from "./recruiter/AIFilterResults";
 import aiAnalysisService from "../services/aiAnalysis.service";
 import jobService from "../services/job.service";
@@ -548,84 +541,7 @@ export default function Dashboard({
   };
   const loadQuizResults = () => {};
   const loadPresentations = () => {};
-  /* Preselection, grouped by offer.
-   *
-   * This was `() => {}` — an empty stub — so the screen it feeds showed
-   * nothing to anybody, whatever the recruiter had received. One request now,
-   * grouped server-side, because comparing two candidates only means
-   * something inside a single offer. */
-  const [preselectionData, setPreselectionData] =
-    useState<PreselectionByOfferResult | null>(null);
-  const [preselectionError, setPreselectionError] = useState<string | null>(null);
-  const [preselectionSearch, setPreselectionSearch] = useState('');
-  const [preselectionStatus, setPreselectionStatus] = useState('');
-  const [preselectedOnly, setPreselectedOnly] = useState(false);
-  const [preselectionBusyId, setPreselectionBusyId] = useState<string | null>(null);
-
-  const loadPreselectedCandidates = React.useCallback(async () => {
-    try {
-      setLoadingPreselected(true);
-      setPreselectionError(null);
-      setPreselectionData(
-        await preselectionByOfferService.list({
-          q: preselectionSearch.trim() || undefined,
-          status: preselectionStatus || undefined,
-          preselectedOnly: preselectedOnly || undefined,
-        })
-      );
-    } catch (err: any) {
-      console.error('Failed to load preselection:', err);
-      setPreselectionError(
-        err?.response?.data?.message || 'Le chargement de la présélection a échoué.'
-      );
-      setPreselectionData(null);
-    } finally {
-      setLoadingPreselected(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselectionSearch, preselectionStatus, preselectedOnly]);
-
-  /* Debounced, because the term now reaches the server as it is typed. */
-  useEffect(() => {
-    if (user?.role !== 'employer' || !access.preselection) return;
-
-    const timer = setTimeout(
-      () => loadPreselectedCandidates(),
-      preselectionSearch.trim() ? 350 : 0
-    );
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselectionSearch, preselectionStatus, preselectedOnly, user?.role, access.preselection]);
-
-  /**
-   * Marks or refuses a candidate for one offer.
-   *
-   * The whole screen is reloaded afterwards rather than the row patched in
-   * place: the counts on the offer header and the totals at the top are all
-   * derived from the same decision, and recomputing them here would be a
-   * second implementation of what the server already does.
-   */
-  const decidePreselection = async (
-    candidate: PreselectionCandidateRow,
-    decision: 'shortlist' | 'reject'
-  ) => {
-    setPreselectionBusyId(candidate.applicationId);
-    setPreselectionError(null);
-    try {
-      if (decision === 'shortlist') {
-        await preselectionByOfferService.shortlist(candidate.applicationId);
-      } else {
-        await preselectionByOfferService.reject(candidate.applicationId);
-      }
-      await loadPreselectedCandidates();
-    } catch (err: any) {
-      setPreselectionError(
-        err?.response?.data?.message || "L'action n'a pas pu être enregistrée."
-      );
-    } finally {
-      setPreselectionBusyId(null);
-    }
-  };
+  const loadPreselectedCandidates = () => {};
 
   const categorizeMatch = (score: number) => {
     if (score >= 80) return "Excellent match";
@@ -2192,58 +2108,6 @@ export default function Dashboard({
     return [...byCandidate.values()];
   }, [candidatesByJob]);
 
-  /* The CV directory, loaded from its own endpoint.
-   *
-   * It used to be derived from candidateList above, which the browser builds
-   * by fetching the recruiter's offers and then their applicants one request
-   * per offer — fifty offers meant fifty-one requests before the screen could
-   * draw. Searching it happened here too, with String.includes, so it could
-   * not see accents and never looked at a candidate's skills.
-   *
-   * The term is held here rather than inside CVDirectory because the server
-   * is what matches it now. */
-  const [cvSearch, setCvSearch] = useState('');
-  const [cvRows, setCvRows] = useState<any[]>([]);
-  const [cvTotalAll, setCvTotalAll] = useState(0);
-  const [loadingCvDirectory, setLoadingCvDirectory] = useState(false);
-
-  const loadCvDirectory = React.useCallback(
-    async (term: string) => {
-      try {
-        setLoadingCvDirectory(true);
-        const page = await cvDirectoryService.search({
-          q: term.trim() || undefined,
-          // The screen derives its filter dropdowns and its own 10-per-page
-          // paging from the set it holds, so it is given the whole thing
-          // rather than a page the dropdowns would then be narrowed to.
-          perPage: 200,
-        });
-        setCvRows(page.candidates);
-        setCvTotalAll(page.totalAll);
-      } catch (error) {
-        console.error('Failed to load the CV directory:', error);
-        setCvRows([]);
-        setCvTotalAll(0);
-      } finally {
-        setLoadingCvDirectory(false);
-      }
-    },
-    []
-  );
-
-  /* Debounced, because this now runs as the recruiter types rather than over
-     an array already in memory. */
-  useEffect(() => {
-    if (user?.role !== 'employer' || !access.repertoireCv) return;
-
-    const timer = setTimeout(
-      () => loadCvDirectory(cvSearch),
-      cvSearch.trim() ? 350 : 0
-    );
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cvSearch, user?.role, access.repertoireCv]);
-
   const [selectedCandidateCV, setSelectedCandidateCV] = useState<any>(null);
 
   // --- Real CV behind the recruiter's candidate viewer --------------------
@@ -2646,56 +2510,28 @@ export default function Dashboard({
 
   const [realJobs, setRealJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
-  /** Total across every page, and whether the spelling was corrected. */
-  const [jobsTotal, setJobsTotal] = useState(0);
-  const [jobsCorrected, setJobsCorrected] = useState(false);
 
-  /* Searching happens on the server.
-   *
-   * This used to fetch every published offer and filter it here with
-   * String.includes, which could not see accents — "developpeur" found
-   * nothing against "Développeur" — never looked past the title and the
-   * company name, and grew heavier with every offer posted.
-   *
-   * Debounced, because it now runs as the reader types rather than over an
-   * array already in memory. 350ms is below the point where typing feels
-   * laggy and well above one request per character.
-   */
   useEffect(() => {
     let cancelled = false;
 
-    const timer = setTimeout(async () => {
+    const loadJobs = async () => {
       try {
         setLoadingJobs(true);
-        const page = await jobService.searchJobs({
-          q: searchQuery.trim() || undefined,
-          wilaya: selectedWilaya || undefined,
-          type: (selectedType as any) || undefined,
-          perPage: 60,
-        });
-
-        if (cancelled) return;
-        setRealJobs(page.jobs.map(mapBackendJobToFrontend));
-        setJobsTotal(page.total);
-        setJobsCorrected(page.didYouMean);
+        const jobs = await jobService.getAllJobs();
+        if (!cancelled) {
+          setRealJobs(jobs.map(mapBackendJobToFrontend));
+        }
       } catch (error) {
         console.error('Failed to load jobs:', error);
-        if (!cancelled) {
-          setRealJobs([]);
-          setJobsTotal(0);
-          setJobsCorrected(false);
-        }
+        if (!cancelled) setRealJobs([]);
       } finally {
         if (!cancelled) setLoadingJobs(false);
       }
-    }, searchQuery.trim() ? 350 : 0);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, searchQuery, selectedWilaya, selectedType]);
+
+    loadJobs();
+    return () => { cancelled = true; };
+  }, [language]);
 
   const handleLogout = async () => {
     try {
@@ -3673,13 +3509,10 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
           return (
             <CVDirectory
-              candidates={cvRows}
+              candidates={candidateList}
               recruiterPlan={recruiterTier}
-              loading={loadingCvDirectory}
-              searchValue={cvSearch}
-              onSearchChange={setCvSearch}
-              totalAll={cvTotalAll}
-              onRefresh={() => loadCvDirectory(cvSearch)}
+              loading={loadingCandidates}
+              onRefresh={loadCandidates}
               onOpenCV={handleOpenCV}
             />
           );
@@ -3708,21 +3541,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
         case "preselected":
           return (
-            <PreselectionByOffer
-              data={preselectionData}
+            <PreselectedCandidates
+              candidates={preselectedCandidates}
+              recruiterPlan={recruiterTier}
               loading={loadingPreselected}
-              error={preselectionError}
-              search={preselectionSearch}
-              onSearchChange={setPreselectionSearch}
-              status={preselectionStatus}
-              onStatusChange={setPreselectionStatus}
-              preselectedOnly={preselectedOnly}
-              onPreselectedOnlyChange={setPreselectedOnly}
               onRefresh={loadPreselectedCandidates}
-              busyApplicationId={preselectionBusyId}
-              onOpenCV={(c) => handleOpenCV({ id: c.candidateId, name: c.fullName } as never)}
-              onShortlist={(c) => decidePreselection(c, 'shortlist')}
-              onReject={(c) => decidePreselection(c, 'reject')}
+              onOpenCV={handleOpenCV}
+              onInterview={handleInterview}
+              onHire={handleHire}
+              onReject={handleReject}
             />
           );
 
@@ -5942,14 +5769,15 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
           </div>
         );
       case 'jobs':
-        /* The term, the wilaya and the contract type are applied by the
-           server — see the effect above. What is left here is the sector,
-           which this screen holds as a translated label while the API filters
-           on a slug; matching it locally avoids inventing a mapping between
-           the two. */
-        const filteredJobs = realJobs.filter(
-          (job) => !selectedSector || job.sector === selectedSector
-        );
+        const filteredJobs = realJobs.filter(job => {
+          const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                               job.company.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesWilaya = !selectedWilaya || job.location === selectedWilaya;
+          const matchesType = !selectedType || job.type === selectedType;
+          const matchesSector = !selectedSector || job.sector === selectedSector;
+          
+          return matchesSearch && matchesWilaya && matchesType && matchesSector;
+        });
 
         const JOB_TYPES = language === 'ar' 
           ? ['دوام كامل', 'عقد محدد المدة', 'تدريب', 'عمل حر', 'تمهين']
@@ -5984,26 +5812,9 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
                 <p className="text-gray-500 mt-1">{t('jobsSubtitle')}</p>
               </div>
               <div className="text-sm font-bold text-[#F68D58] bg-orange-50 px-4 py-2 rounded-full">
-                {/* The server's total, which counts every match rather than
-                    only what is on this page. The sector filter still runs in
-                    the browser, so while that one is narrowing the honest
-                    number is the local one. */}
-                {t('offersFound', {
-                  count: selectedSector ? filteredJobs.length : jobsTotal,
-                })}
+                {t('offersFound', { count: filteredJobs.length })}
               </div>
             </div>
-
-            {/* A search that matched nothing was answered by similarity
-                instead. Saying so is the difference between a helpful guess
-                and results that look wrong for no reason. */}
-            {jobsCorrected && searchQuery.trim() && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                {isRTL
-                  ? `لا توجد نتيجة مطابقة لـ "${searchQuery.trim()}". هذه أقرب العروض.`
-                  : `Aucun résultat exact pour « ${searchQuery.trim()} ». Voici les offres les plus proches.`}
-              </p>
-            )}
 
             {/* Main Search Bar */}
             <div className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center gap-4 ${isRTL ? 'md:flex-row-reverse' : ''}`}>

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import prisma from "../utils/prisma";
 import { companyNameFrom } from "../utils/companyName";
-import { AccountStatus, Role } from "@prisma/client";
+import { Role, User } from "@prisma/client";
 
 /** Identity extracted from a verified Google profile. Never from the client. */
 export interface GoogleIdentity {
@@ -16,44 +16,8 @@ export interface GoogleIdentity {
 
 export type OAuthOutcome = "linked_existing" | "created" | "returning";
 
-/**
- * What the Google flow hands back.
- *
- * Named fields rather than Prisma's `User`.
- *
- * Returning the whole row means every query here asks for every column in the
- * schema, so a column added by a migration that has not run yet refuses the
- * statement — which is how Google sign-in went down along with the rest of
- * authentication. It also kept the bcrypt hash in an object that is spread
- * into the session response.
- */
-export interface OAuthUser {
-  id: string;
-  email: string;
-  role: Role;
-  firstName: string | null;
-  lastName: string | null;
-  status: AccountStatus;
-  deletedAt: Date | null;
-  emailVerified: boolean;
-  recruiterProfile: { id: string } | null;
-}
-
-/** Shared so the three paths below cannot drift apart. */
-const OAUTH_USER_SELECT = {
-  id: true,
-  email: true,
-  role: true,
-  firstName: true,
-  lastName: true,
-  status: true,
-  deletedAt: true,
-  emailVerified: true,
-  recruiterProfile: { select: { id: true } },
-} as const;
-
 export interface OAuthResult {
-  user: OAuthUser;
+  user: User;
   outcome: OAuthOutcome;
 }
 
@@ -102,7 +66,7 @@ export async function findOrCreateUserFromGoogle(
         providerAccountId: identity.providerAccountId,
       },
     },
-    select: { user: { select: OAUTH_USER_SELECT } },
+    include: { user: true },
   });
 
   if (existingAccount) {
@@ -112,7 +76,6 @@ export async function findOrCreateUserFromGoogle(
   // 2. Same email as an existing account -> link rather than duplicate.
   const existingUser = await prisma.user.findUnique({
     where: { email: identity.email },
-    select: OAUTH_USER_SELECT,
   });
 
   if (existingUser) {
@@ -144,7 +107,6 @@ export async function findOrCreateUserFromGoogle(
               emailVerified: true,
               ...(existingUser.status === "PENDING" ? { status: "ACTIVE" as const } : {}),
             },
-            select: OAUTH_USER_SELECT,
           })
         : existingUser;
 
@@ -172,9 +134,7 @@ export async function findOrCreateUserFromGoogle(
         candidateProfile: requestedRole === "CANDIDATE" ? { create: {} } : undefined,
         recruiterProfile: requestedRole === "RECRUITER" ? { create: {} } : undefined,
       },
-      // select, not include: include returns every scalar column, and one
-      // added by a pending migration refuses the insert.
-      select: OAUTH_USER_SELECT,
+      include: { recruiterProfile: true },
     });
 
     await tx.account.create({

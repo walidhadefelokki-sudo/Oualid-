@@ -204,35 +204,7 @@ export const updateUserStatus = async (req: Request, res: Response, next: NextFu
       return next(new AppError(`status must be one of: ${validStatuses.join(", ")}`, 400));
     }
 
-    /* This had no guard at all, so anyone who could reach it could suspend
-     * anyone — including, now that administrators can be limited, the
-     * unrestricted ones who are able to revoke their access. Changing your own
-     * status is refused for the same reason it is on the account editor: a
-     * mistake there locks you out of the page that would undo it. */
-    const target = await prisma.user.findUnique({
-      where: { id },
-      select: { role: true },
-    });
-    if (!target) return next(new AppError("Compte introuvable.", 404));
-
-    if (req.user?.id === id) {
-      return next(new AppError("Vous ne pouvez pas modifier votre propre statut.", 400));
-    }
-
-    if (target.role === "ADMIN" && !req.adminAccess?.isSuperAdmin) {
-      return next(
-        new AppError(
-          "Seul un administrateur sans restriction peut modifier un compte administrateur.",
-          403
-        )
-      );
-    }
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: { status },
-      select: { id: true, email: true, role: true, status: true },
-    });
+    const user = await prisma.user.update({ where: { id }, data: { status } });
 
     await prisma.auditLog.create({
       data: {

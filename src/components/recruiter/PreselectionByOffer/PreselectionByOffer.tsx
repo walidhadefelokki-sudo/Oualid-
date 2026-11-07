@@ -118,6 +118,26 @@ const scoreTone = (score: number) =>
       ? "bg-amber-50 text-amber-700 border-amber-200"
       : "bg-gray-100 text-gray-500 border-gray-200";
 
+/** One figure on the offer card, with what it counts written under it. */
+const Count: React.FC<{
+  value: number | string;
+  label: string;
+  tone?: "gold" | "plain";
+}> = ({ value, label, tone = "plain" }) => (
+  <div className="text-center px-3 min-w-[4.5rem]">
+    <p
+      className={`text-2xl font-display font-bold leading-none ${
+        tone === "gold" ? "text-[#D4AF37]" : "text-white"
+      }`}
+    >
+      {value}
+    </p>
+    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-white/45">
+      {label}
+    </p>
+  </div>
+);
+
 const Chip: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = "",
@@ -393,79 +413,105 @@ const OfferSection: React.FC<{
   const [open, setOpen] = useState(defaultOpen);
   const c = offer.counts;
 
+  /* The offer is a card in the platform's own livery — the navy and gold a
+     recruiter already recognises from the public offer cards — and the
+     candidatures sit inside it. One card per offer, so it is always obvious
+     which post a candidate answered. */
   return (
-    <section className="rounded-2xl border-2 border-[#173E7D]/15 bg-white overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full text-start px-5 py-4 flex flex-wrap items-center gap-3 hover:bg-[#173E7D]/[0.03]"
-      >
-        <ChevronDown
-          size={18}
-          className={`shrink-0 text-[#173E7D]/50 transition-transform ${open ? "rotate-180" : ""}`}
-        />
+    <section className="rounded-3xl border-2 border-[#D4AF37]/50 bg-white overflow-hidden shadow-[0_18px_40px_-24px_rgba(11,30,61,0.45)]">
+      {/* ----------------------------- the offer ----------------------------- */}
+      <div className="relative bg-gradient-to-br from-[#0B1E3D] to-[#173E7D] text-white overflow-hidden">
+        {/* pointer-events-none so the decoration cannot swallow the click. */}
+        <div className="pointer-events-none absolute -top-20 -right-16 h-44 w-44 rounded-full bg-[#D4AF37]/20 blur-3xl" />
 
-        <div className="min-w-0 flex-1">
-          <h3 className="font-display font-bold text-[#173E7D] break-words">{offer.title}</h3>
-          <p className="text-xs text-[#2B3442]/50 flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-            <span className="inline-flex items-center gap-1">
-              <MapPin size={11} /> {offer.wilaya || offer.location}
+        <div className="relative z-10 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start gap-4">
+            <span className="w-12 h-12 shrink-0 rounded-2xl bg-white/10 border border-white/20 grid place-items-center">
+              <Briefcase size={20} className="text-[#D4AF37]" />
             </span>
-            <span>{JOB_TYPE_LABEL[offer.type] ?? offer.type}</span>
-            {offer.sector && <span>{offer.sector}</span>}
-            <span>Publiée le {date(offer.publishedAt)}</span>
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-          {/* An expired offer still taking applications is worth noticing. */}
-          {offer.expired && (
-            <Chip className="bg-red-50 text-red-600 border border-red-200">Expirée</Chip>
-          )}
-          <Chip className="bg-[#173E7D]/8 text-[#173E7D]">
-            <Users size={11} /> {c.total}
-          </Chip>
-          {c.preselected > 0 && (
-            <Chip className="bg-[#D4AF37]/15 text-[#8A6D1F]">
-              <Star size={11} /> {c.preselected}
-            </Chip>
-          )}
-          {c.interview > 0 && (
-            <Chip className="bg-indigo-50 text-indigo-700">{c.interview} entretien(s)</Chip>
-          )}
-          {c.hired > 0 && (
-            <Chip className="bg-emerald-50 text-emerald-700">{c.hired} embauché(s)</Chip>
-          )}
-          {/* Null, not zero, when nothing is scored yet — so an unanalysed
-              offer does not read as a weak one. */}
-          {c.averageScore !== null && (
-            <Chip className={`border ${scoreTone(c.averageScore)}`}>
-              Moy. {c.averageScore}
-            </Chip>
-          )}
-        </div>
-      </button>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-xl font-display font-bold break-words leading-tight">
+                {offer.title}
+              </h3>
 
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-semibold uppercase tracking-wider text-white/55">
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin size={12} className="text-[#D4AF37]" />
+                  {offer.wilaya || offer.location}
+                </span>
+                <span>{JOB_TYPE_LABEL[offer.type] ?? offer.type}</span>
+                {offer.sector && <span>{offer.sector}</span>}
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar size={12} className="text-[#D4AF37]" />
+                  {date(offer.publishedAt)}
+                </span>
+              </div>
+            </div>
+
+            {/* An expired offer still collecting applications is worth
+                noticing, so it is said on the card rather than worked out. */}
+            {offer.expired && (
+              <Chip className="bg-red-500/20 text-red-200 border border-red-400/40">
+                <AlertTriangle size={11} /> Expirée
+              </Chip>
+            )}
+          </div>
+
+          {/* Where this offer stands, in figures rather than chips. */}
+          <div className="mt-5 flex flex-wrap items-center gap-y-3 divide-x divide-white/10">
+            <Count value={c.total} label="candidats" />
+            <Count value={c.preselected} label="présél." tone="gold" />
+            {c.interview > 0 && <Count value={c.interview} label="entretiens" />}
+            {c.hired > 0 && <Count value={c.hired} label="embauchés" />}
+            {/* Null, not zero, when nothing is scored yet — so an unanalysed
+                offer does not read as a weak one. */}
+            <Count value={c.averageScore ?? "—"} label="score moyen" />
+
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="ms-auto inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-2 text-xs font-bold hover:bg-white/10 transition-colors"
+              aria-expanded={open}
+            >
+              {open ? "Masquer" : "Voir"} les candidatures
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${open ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* -------------------------- the candidatures ------------------------- */}
       {open && (
-        <div className="px-5 pb-5">
+        <div className="bg-[#F7F9FC] p-5 sm:p-6">
           {offer.candidates.length === 0 ? (
-            <p className="rounded-xl bg-[#F7F9FC] px-4 py-6 text-center text-sm text-[#2B3442]/55">
-              Aucune candidature pour cette offre
-              {c.total === 0 ? "." : " avec ces filtres."}
+            <p className="rounded-2xl border-2 border-dashed border-[#173E7D]/15 bg-white px-4 py-8 text-center text-sm text-[#2B3442]/55">
+              {c.total === 0
+                ? "Aucune candidature pour cette offre."
+                : "Aucune candidature ne correspond à ces filtres."}
             </p>
           ) : (
-            <div className="space-y-4">
-              {offer.candidates.map((candidate, i) => (
-                <CandidateCard
-                  key={candidate.applicationId}
-                  candidate={candidate}
-                  rank={i + 1}
-                  busy={busyApplicationId === candidate.applicationId}
-                  onOpenCV={onOpenCV}
-                  onShortlist={onShortlist}
-                  onReject={onReject}
-                />
-              ))}
-            </div>
+            <>
+              <p className="mb-4 text-[11px] font-black uppercase tracking-widest text-[#173E7D]/45">
+                {offer.candidates.length} candidature
+                {offer.candidates.length > 1 ? "s" : ""} — classées pour ce poste
+              </p>
+              <div className="space-y-4">
+                {offer.candidates.map((candidate, i) => (
+                  <CandidateCard
+                    key={candidate.applicationId}
+                    candidate={candidate}
+                    rank={i + 1}
+                    busy={busyApplicationId === candidate.applicationId}
+                    onOpenCV={onOpenCV}
+                    onShortlist={onShortlist}
+                    onReject={onReject}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}

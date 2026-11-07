@@ -4,6 +4,7 @@ import {
   login,
   getMe,
   updateMyAvatar,
+  changeMyPassword,
   verifyEmail,
   resendVerification,
 } from "../controllers/auth.controller";
@@ -40,5 +41,7 @@ router.get("/google/status", googleAuthStatus);
 
 router.get("/me", protect, getMe);
 router.patch("/me/avatar", protect, handleAvatarUpload, updateMyAvatar);
+// Anyone signed in may change their own password; the current one is required.
+router.patch("/me/password", protect, changeMyPassword);
 
 export default router;

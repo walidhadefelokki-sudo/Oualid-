@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, Check, Loader2, RefreshCw, ShieldAlert, ShieldCheck, User } from "lucide-react";
+import { AlertTriangle, Check, KeyRound, Loader2, RefreshCw, ShieldAlert, ShieldCheck, User } from "lucide-react";
 import adminService, { AdminAccessRow, AdminScopeInfo } from "../../services/admin.service";
 
 /**
@@ -69,6 +69,33 @@ const AdminAccessTab: React.FC = () => {
       setNotice(`Autorisations de ${name(admin)} enregistrées.`);
     } catch (e: any) {
       setError(e?.response?.data?.message || "L'enregistrement a échoué.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /**
+   * Sets another administrator's password.
+   *
+   * Prompted rather than put in a form: it is a rescue, not a routine, and a
+   * permanent field inviting it would get used where the self-service change
+   * belongs. Your own account has no button — the server refuses it there, so
+   * the password you know is the one you have to prove.
+   */
+  const resetPassword = async (admin: AdminAccessRow) => {
+    const next = window.prompt(
+      `Nouveau mot de passe pour ${name(admin)} (10 caractères minimum).\n\nCommuniquez-le-lui par un canal sûr, et demandez-lui de le changer depuis « Mon compte ».`
+    );
+    if (!next) return;
+
+    setBusyId(admin.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await adminService.resetAdminPassword(admin.id, next);
+      setNotice(`Mot de passe de ${name(admin)} réinitialisé.`);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "La réinitialisation a échoué.");
     } finally {
       setBusyId(null);
     }
@@ -161,14 +188,24 @@ const AdminAccessTab: React.FC = () => {
                     {/* Editing your own access is refused by the server; the
                         control is absent rather than present and failing. */}
                     {!admin.isMe && (
-                      <button
-                        onClick={() => save(admin, { isSuperAdmin: !admin.isSuperAdmin })}
-                        disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-primary/20 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5 disabled:opacity-50"
-                      >
-                        {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-                        {admin.isSuperAdmin ? "Limiter" : "Retirer les restrictions"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => save(admin, { isSuperAdmin: !admin.isSuperAdmin })}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1.5 rounded-lg border-2 border-primary/20 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5 disabled:opacity-50"
+                        >
+                          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+                          {admin.isSuperAdmin ? "Limiter" : "Retirer les restrictions"}
+                        </button>
+
+                        <button
+                          onClick={() => resetPassword(admin)}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1.5 rounded-lg border-2 border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                        >
+                          <KeyRound size={13} /> Mot de passe
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

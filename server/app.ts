@@ -153,6 +153,9 @@ export function createApp() {
   // Confirming guesses a 256-bit token, and resending sends real mail to the
   // signed-in user's own address. Neither is worth leaving unbounded.
   app.use("/api/auth/verify-email", authLimiter);
+  // Changing a password means guessing the current one; that is brute force
+  // against a credential, whoever is signed in.
+  app.use("/api/auth/me/password", authLimiter);
   app.use("/api/auth/resend-verification", authLimiter);
 
   // The contact form is public and unauthenticated, and every submission sends

@@ -17,6 +17,8 @@ import {
   SCOPE_LABELS,
   normaliseScopes,
 } from "../utils/adminScopes";
+import { checkPassword } from "../utils/passwordPolicy";
+import bcrypt from "bcryptjs";
 
 /**
  * Super-admin management of accounts and offers.
@@ -730,6 +732,75 @@ export const updateAdminAccess = async (req: Request, res: Response, next: NextF
     await audit(req, "UPDATE_ADMIN_ACCESS", "User", target.id);
 
     res.status(200).json({ status: "success", data: { admin: updated } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Resets another administrator's password.
+ *
+ * For the case the self-service change cannot cover: somebody locked out, or
+ * an account being handed to a new person. No current password is asked for,
+ * which is exactly why it is restricted to an unrestricted administrator and
+ * written to the audit log.
+ *
+ * Your own password is not resettable here — that is what /auth/me/password
+ * is for, and it asks for the current one. A reset path that worked on
+ * yourself would be a way to change your password without proving you know
+ * it, which is the whole protection.
+ */
+export const resetAdminPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body as { newPassword?: string };
+
+    if (req.user!.id === id) {
+      return next(
+        new AppError(
+          "Changez votre propre mot de passe depuis votre compte : l'actuel y est demandé.",
+          400
+        )
+      );
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, deletedAt: true },
+    });
+
+    if (!target || target.deletedAt) {
+      return next(new AppError("Compte introuvable.", 404));
+    }
+
+    /* Administrators only. Resetting an ordinary user's password from here
+     * would be a way into their account with no trace they could see; a
+     * candidate who forgets theirs goes through the normal reset. */
+    if (target.role !== "ADMIN") {
+      return next(
+        new AppError("Réservé aux comptes administrateurs.", 400)
+      );
+    }
+
+    const verdict = checkPassword(newPassword);
+    if (!verdict.ok) return next(new AppError(verdict.message!, 400));
+
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { password: await bcrypt.hash(newPassword!, 12) },
+      select: { id: true },
+    });
+
+    await audit(req, "RESET_ADMIN_PASSWORD", "User", target.id);
+
+    res.status(200).json({
+      status: "success",
+      message: `Mot de passe de ${target.email} réinitialisé.`,
+    });
   } catch (err) {
     next(err);
   }

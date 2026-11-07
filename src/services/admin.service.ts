@@ -212,6 +212,18 @@ export const adminService = {
     return data.data.admin;
   },
 
+  /**
+   * Sets another administrator's password.
+   *
+   * For somebody locked out, or an account handed to a new person. No current
+   * password is asked for, which is why the server restricts it to an
+   * unrestricted administrator, refuses your own account and writes an audit
+   * entry.
+   */
+  resetAdminPassword: async (id: string, newPassword: string): Promise<void> => {
+    await api.patch(`/admin/access/${id}/password`, { newPassword });
+  },
+
   /** Marks the account DELETED; the row and its records stay. */
   deleteUser: async (id: string): Promise<AdminUser> => {
     const { data } = await api.delete(`/admin/users/${id}`);

@@ -1229,6 +1229,24 @@ var readAdminAccess = async (userId) => {
   };
 };
 
+// server/utils/passwordPolicy.ts
+var MIN_PASSWORD_LENGTH = 10;
+var checkPassword = (value) => {
+  if (typeof value !== "string" || !value) {
+    return { ok: false, message: "Mot de passe manquant." };
+  }
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return {
+      ok: false,
+      message: `Le mot de passe doit faire au moins ${MIN_PASSWORD_LENGTH} caract\xE8res.`
+    };
+  }
+  if (value.trim().length === 0) {
+    return { ok: false, message: "Le mot de passe ne peut pas \xEAtre compos\xE9 d'espaces." };
+  }
+  return { ok: true };
+};
+
 // server/middleware/tier.middleware.ts
 init_prisma();
 var TIER_ORDER = ["FREE", "PREMIUM", "CORPORATE"];
@@ -1929,6 +1947,43 @@ var updateMyAvatar = async (req, res, next) => {
     next(err);
   }
 };
+var changeMyPassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await prisma_default.user.findUnique({
+      where: { id: req.user.id },
+      // Named explicitly; see the note on the login query.
+      select: { id: true, email: true, password: true }
+    });
+    if (!user) return next(new AppError("Compte introuvable.", 404));
+    if (user.password === null) {
+      return next(
+        new AppError(
+          "Ce compte se connecte avec Google et n'a pas de mot de passe.",
+          400
+        )
+      );
+    }
+    if (!currentPassword || !await bcrypt.compare(currentPassword, user.password)) {
+      return next(new AppError("Mot de passe actuel incorrect.", 401));
+    }
+    const verdict = checkPassword(newPassword);
+    if (!verdict.ok) return next(new AppError(verdict.message, 400));
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return next(
+        new AppError("Le nouveau mot de passe est identique \xE0 l'ancien.", 400)
+      );
+    }
+    await prisma_default.user.update({
+      where: { id: user.id },
+      data: { password: await bcrypt.hash(newPassword, 12) },
+      select: { id: true }
+    });
+    res.status(200).json({ status: "success", message: "Mot de passe modifi\xE9." });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // server/controllers/googleAuth.controller.ts
 import crypto6 from "crypto";
@@ -2221,6 +2276,7 @@ router.post("/google/session", googleAuthSession);
 router.get("/google/status", googleAuthStatus);
 router.get("/me", protect, getMe);
 router.patch("/me/avatar", protect, handleAvatarUpload, updateMyAvatar);
+router.patch("/me/password", protect, changeMyPassword);
 var auth_routes_default = router;
 
 // server/routes/job.routes.ts
@@ -10411,6 +10467,7 @@ var canUseScope = (user, scope2) => {
 };
 
 // server/controllers/adminManage.controller.ts
+import bcrypt2 from "bcryptjs";
 var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
   data: {
     userId: req.user?.id,
@@ -10903,6 +10960,46 @@ var updateAdminAccess = async (req, res, next) => {
     });
     await audit(req, "UPDATE_ADMIN_ACCESS", "User", target.id);
     res.status(200).json({ status: "success", data: { admin: updated } });
+  } catch (err) {
+    next(err);
+  }
+};
+var resetAdminPassword = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+    if (req.user.id === id) {
+      return next(
+        new AppError(
+          "Changez votre propre mot de passe depuis votre compte : l'actuel y est demand\xE9.",
+          400
+        )
+      );
+    }
+    const target = await prisma_default.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, deletedAt: true }
+    });
+    if (!target || target.deletedAt) {
+      return next(new AppError("Compte introuvable.", 404));
+    }
+    if (target.role !== "ADMIN") {
+      return next(
+        new AppError("R\xE9serv\xE9 aux comptes administrateurs.", 400)
+      );
+    }
+    const verdict = checkPassword(newPassword);
+    if (!verdict.ok) return next(new AppError(verdict.message, 400));
+    await prisma_default.user.update({
+      where: { id: target.id },
+      data: { password: await bcrypt2.hash(newPassword, 12) },
+      select: { id: true }
+    });
+    await audit(req, "RESET_ADMIN_PASSWORD", "User", target.id);
+    res.status(200).json({
+      status: "success",
+      message: `Mot de passe de ${target.email} r\xE9initialis\xE9.`
+    });
   } catch (err) {
     next(err);
   }
@@ -12443,6 +12540,7 @@ router7.get("/payments", scope("payments"), getPayments);
 router7.get("/access", requireSuperAdmin, listAdminAccess);
 router7.get("/access/scopes", requireSuperAdmin, listAdminScopes);
 router7.patch("/access/:id", requireSuperAdmin, updateAdminAccess);
+router7.patch("/access/:id/password", requireSuperAdmin, resetAdminPassword);
 router7.get("/jobs", scope("jobs"), getAllJobsAdmin);
 router7.patch("/jobs/:id", scope("jobs"), updateJobAdmin);
 router7.delete("/jobs/:id", scope("jobs"), deleteJobAdmin);
@@ -15691,6 +15789,7 @@ function createApp() {
   app2.use("/api/auth/login", authLimiter);
   app2.use("/api/auth/register", authLimiter);
   app2.use("/api/auth/verify-email", authLimiter);
+  app2.use("/api/auth/me/password", authLimiter);
   app2.use("/api/auth/resend-verification", authLimiter);
   const contactLimiter = rateLimit({
     windowMs: 60 * 60 * 1e3,

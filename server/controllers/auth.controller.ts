@@ -11,6 +11,7 @@ import {
   verificationUrl,
 } from "../services/emailVerification.service";
 import { readAdminAccess } from "../utils/adminAccess";
+import { checkPassword } from "../utils/passwordPolicy";
 import { getRecruiterPlan } from "../middleware/tier.middleware";
 import { RecruiterPlan } from "@prisma/client";
 import crypto from "crypto";
@@ -547,6 +548,76 @@ export const updateMyAvatar = async (
         avatarUrl: updatedUser.avatar?.url,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+/**
+ * Changes the signed-in user's own password.
+ *
+ * The current password is required even though the session already proves who
+ * this is: a borrowed or forgotten unlocked browser should not be enough to
+ * lock the owner out of their own account.
+ *
+ * Open to any signed-in user, not only administrators — a candidate has the
+ * same right to change their password, and putting the rule on the admin
+ * routes would have meant writing it twice.
+ */
+export const changeMyPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      // Named explicitly; see the note on the login query.
+      select: { id: true, email: true, password: true },
+    });
+
+    if (!user) return next(new AppError("Compte introuvable.", 404));
+
+    /* A Google-only account has no local password to replace. Say so plainly
+     * rather than letting them set one that the sign-in screen will never
+     * ask for. */
+    if (user.password === null) {
+      return next(
+        new AppError(
+          "Ce compte se connecte avec Google et n'a pas de mot de passe.",
+          400
+        )
+      );
+    }
+
+    if (!currentPassword || !(await bcrypt.compare(currentPassword, user.password))) {
+      return next(new AppError("Mot de passe actuel incorrect.", 401));
+    }
+
+    const verdict = checkPassword(newPassword);
+    if (!verdict.ok) return next(new AppError(verdict.message!, 400));
+
+    if (await bcrypt.compare(newPassword!, user.password)) {
+      return next(
+        new AppError("Le nouveau mot de passe est identique à l'ancien.", 400)
+      );
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: await bcrypt.hash(newPassword!, 12) },
+      select: { id: true },
+    });
+
+    /* No new token is issued and the old one keeps working. The JWT carries
+     * no password, so changing one cannot invalidate a session — saying
+     * otherwise would be a promise this does not keep. Real revocation needs
+     * a token version on the user, which is its own piece of work. */
+    res.status(200).json({ status: "success", message: "Mot de passe modifié." });
   } catch (err) {
     next(err);
   }

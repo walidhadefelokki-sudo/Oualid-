@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet, KeyRound, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet, KeyRound, RefreshCw, UserCog } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
@@ -13,6 +13,7 @@ import type {
   PreselectionCandidateRow,
 } from "../../services/preselectionByOffer.service";
 import AdminAccessTab from "./AdminAccessTab";
+import MyAccountTab from "./MyAccountTab";
 import api from "../../services/api";
 import adminService, {
   AdminStats,
@@ -20,7 +21,7 @@ import adminService, {
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "payments" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks" | "admin-access";
+type Tab = "overview" | "plans" | "payments" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks" | "admin-access" | "my-account";
 
 /**
  * What this administrator may reach.
@@ -37,7 +38,10 @@ interface AdminAccess {
 
 /** The scope each tab needs. The server enforces the same mapping per route;
  *  this only avoids offering a page that would answer 403. */
-const TAB_SCOPE: Record<Exclude<Tab, "admin-access">, string> = {
+/** Neither "admin-access" nor "my-account" appears here: one is never
+ *  delegated, the other is your own account rather than a section anyone
+ *  grants. */
+const TAB_SCOPE: Record<Exclude<Tab, "admin-access" | "my-account">, string> = {
   overview: "overview",
   plans: "plans",
   payments: "payments",
@@ -88,6 +92,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
 
   const allowed = (t: Tab) => {
     if (!access) return false;
+    // Your own account is not a section anyone grants or withholds. An
+    // administrator who cannot change their own password is one who will not
+    // change it.
+    if (t === "my-account") return true;
     if (access.isSuperAdmin) return true;
     // Granting access is never delegated: see AdminAccessTab.
     if (t === "admin-access") return false;
@@ -100,8 +108,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
   useEffect(() => {
     if (!access || allowed(tab)) return;
 
+    // From TAB_SCOPE only, so an administrator with real work to do does
+    // not land on their own password form.
     const first = (Object.keys(TAB_SCOPE) as Tab[]).find(allowed);
-    if (first) setTab(first);
+    setTab(first ?? "my-account");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
@@ -135,6 +145,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         {allowed("freelance-moderation") && <SidebarItem icon={<ShieldCheck size={18} />} label="Modération freelance" active={tab === "freelance-moderation"} onClick={() => go("freelance-moderation")} />}
         {allowed("team-tasks") && <SidebarItem icon={<ListTodo size={18} />} label="Tâches d'équipe" active={tab === "team-tasks"} onClick={() => go("team-tasks")} />}
         {allowed("admin-access") && <SidebarItem icon={<KeyRound size={18} />} label="Accès admin" active={tab === "admin-access"} onClick={() => go("admin-access")} />}
+        <SidebarItem icon={<UserCog size={18} />} label="Mon compte" active={tab === "my-account"} onClick={() => go("my-account")} />
       </nav>
 
       <button onClick={onGoHome} className="mt-auto flex items-center gap-2 px-3 py-2 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition">
@@ -185,7 +196,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
           {/* An administrator with no section at all. Says so, rather than
               showing an empty frame they would read as a broken page. */}
-          {access && !access.isSuperAdmin && access.scopes.length === 0 && (
+          {access && !access.isSuperAdmin && access.scopes.length === 0 && tab !== "my-account" && (
             <div className="bg-white rounded-xl p-12 text-center max-w-xl mx-auto">
               <KeyRound size={28} className="mx-auto text-primary/25" />
               <p className="mt-3 font-bold text-primary/70">Aucune section ne vous est accordée</p>
@@ -208,6 +219,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
           {allowed("freelance-moderation") && tab === "freelance-moderation" && <FreelanceModerationTab />}
           {allowed("team-tasks") && tab === "team-tasks" && <TeamTasksTab />}
           {allowed("admin-access") && tab === "admin-access" && <AdminAccessTab />}
+          {tab === "my-account" && <MyAccountTab />}
         </main>
       </div>
     </div>

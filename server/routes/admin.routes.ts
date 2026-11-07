@@ -63,6 +63,8 @@ router.get("/payments", scope("payments"), adminManage.getPayments);
 router.get("/access", requireSuperAdmin, adminManage.listAdminAccess);
 router.get("/access/scopes", requireSuperAdmin, adminManage.listAdminScopes);
 router.patch("/access/:id", requireSuperAdmin, adminManage.updateAdminAccess);
+// For an administrator who is locked out. Audited; never your own account.
+router.patch("/access/:id/password", requireSuperAdmin, adminManage.resetAdminPassword);
 
 // Job offers
 router.get("/jobs", scope("jobs"), adminManage.getAllJobsAdmin);

@@ -11,6 +11,7 @@ import {
   verificationUrl,
 } from "../services/emailVerification.service";
 import { sendVerifyEmail } from "../utils/email";
+import { listPayments } from "../services/adminPayments.service";
 
 /**
  * Super-admin management of accounts and offers.
@@ -495,6 +496,49 @@ export const getUserDetail = async (req: Request, res: Response, next: NextFunct
         },
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ============================================================== payments === */
+
+/**
+ * Every payment on the platform, in one list.
+ *
+ * Money arrives through three unrelated tables — subscription instalments,
+ * annonce packs and marketplace credits — and none of it was visible together
+ * anywhere in the admin. The merging and the totals live in
+ * adminPayments.service; this reads the query string.
+ */
+export const getPayments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const str = (v: unknown) =>
+      typeof v === "string" && v.trim() ? v.trim() : undefined;
+    const num = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const SOURCES = ["subscription", "pack", "marketplace"];
+    const source = str(req.query.source);
+
+    if (source && !SOURCES.includes(source)) {
+      return next(new AppError(`source must be one of: ${SOURCES.join(", ")}`, 400));
+    }
+
+    const data = await listPayments({
+      source: source as never,
+      status: str(req.query.status),
+      method: str(req.query.method),
+      q: str(req.query.q),
+      from: str(req.query.from),
+      to: str(req.query.to),
+      page: num(req.query.page),
+      perPage: num(req.query.perPage),
+    });
+
+    res.status(200).json({ status: "success", results: data.payments.length, data });
   } catch (err) {
     next(err);
   }

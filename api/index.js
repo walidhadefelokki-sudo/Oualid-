@@ -5,8 +5,8 @@ var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
 };
 
 // server/utils/prisma.ts
@@ -819,7 +819,7 @@ var sendAdminBroadcastEmail = async (to, content, options = {}) => {
     ...options.bcc?.length ? { bcc: options.bcc } : {}
   });
 };
-var sendWelcomeEmail = async (email, name, role, verifyUrl) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name, verifyUrl) : sendCandidateWelcomeEmail(email, name, verifyUrl);
+var sendWelcomeEmail = async (email, name2, role, verifyUrl) => role === "RECRUITER" ? sendRecruiterWelcomeEmail(email, name2, verifyUrl) : sendCandidateWelcomeEmail(email, name2, verifyUrl);
 var sendVerifyEmail = async (email, firstName, verifyUrl) => {
   if (!verifyUrl) return false;
   const greeting = firstName?.trim() || "bonjour";
@@ -1395,10 +1395,10 @@ var downloadObjectHead = async (bucket, path, bytes = 4096) => {
 var getObjectSize = async (bucket, path) => {
   const lastSlash = path.lastIndexOf("/");
   const folder = lastSlash === -1 ? "" : path.slice(0, lastSlash);
-  const name = path.slice(lastSlash + 1);
-  const { data, error } = await getClient().storage.from(bucket).list(folder, { search: name, limit: 100 });
+  const name2 = path.slice(lastSlash + 1);
+  const { data, error } = await getClient().storage.from(bucket).list(folder, { search: name2, limit: 100 });
   if (error || !data) return null;
-  const match = data.find((entry) => entry.name === name);
+  const match = data.find((entry) => entry.name === name2);
   if (!match) return null;
   return match.metadata?.size ?? null;
 };
@@ -1566,8 +1566,8 @@ var mapPlanToTier = (plan) => {
       return "free";
   }
 };
-var slugify = (name) => {
-  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+var slugify = (name2) => {
+  const base = name2.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const suffix = crypto4.randomBytes(3).toString("hex");
   return `${base || "company"}-${suffix}`;
 };
@@ -1848,8 +1848,8 @@ import passport2 from "passport";
 init_prisma();
 import crypto5 from "crypto";
 var PROVIDER = "google";
-var slugify2 = (name) => {
-  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+var slugify2 = (name2) => {
+  const base = name2.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return `${base || "company"}-${crypto5.randomBytes(3).toString("hex")}`;
 };
 async function findOrCreateUserFromGoogle(identity, requestedRole) {
@@ -2915,12 +2915,12 @@ var deleteJob = async (req, res, next) => {
 var getMatchedJobs = async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 6, 20);
-    const matches = await getMatchedJobsForCandidate(req.user.id, limit);
+    const matches2 = await getMatchedJobsForCandidate(req.user.id, limit);
     res.status(200).json({
       status: "success",
-      results: matches.length,
+      results: matches2.length,
       data: {
-        jobs: matches.map(({ job, reasons }) => ({
+        jobs: matches2.map(({ job, reasons }) => ({
           id: job.id,
           title: job.title,
           slug: job.slug,
@@ -3716,12 +3716,12 @@ var activate = async (req, res, next) => {
       });
       if (Array.isArray(skills)) {
         for (const raw of skills.slice(0, 20)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.freelancerSkill.create({
@@ -4320,12 +4320,12 @@ var updateMyService = async (req, res, next) => {
       if (Array.isArray(skills)) {
         await tx.serviceSkill.deleteMany({ where: { serviceId: existing.id } });
         for (const raw of skills.slice(0, 15)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.serviceSkill.create({
@@ -4570,12 +4570,12 @@ var updateMine = async (req, res, next) => {
       if (Array.isArray(skills)) {
         await tx.projectSkill.deleteMany({ where: { projectId: existing.id } });
         for (const raw of skills.slice(0, 15)) {
-          const name = String(raw).trim();
-          if (!name) continue;
+          const name2 = String(raw).trim();
+          if (!name2) continue;
           const skill = await tx.skill.upsert({
-            where: { name },
+            where: { name: name2 },
             update: {},
-            create: { name },
+            create: { name: name2 },
             select: { id: true }
           });
           await tx.projectSkill.create({ data: { projectId: existing.id, skillId: skill.id } });
@@ -5422,13 +5422,13 @@ var recomputeRating = async (freelancerUserId) => {
 };
 var leave = async (orderId, authorId, input) => {
   if (!inRange(input.rating)) throw new ReviewError("La note doit \xEAtre comprise entre 1 et 5.");
-  for (const [name, value] of [
+  for (const [name2, value] of [
     ["qualit\xE9", input.qualityRating],
     ["communication", input.communicationRating],
     ["respect des d\xE9lais", input.deadlineRating]
   ]) {
     if (value !== void 0 && value !== null && !inRange(value)) {
-      throw new ReviewError(`La note de ${name} doit \xEAtre comprise entre 1 et 5.`);
+      throw new ReviewError(`La note de ${name2} doit \xEAtre comprise entre 1 et 5.`);
     }
   }
   const order = await prisma_default.freelanceOrder.findUnique({
@@ -9950,6 +9950,256 @@ var fromUploadedCv = async (asset) => {
   };
 };
 
+// server/services/adminPayments.service.ts
+init_prisma();
+var MAX_SCAN = 2e3;
+var MAX_PER_PAGE3 = 100;
+var name = (user) => user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email : "\u2014";
+var PACK_STATUS = {
+  PENDING: "PENDING",
+  PAID: "PAID",
+  FAILED: "FAILED",
+  CANCELED: "CANCELED"
+};
+var readSubscriptions = async () => {
+  const rows = await prisma_default.payment.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+      method: true,
+      status: true,
+      transactionId: true,
+      paidAt: true,
+      createdAt: true,
+      subscription: {
+        select: {
+          plan: true,
+          company: {
+            select: {
+              name: true,
+              members: {
+                where: { role: "OWNER" },
+                take: 1,
+                select: {
+                  recruiter: {
+                    select: {
+                      user: { select: { firstName: true, lastName: true, email: true } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+  return rows.map((p) => {
+    const owner = p.subscription?.company?.members[0]?.recruiter?.user ?? null;
+    return {
+      id: p.id,
+      source: "subscription",
+      // Payment has no reference of its own; the gateway's id is the only
+      // thing a payer could quote back.
+      reference: p.transactionId ?? p.id.slice(0, 8).toUpperCase(),
+      description: `Abonnement ${p.subscription?.plan ?? "\u2014"}`,
+      payer: {
+        name: name(owner),
+        email: owner?.email ?? null,
+        company: p.subscription?.company?.name ?? null
+      },
+      amount: p.amount,
+      currency: p.currency.toUpperCase(),
+      method: p.method,
+      status: p.status ?? "PENDING",
+      invoiceNumber: null,
+      receiptUrl: null,
+      paidAt: p.paidAt,
+      createdAt: p.createdAt
+    };
+  });
+};
+var readPackOrders = async () => {
+  const rows = await prisma_default.packOrder.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      packId: true,
+      jobs: true,
+      amount: true,
+      currency: true,
+      status: true,
+      checkoutId: true,
+      invoiceNumber: true,
+      paidAt: true,
+      createdAt: true,
+      company: { select: { name: true } },
+      buyer: { select: { firstName: true, lastName: true, email: true } }
+    }
+  });
+  return rows.map((o) => ({
+    id: o.id,
+    source: "pack",
+    reference: o.invoiceNumber ?? o.checkoutId ?? o.id.slice(0, 8).toUpperCase(),
+    description: `Pack annonces ${o.packId} \xB7 ${o.jobs} annonce(s)`,
+    payer: {
+      name: name(o.buyer),
+      email: o.buyer?.email ?? null,
+      company: o.company?.name ?? null
+    },
+    // Whole dinars on this table, where the others carry decimals.
+    amount: o.amount,
+    currency: o.currency.toUpperCase(),
+    method: "CARD",
+    status: PACK_STATUS[o.status] ?? "PENDING",
+    invoiceNumber: o.invoiceNumber,
+    receiptUrl: null,
+    paidAt: o.paidAt,
+    createdAt: o.createdAt
+  }));
+};
+var readMarketplace = async () => {
+  const rows = await prisma_default.marketplacePayment.findMany({
+    take: MAX_SCAN,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      reference: true,
+      amount: true,
+      currency: true,
+      method: true,
+      status: true,
+      paidAt: true,
+      createdAt: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+      creditPack: { select: { name: true, credits: true } },
+      subscription: { select: { plan: { select: { name: true } } } },
+      receipt: { select: { url: true } },
+      invoice: { select: { number: true } }
+    }
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    source: "marketplace",
+    reference: p.reference,
+    description: p.creditPack ? `Cr\xE9dits \xB7 ${p.creditPack.name} (${p.creditPack.credits})` : p.subscription?.plan?.name ? `Abonnement freelance \xB7 ${p.subscription.plan.name}` : "Achat marketplace",
+    payer: {
+      name: name(p.user),
+      email: p.user?.email ?? null,
+      company: null
+    },
+    amount: Number(p.amount),
+    currency: p.currency.toUpperCase(),
+    method: p.method,
+    status: p.status,
+    invoiceNumber: p.invoice?.number ?? null,
+    // The proof behind a manual transfer. Approving one without looking at it
+    // is granting credits because somebody said so.
+    receiptUrl: p.receipt?.url ?? null,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt
+  }));
+};
+var matches = (row, p) => {
+  if (p.source && row.source !== p.source) return false;
+  if (p.status && row.status !== p.status) return false;
+  if (p.method && row.method !== p.method) return false;
+  if (p.q) {
+    const needle = p.q.toLowerCase();
+    const haystack = [
+      row.reference,
+      row.invoiceNumber ?? "",
+      row.description,
+      row.payer.name,
+      row.payer.email ?? "",
+      row.payer.company ?? ""
+    ].join(" ").toLowerCase();
+    if (!haystack.includes(needle)) return false;
+  }
+  const when = row.paidAt ?? row.createdAt;
+  if (p.from) {
+    const from = new Date(p.from);
+    if (!Number.isNaN(from.getTime()) && when < from) return false;
+  }
+  if (p.to) {
+    const to = new Date(p.to);
+    if (!Number.isNaN(to.getTime())) {
+      to.setHours(23, 59, 59, 999);
+      if (when > to) return false;
+    }
+  }
+  return true;
+};
+var summarise = (rows) => {
+  const paid = rows.filter((r) => r.status === "PAID");
+  const startOfMonth = /* @__PURE__ */ new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+  const sum = (list) => Math.round(list.reduce((total, r) => total + r.amount, 0));
+  const perSource = (source) => sum(paid.filter((r) => r.source === source));
+  return {
+    /* Summed without converting between currencies. Everything on the
+     * platform is priced in dinars; adding two currencies into one number
+     * would be a figure that is simply wrong, so the breakdown below says
+     * which currencies are present instead. */
+    currencies: [...new Set(rows.map((r) => r.currency))],
+    revenue: sum(paid),
+    revenueThisMonth: sum(
+      paid.filter((r) => (r.paidAt ?? r.createdAt) >= startOfMonth)
+    ),
+    bySource: {
+      subscription: perSource("subscription"),
+      pack: perSource("pack"),
+      marketplace: perSource("marketplace")
+    },
+    counts: {
+      all: rows.length,
+      paid: paid.length,
+      pending: rows.filter((r) => r.status === "PENDING").length,
+      // The queue a human has to work through, and the only count here that
+      // is a to-do rather than a fact.
+      awaitingReview: rows.filter((r) => r.status === "AWAITING_REVIEW").length,
+      failed: rows.filter((r) => r.status === "FAILED" || r.status === "EXPIRED").length,
+      refunded: rows.filter((r) => r.status === "REFUNDED").length,
+      rejected: rows.filter((r) => r.status === "REJECTED").length
+    },
+    pendingAmount: sum(
+      rows.filter((r) => r.status === "PENDING" || r.status === "AWAITING_REVIEW")
+    )
+  };
+};
+var listPayments = async (params) => {
+  const page = Math.max(1, Math.trunc(params.page ?? 1) || 1);
+  const perPage = Math.min(Math.max(Math.trunc(params.perPage ?? 25) || 25, 1), MAX_PER_PAGE3);
+  const [subscriptions, packs, marketplace] = await Promise.all([
+    readSubscriptions(),
+    readPackOrders(),
+    readMarketplace()
+  ]);
+  const everything = [...subscriptions, ...packs, ...marketplace];
+  const truncated = subscriptions.length === MAX_SCAN || packs.length === MAX_SCAN || marketplace.length === MAX_SCAN;
+  const filtered = everything.filter((row) => matches(row, params)).sort(
+    (a, b) => (b.paidAt ?? b.createdAt).getTime() - (a.paidAt ?? a.createdAt).getTime()
+  );
+  const start2 = (page - 1) * perPage;
+  return {
+    payments: filtered.slice(start2, start2 + perPage),
+    total: filtered.length,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(filtered.length / perPage)),
+    /* Totals over everything that matched, not over the page: a page of
+     * twenty-five tells an admin nothing about what the platform earned. */
+    summary: summarise(filtered),
+    truncated,
+    scanLimit: MAX_SCAN
+  };
+};
+
 // server/controllers/adminManage.controller.ts
 var audit = (req, action, entity, entityId) => prisma_default.auditLog.create({
   data: {
@@ -10287,6 +10537,33 @@ var getUserDetail = async (req, res, next) => {
         }
       }
     });
+  } catch (err) {
+    next(err);
+  }
+};
+var getPayments = async (req, res, next) => {
+  try {
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : void 0;
+    };
+    const SOURCES = ["subscription", "pack", "marketplace"];
+    const source = str(req.query.source);
+    if (source && !SOURCES.includes(source)) {
+      return next(new AppError(`source must be one of: ${SOURCES.join(", ")}`, 400));
+    }
+    const data = await listPayments({
+      source,
+      status: str(req.query.status),
+      method: str(req.query.method),
+      q: str(req.query.q),
+      from: str(req.query.from),
+      to: str(req.query.to),
+      page: num(req.query.page),
+      perPage: num(req.query.perPage)
+    });
+    res.status(200).json({ status: "success", results: data.payments.length, data });
   } catch (err) {
     next(err);
   }
@@ -10987,8 +11264,8 @@ var listMembers = async (_req, res, next) => {
 };
 var createMember = async (req, res, next) => {
   try {
-    const { name, role, userId } = req.body;
-    const clean2 = String(name ?? "").trim();
+    const { name: name2, role, userId } = req.body;
+    const clean2 = String(name2 ?? "").trim();
     if (!clean2) return next(new AppError("Le nom est obligatoire.", 400));
     const count = await prisma_default.teamMember.count();
     const member = await prisma_default.teamMember.create({
@@ -11007,14 +11284,14 @@ var createMember = async (req, res, next) => {
 };
 var updateMember = async (req, res, next) => {
   try {
-    const { name, role, active, position } = req.body;
-    if (name !== void 0 && !String(name).trim()) {
+    const { name: name2, role, active, position } = req.body;
+    if (name2 !== void 0 && !String(name2).trim()) {
       return next(new AppError("Le nom ne peut pas \xEAtre vide.", 400));
     }
     const member = await prisma_default.teamMember.update({
       where: { id: req.params.id },
       data: {
-        ...name !== void 0 ? { name: String(name).trim() } : {},
+        ...name2 !== void 0 ? { name: String(name2).trim() } : {},
         ...role !== void 0 ? { role: role ? String(role).trim() : null } : {},
         ...active !== void 0 ? { active: Boolean(active) } : {},
         ...position !== void 0 ? { position: Number(position) } : {}
@@ -11225,6 +11502,7 @@ router7.get("/users/:id", getUserDetail);
 router7.patch("/users/:id", updateUser);
 router7.post("/users/:id/send-verification", sendVerificationLink);
 router7.delete("/users/:id", deleteUser);
+router7.get("/payments", getPayments);
 router7.get("/jobs", getAllJobsAdmin);
 router7.patch("/jobs/:id", updateJobAdmin);
 router7.delete("/jobs/:id", deleteJobAdmin);
@@ -11580,9 +11858,9 @@ var updateMyCompany = async (req, res, next) => {
       return v.length ? v : null;
     };
     if (body.name !== void 0) {
-      const name = text(body.name);
-      if (!name) return next(new AppError("The company name is required.", 400));
-      data.name = name;
+      const name2 = text(body.name);
+      if (!name2) return next(new AppError("The company name is required.", 400));
+      data.name = name2;
     }
     if (body.description !== void 0) data.description = text(body.description);
     if (body.industry !== void 0) data.industry = text(body.industry);

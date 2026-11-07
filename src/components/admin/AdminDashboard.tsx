@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo } from "lucide-react";
+import { LayoutDashboard, Building2, Users, ClipboardCheck, LogOut, Contact, Menu, X, Briefcase, CalendarDays, ShieldCheck , ListTodo, Wallet } from "lucide-react";
 import CrmTab from "./CrmTab";
 import UsersTab from "./UsersTab";
 import JobsTab from "./JobsTab";
 import SchedulesTab from "./SchedulesTab";
 import FreelanceModerationTab from "./FreelanceModerationTab";
 import TeamTasksTab from "./TeamTasksTab";
+import PaymentsTab from "./PaymentsTab";
 import adminService, {
   AdminStats,
   Company,
   CorporatePendingApplication,
 } from "../../services/admin.service";
 
-type Tab = "overview" | "plans" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks";
+type Tab = "overview" | "plans" | "payments" | "users" | "jobs" | "schedules" | "crm" | "preselection" | "freelance-moderation" | "team-tasks";
 
 interface AdminDashboardProps {
   onGoHome: () => void;
@@ -42,6 +43,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
       <nav className="flex flex-col gap-1">
         <SidebarItem icon={<LayoutDashboard size={18} />} label="Aperçu" active={tab === "overview"} onClick={() => go("overview")} />
         <SidebarItem icon={<Building2 size={18} />} label="Plans recruteurs" active={tab === "plans"} onClick={() => go("plans")} />
+        <SidebarItem icon={<Wallet size={18} />} label="Paiements" active={tab === "payments"} onClick={() => go("payments")} />
         <SidebarItem icon={<Users size={18} />} label="Comptes" active={tab === "users"} onClick={() => go("users")} />
         <SidebarItem icon={<Briefcase size={18} />} label="Offres" active={tab === "jobs"} onClick={() => go("jobs")} />
         <SidebarItem icon={<CalendarDays size={18} />} label="Agenda" active={tab === "schedules"} onClick={() => go("schedules")} />
@@ -99,6 +101,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onGoHome }) => {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
           {tab === "overview" && <OverviewTab />}
           {tab === "plans" && <PlansTab />}
+          {tab === "payments" && <PaymentsTab />}
           {tab === "users" && <UsersTab />}
           {tab === "jobs" && <JobsTab />}
           {tab === "schedules" && <SchedulesTab />}

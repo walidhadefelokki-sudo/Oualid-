@@ -36,6 +36,12 @@ router.post("/users/:id/send-verification", adminManage.sendVerificationLink);
 // Marks the account DELETED rather than removing the row — see the controller.
 router.delete("/users/:id", adminManage.deleteUser);
 
+/* Every payment on the platform, merged from the three tables money
+   arrives through. Read-only: approving a transfer stays on the freelance
+   moderation route that owns the credit grant, so there is one place that
+   can turn a receipt into credits. */
+router.get("/payments", adminManage.getPayments);
+
 // Job offers
 router.get("/jobs", adminManage.getAllJobsAdmin);
 router.patch("/jobs/:id", adminManage.updateJobAdmin);

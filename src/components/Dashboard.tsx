@@ -15,6 +15,12 @@ import RecruiterPlanCard, {
 import QuizResults from "./recruiter/QuizResults";
 import OralPresentationResults from "./recruiter/OralPresentationResults";
 import PreselectedCandidates from "./recruiter/PreselectedCandidates";
+import PreselectionByOffer from "./recruiter/PreselectionByOffer";
+import preselectionByOfferService from "../services/preselectionByOffer.service";
+import type {
+  PreselectionByOfferResult,
+  PreselectionCandidateRow,
+} from "../services/preselectionByOffer.service";
 import AIFilterResults, { AICandidate } from "./recruiter/AIFilterResults";
 import aiAnalysisService from "../services/aiAnalysis.service";
 import jobService from "../services/job.service";
@@ -542,7 +548,84 @@ export default function Dashboard({
   };
   const loadQuizResults = () => {};
   const loadPresentations = () => {};
-  const loadPreselectedCandidates = () => {};
+  /* Preselection, grouped by offer.
+   *
+   * This was `() => {}` — an empty stub — so the screen it feeds showed
+   * nothing to anybody, whatever the recruiter had received. One request now,
+   * grouped server-side, because comparing two candidates only means
+   * something inside a single offer. */
+  const [preselectionData, setPreselectionData] =
+    useState<PreselectionByOfferResult | null>(null);
+  const [preselectionError, setPreselectionError] = useState<string | null>(null);
+  const [preselectionSearch, setPreselectionSearch] = useState('');
+  const [preselectionStatus, setPreselectionStatus] = useState('');
+  const [preselectedOnly, setPreselectedOnly] = useState(false);
+  const [preselectionBusyId, setPreselectionBusyId] = useState<string | null>(null);
+
+  const loadPreselectedCandidates = React.useCallback(async () => {
+    try {
+      setLoadingPreselected(true);
+      setPreselectionError(null);
+      setPreselectionData(
+        await preselectionByOfferService.list({
+          q: preselectionSearch.trim() || undefined,
+          status: preselectionStatus || undefined,
+          preselectedOnly: preselectedOnly || undefined,
+        })
+      );
+    } catch (err: any) {
+      console.error('Failed to load preselection:', err);
+      setPreselectionError(
+        err?.response?.data?.message || 'Le chargement de la présélection a échoué.'
+      );
+      setPreselectionData(null);
+    } finally {
+      setLoadingPreselected(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectionSearch, preselectionStatus, preselectedOnly]);
+
+  /* Debounced, because the term now reaches the server as it is typed. */
+  useEffect(() => {
+    if (user?.role !== 'employer' || !access.preselection) return;
+
+    const timer = setTimeout(
+      () => loadPreselectedCandidates(),
+      preselectionSearch.trim() ? 350 : 0
+    );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectionSearch, preselectionStatus, preselectedOnly, user?.role, access.preselection]);
+
+  /**
+   * Marks or refuses a candidate for one offer.
+   *
+   * The whole screen is reloaded afterwards rather than the row patched in
+   * place: the counts on the offer header and the totals at the top are all
+   * derived from the same decision, and recomputing them here would be a
+   * second implementation of what the server already does.
+   */
+  const decidePreselection = async (
+    candidate: PreselectionCandidateRow,
+    decision: 'shortlist' | 'reject'
+  ) => {
+    setPreselectionBusyId(candidate.applicationId);
+    setPreselectionError(null);
+    try {
+      if (decision === 'shortlist') {
+        await preselectionByOfferService.shortlist(candidate.applicationId);
+      } else {
+        await preselectionByOfferService.reject(candidate.applicationId);
+      }
+      await loadPreselectedCandidates();
+    } catch (err: any) {
+      setPreselectionError(
+        err?.response?.data?.message || "L'action n'a pas pu être enregistrée."
+      );
+    } finally {
+      setPreselectionBusyId(null);
+    }
+  };
 
   const categorizeMatch = (score: number) => {
     if (score >= 80) return "Excellent match";
@@ -3625,15 +3708,21 @@ async function generatePDFDirectly(elementId: string, filename: string): Promise
 
         case "preselected":
           return (
-            <PreselectedCandidates
-              candidates={preselectedCandidates}
-              recruiterPlan={recruiterTier}
+            <PreselectionByOffer
+              data={preselectionData}
               loading={loadingPreselected}
+              error={preselectionError}
+              search={preselectionSearch}
+              onSearchChange={setPreselectionSearch}
+              status={preselectionStatus}
+              onStatusChange={setPreselectionStatus}
+              preselectedOnly={preselectedOnly}
+              onPreselectedOnlyChange={setPreselectedOnly}
               onRefresh={loadPreselectedCandidates}
-              onOpenCV={handleOpenCV}
-              onInterview={handleInterview}
-              onHire={handleHire}
-              onReject={handleReject}
+              busyApplicationId={preselectionBusyId}
+              onOpenCV={(c) => handleOpenCV({ id: c.candidateId, name: c.fullName } as never)}
+              onShortlist={(c) => decidePreselection(c, 'shortlist')}
+              onReject={(c) => decidePreselection(c, 'reject')}
             />
           );
 

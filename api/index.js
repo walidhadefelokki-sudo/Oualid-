@@ -7683,15 +7683,10 @@ var PreselectionService = class {
         404
       );
     }
-    if (!application.candidateScore) {
-      throw new AppError(
-        "Candidate score not found.",
-        404
-      );
-    }
-    const finalScore = application.candidateScore.finalScore ?? 0;
-    const recruiterScore = application.candidateScore.recruiterScore ?? null;
-    const aiScore = application.candidateScore.aiScore ?? null;
+    const scores = application.candidateScore;
+    const finalScore = scores?.finalScore ?? application.finalScore ?? application.aiScore ?? 0;
+    const recruiterScore = scores?.recruiterScore ?? application.recruiterScore ?? null;
+    const aiScore = scores?.aiScore ?? application.aiScore ?? null;
     const status = this.determineStatus(finalScore);
     const existingPreselection = application.preselections[0];
     if (existingPreselection) {
@@ -7822,13 +7817,25 @@ var PreselectionService = class {
       );
     }
     const recruiterScore = data.recruiterScore ?? preselection.recruiterScore;
+    const shortlisted = data.status === PreselectionStatus.SHORTLISTED;
+    const rejected = data.status === PreselectionStatus.REJECTED;
+    const earlyStage = application.status === "PENDING" || application.status === "REVIEWING";
     return prisma_default.$transaction(async (tx) => {
-      await tx.candidateScore.update({
+      await tx.candidateScore.updateMany({
         where: {
           applicationId
         },
         data: {
           recruiterScore
+        }
+      });
+      await tx.application.update({
+        where: { id: applicationId },
+        data: {
+          isPreselected: shortlisted,
+          preselectionStatus: data.status,
+          ...data.comment !== void 0 ? { preselectionComment: data.comment } : {},
+          ...rejected ? { status: "REJECTED" } : shortlisted && earlyStage ? { status: "SHORTLISTED" } : {}
         }
       });
       return tx.preselection.update({
@@ -8003,7 +8010,23 @@ var PreselectionService = class {
             include: {
               candidate: {
                 include: {
-                  user: true
+                  /* Selected, not `user: true`.
+                   *
+                   * That returned every User column — the bcrypt hash
+                   * included — to any recruiter who opened this list. A
+                   * password hash has no reason to leave the server: it is
+                   * exactly what an offline cracking attempt needs if a token
+                   * or a response is ever captured. */
+                  user: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      email: true,
+                      phone: true,
+                      avatar: { select: { url: true } }
+                    }
+                  }
                 }
               },
               job: true
@@ -9687,7 +9710,7 @@ var getAllUsers = async (req, res, next) => {
     });
     const shaped = users.map(({ candidateProfile, ...user }) => {
       const data = candidateProfile?.cvBuilderData;
-      const builderFilled = !!data && typeof data === "object" && Object.values(data).some(
+      const builderFilled2 = !!data && typeof data === "object" && Object.values(data).some(
         (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
       );
       return {
@@ -9695,7 +9718,7 @@ var getAllUsers = async (req, res, next) => {
         candidateProfile: candidateProfile ? {
           id: candidateProfile.id,
           hasUploadedCv: Boolean(candidateProfile.resumeId),
-          hasBuiltCv: builderFilled
+          hasBuiltCv: builderFilled2
         } : null
       };
     });
@@ -12083,6 +12106,253 @@ var payment_routes_default = router10;
 // server/routes/preselection.routes.ts
 import { Router as Router11 } from "express";
 
+// server/services/preselectionByOffer.service.ts
+init_prisma();
+var MAX_SKILLS = 12;
+var APPLICATION_SELECT = {
+  id: true,
+  status: true,
+  preselectionStatus: true,
+  isPreselected: true,
+  preselectionScore: true,
+  preselectionComment: true,
+  aiScore: true,
+  quizScore: true,
+  oralPresentationScore: true,
+  finalScore: true,
+  coverLetter: true,
+  appliedAt: true,
+  updatedAt: true,
+  cv: { select: { url: true, fileName: true } },
+  // Why the score is what it is. A number with no reason behind it is not
+  // something a recruiter can act on or defend.
+  aianalysis: {
+    select: { strengths: true, weaknesses: true, recommendations: true, overallScore: true }
+  },
+  candidate: {
+    select: {
+      id: true,
+      headline: true,
+      bio: true,
+      currentJobTitle: true,
+      city: true,
+      wilaya: true,
+      skills: true,
+      yearsExperience: true,
+      availableImmediately: true,
+      desiredSalary: true,
+      linkedinUrl: true,
+      githubUrl: true,
+      portfolioUrl: true,
+      resumeId: true,
+      cvBuilderData: true,
+      user: {
+        // Selected, never `user: true`. That returns every column including
+        // the bcrypt hash, which is exactly what the recruiter list elsewhere
+        // in this feature was doing.
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          avatar: { select: { url: true } }
+        }
+      },
+      oralPresentation: { select: { videoId: true } }
+    }
+  }
+};
+var cvHighlights = (data) => {
+  if (!data || typeof data !== "object") return { lastRole: null, education: null, languages: [] };
+  const d = data;
+  const first = (key) => Array.isArray(d[key]) ? d[key][0] : null;
+  const experience = first("experiences");
+  const education = first("education");
+  const text = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
+  const join = (parts) => {
+    const kept = parts.filter(Boolean);
+    return kept.length ? kept.join(" \xB7 ") : null;
+  };
+  return {
+    lastRole: experience ? join([text(experience.title) ?? text(experience.position), text(experience.company)]) : null,
+    education: education ? join([text(education.degree) ?? text(education.title), text(education.school)]) : null,
+    languages: Array.isArray(d.languages) ? d.languages.map(
+      (l) => typeof l === "string" ? l : text(l?.name)
+    ).filter((l) => Boolean(l)).slice(0, 6) : []
+  };
+};
+var builderFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
+  (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
+);
+var shape = (a) => {
+  const c = a.candidate;
+  const highlights = cvHighlights(c.cvBuilderData);
+  return {
+    applicationId: a.id,
+    candidateId: c.id,
+    fullName: `${c.user.firstName ?? ""} ${c.user.lastName ?? ""}`.trim() || c.user.email,
+    email: c.user.email,
+    phone: c.user.phone ?? "",
+    avatarUrl: c.user.avatar?.url ?? null,
+    position: c.currentJobTitle || c.headline || "",
+    headline: c.headline ?? null,
+    summary: c.bio ?? null,
+    location: c.city ?? c.wilaya ?? "",
+    wilaya: c.wilaya ?? null,
+    experience: c.yearsExperience ?? 0,
+    // Capped: a candidate who listed forty skills would push everyone else
+    // off the screen, and the rest are on their profile.
+    skills: (c.skills ?? []).slice(0, MAX_SKILLS),
+    skillsTotal: (c.skills ?? []).length,
+    availableNow: c.availableImmediately,
+    desiredSalary: c.desiredSalary ?? null,
+    lastRole: highlights.lastRole,
+    education: highlights.education,
+    languages: highlights.languages,
+    links: {
+      linkedin: c.linkedinUrl ?? null,
+      github: c.githubUrl ?? null,
+      portfolio: c.portfolioUrl ?? null
+    },
+    cvUrl: a.cv?.url ?? null,
+    hasCv: Boolean(c.resumeId) || builderFilled(c.cvBuilderData),
+    hasPresentation: Boolean(c.oralPresentation?.videoId),
+    coverLetter: a.coverLetter ?? null,
+    aiScore: Math.round(a.aiScore ?? 0),
+    quizScore: a.quizScore != null ? Math.round(a.quizScore) : null,
+    oralPresentationScore: a.oralPresentationScore != null ? Math.round(a.oralPresentationScore) : null,
+    finalScore: a.finalScore != null ? Math.round(a.finalScore) : null,
+    preselectionScore: a.preselectionScore != null ? Math.round(a.preselectionScore) : null,
+    strengths: a.aianalysis?.strengths ?? [],
+    weaknesses: a.aianalysis?.weaknesses ?? [],
+    recommendations: a.aianalysis?.recommendations ?? [],
+    status: a.status,
+    preselectionStatus: a.preselectionStatus,
+    isPreselected: a.isPreselected,
+    preselectionComment: a.preselectionComment ?? null,
+    appliedAt: a.appliedAt,
+    updatedAt: a.updatedAt
+  };
+};
+var countOf = (rows) => {
+  const by = (s) => rows.filter((r) => r.status === s).length;
+  const scored = rows.filter((r) => r.aiScore > 0);
+  return {
+    total: rows.length,
+    preselected: rows.filter((r) => r.isPreselected).length,
+    pending: by("PENDING") + by("REVIEWING"),
+    shortlisted: by("SHORTLISTED"),
+    interview: by("INTERVIEW"),
+    hired: by("HIRED"),
+    rejected: by("REJECTED"),
+    withCv: rows.filter((r) => r.hasCv).length,
+    // Averaged over the scored ones only: counting an unscored application as
+    // zero would make the average say the shortlist is weak when it is simply
+    // not analysed yet.
+    averageScore: scored.length ? Math.round(scored.reduce((sum, r) => sum + r.aiScore, 0) / scored.length) : null
+  };
+};
+var listByOffer = async (params) => {
+  const recruiter = await prisma_default.user.findUnique({
+    where: { id: params.recruiterUserId },
+    select: { recruiterProfile: { select: { id: true } } }
+  });
+  if (!recruiter?.recruiterProfile) return null;
+  const term = params.q?.trim();
+  const applications = await prisma_default.application.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { jobId: params.jobId } : {},
+      ...params.status ? { status: params.status } : {},
+      ...params.preselectedOnly ? { isPreselected: true } : {},
+      // A closed account is not a candidate to call.
+      candidate: { user: { deletedAt: null, status: { not: "DELETED" } } },
+      ...term ? {
+        OR: [
+          { candidate: { user: { firstName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { user: { lastName: { contains: term, mode: "insensitive" } } } },
+          { candidate: { currentJobTitle: { contains: term, mode: "insensitive" } } },
+          { candidate: { headline: { contains: term, mode: "insensitive" } } },
+          { candidate: { skills: { has: term } } }
+        ]
+      } : {}
+    },
+    select: { ...APPLICATION_SELECT, jobId: true },
+    /* Nulls last, explicitly.
+     *
+     * Postgres puts NULLs first in a DESC sort, so an application nobody has
+     * analysed yet led the offer — above the best-scoring candidate. The
+     * unscored ones belong at the bottom, newest first, which is also the
+     * order in which they are worth looking at by hand. */
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { appliedAt: "desc" }]
+  });
+  const jobs = await prisma_default.job.findMany({
+    where: {
+      recruiterId: recruiter.recruiterProfile.id,
+      ...params.jobId ? { id: params.jobId } : {}
+    },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      wilaya: true,
+      type: true,
+      status: true,
+      publishedAt: true,
+      createdAt: true,
+      expiresAt: true,
+      category: { select: { name: true } }
+    },
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+  });
+  const byJob = /* @__PURE__ */ new Map();
+  for (const a of applications) {
+    const list = byJob.get(a.jobId) ?? [];
+    list.push(shape(a));
+    byJob.set(a.jobId, list);
+  }
+  const offers = jobs.map((job) => {
+    const candidates = byJob.get(job.id) ?? [];
+    return {
+      id: job.id,
+      title: job.title,
+      location: job.location,
+      wilaya: job.wilaya,
+      type: job.type,
+      status: job.status,
+      sector: job.category?.name ?? null,
+      publishedAt: job.publishedAt,
+      // Said per offer rather than worked out from a date in the UI: an
+      // expired offer still collecting applications is worth noticing.
+      expired: Boolean(job.expiresAt && job.expiresAt.getTime() < Date.now()),
+      counts: countOf(candidates),
+      candidates
+    };
+  });
+  offers.sort((a, b) => b.counts.total - a.counts.total);
+  const everyCandidate = offers.flatMap((o) => o.candidates);
+  return {
+    offers,
+    totals: {
+      offers: offers.length,
+      offersWithCandidates: offers.filter((o) => o.counts.total > 0).length,
+      candidates: everyCandidate.length,
+      preselected: everyCandidate.filter((c) => c.isPreselected).length,
+      ...(() => {
+        const all = countOf(everyCandidate);
+        return {
+          pending: all.pending,
+          shortlisted: all.shortlisted,
+          interview: all.interview,
+          hired: all.hired,
+          rejected: all.rejected,
+          averageScore: all.averageScore
+        };
+      })()
+    }
+  };
+};
+
 // server/controllers/preselection.controller.ts
 var getMyPreselection = async (req, res, next) => {
   try {
@@ -12282,9 +12552,28 @@ var deletePreselection = async (req, res, next) => {
     next(err);
   }
 };
+var getPreselectionByOffer = async (req, res, next) => {
+  try {
+    const str = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+    const result = await listByOffer({
+      recruiterUserId: req.user.id,
+      jobId: str(req.query.jobId),
+      status: str(req.query.status),
+      q: str(req.query.q),
+      preselectedOnly: req.query.preselectedOnly === "true" ? true : void 0
+    });
+    if (!result) {
+      return next(new AppError("Profil recruteur introuvable.", 404));
+    }
+    res.status(200).json({ status: "success", data: result });
+  } catch (err) {
+    next(err);
+  }
+};
 var preselection_controller_default = {
   getMyPreselection,
   getPreselection,
+  getPreselectionByOffer,
   shortlistCandidate,
   rejectCandidate,
   reviewCandidate,
@@ -12340,6 +12629,13 @@ router11.patch(
   restrictTo("RECRUITER"),
   requireRecruiterTier("CORPORATE"),
   preselection_controller_default.updateComment
+);
+router11.get(
+  "/recruiter/by-offer",
+  protect,
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  preselection_controller_default.getPreselectionByOffer
 );
 router11.get(
   "/recruiter",

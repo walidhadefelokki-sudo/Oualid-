@@ -51,21 +51,25 @@ class PreselectionService {
       );
     }
 
-    if (!application.candidateScore) {
-      throw new AppError(
-        "Candidate score not found.",
-        404
-      );
-    }
+    /* A CandidateScore row is written by the scoring pipeline, which has run
+     * for almost no application — so requiring one here refused every
+     * shortlist and every rejection with "Candidate score not found.", and the
+     * recruiter's buttons simply did not work.
+     *
+     * The Application carries the same numbers, and they are the ones every
+     * screen already displays. Taken from there when the row is absent. */
+    const scores = application.candidateScore;
 
     const finalScore =
-      application.candidateScore.finalScore ?? 0;
+      scores?.finalScore ??
+      application.finalScore ??
+      application.aiScore ??
+      0;
 
     const recruiterScore =
-      application.candidateScore.recruiterScore ?? null;
+      scores?.recruiterScore ?? application.recruiterScore ?? null;
 
-    const aiScore =
-      application.candidateScore.aiScore ?? null;
+    const aiScore = scores?.aiScore ?? application.aiScore ?? null;
 
     const status =
       this.determineStatus(finalScore);
@@ -251,14 +255,44 @@ class PreselectionService {
       data.recruiterScore ??
       preselection.recruiterScore;
 
+    /* The Application is what every screen reads — the preselection list, the
+     * CV directory, the candidates table — so a decision recorded only in the
+     * Preselection table was invisible everywhere. It is written to both.
+     *
+     * `status` is only moved forward. Shortlisting somebody already at
+     * INTERVIEW or HIRED must not send them back to SHORTLISTED; a rejection
+     * is a decision and always applies. */
+    const shortlisted = data.status === PreselectionStatus.SHORTLISTED;
+    const rejected = data.status === PreselectionStatus.REJECTED;
+    const earlyStage =
+      application.status === "PENDING" || application.status === "REVIEWING";
+
     return prisma.$transaction(async (tx) => {
 
-      await tx.candidateScore.update({
+      // updateMany, not update: there may be no row, and its absence is not a
+      // reason to refuse the decision.
+      await tx.candidateScore.updateMany({
         where: {
           applicationId,
         },
         data: {
           recruiterScore,
+        },
+      });
+
+      await tx.application.update({
+        where: { id: applicationId },
+        data: {
+          isPreselected: shortlisted,
+          preselectionStatus: data.status,
+          ...(data.comment !== undefined
+            ? { preselectionComment: data.comment }
+            : {}),
+          ...(rejected
+            ? { status: "REJECTED" as const }
+            : shortlisted && earlyStage
+              ? { status: "SHORTLISTED" as const }
+              : {}),
         },
       });
 
@@ -490,7 +524,23 @@ class PreselectionService {
             include: {
               candidate: {
                 include: {
-                  user: true,
+                  /* Selected, not `user: true`.
+                   *
+                   * That returned every User column — the bcrypt hash
+                   * included — to any recruiter who opened this list. A
+                   * password hash has no reason to leave the server: it is
+                   * exactly what an offline cracking attempt needs if a token
+                   * or a response is ever captured. */
+                  user: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      email: true,
+                      phone: true,
+                      avatar: { select: { url: true } },
+                    },
+                  },
                 },
               },
               job: true,

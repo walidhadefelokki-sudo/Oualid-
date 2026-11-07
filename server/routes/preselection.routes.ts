@@ -69,6 +69,15 @@ router.patch(
   preselectionController.updateComment
 );
 
+// Preselection grouped by offer — what the recruiter's screen reads.
+router.get(
+  "/recruiter/by-offer",
+  protect,
+  restrictTo("RECRUITER", "ADMIN"),
+  requireRecruiterTier("CORPORATE"),
+  preselectionController.getPreselectionByOffer
+);
+
 // Recruiter's preselection list
 router.get(
   "/recruiter",

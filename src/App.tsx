@@ -506,7 +506,7 @@ export default function App() {
     if (window.location.pathname === '/auth/callback') return;
     // A shared offer owns the address while its modal is open. Rewriting it to
     // "/" here would blank the link the moment the page finished loading.
-    if (/^\/jobs\//.test(window.location.pathname) && selectedJob) return;
+    if (view === 'landing' && /^\/jobs\//.test(window.location.pathname)) return;
 
     const path = view === 'dashboard' ? '/dashboard' : '/';
     if (window.location.pathname !== path) {

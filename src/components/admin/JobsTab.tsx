@@ -264,7 +264,15 @@ const JobsTab: React.FC = () => {
               {visible.map((j) => (
                 <React.Fragment key={j.id}>
                 <tr className="border-t border-primary/10">
-                  <td className="px-4 py-3 font-medium max-w-[240px] break-words">{j.title}</td>
+                  <td className="px-4 py-3 font-medium max-w-[240px] break-words">
+                    <button
+                      onClick={() => setOpenId(openId === j.id ? null : j.id)}
+                      aria-expanded={openId === j.id}
+                      className="text-left hover:underline hover:text-[#F68D58]"
+                    >
+                      {j.title}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">{j.company?.name ?? "—"}</td>
                   <td className="px-4 py-3">{j.wilaya || j.location || "—"}</td>
                   <td className="px-4 py-3">

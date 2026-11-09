@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { RefreshCw, Search, Star, Trash2 } from "lucide-react";
-import adminService, { AdminJob, AdminJobStatus } from "../../services/admin.service";
+import { ChevronDown, FileText, RefreshCw, Search, Star, Trash2 } from "lucide-react";
+import adminService, {
+  AdminJob,
+  AdminJobApplication,
+  AdminJobStatus,
+} from "../../services/admin.service";
+import candidateProfileService from "../../services/candidateProfile.service";
 
 /**
  * Job offers, for the super admin.
@@ -21,6 +26,99 @@ const STATUS_STYLE: Record<AdminJobStatus, string> = {
   ARCHIVED: "bg-gray-100 text-gray-400 border-gray-200",
 };
 
+const APPLICATION_STATUS: Record<AdminJobApplication["status"], { label: string; style: string }> = {
+  PENDING: { label: "En attente", style: "bg-gray-100 text-gray-500" },
+  REVIEWING: { label: "En revue", style: "bg-blue-50 text-blue-600" },
+  SHORTLISTED: { label: "Présélectionné", style: "bg-emerald-50 text-emerald-600" },
+  INTERVIEW: { label: "Entretien", style: "bg-violet-50 text-violet-600" },
+  HIRED: { label: "Recruté", style: "bg-emerald-100 text-emerald-700" },
+  REJECTED: { label: "Refusé", style: "bg-red-50 text-red-500" },
+};
+
+/**
+ * The people who applied to one offer, loaded when its row is opened.
+ *
+ * Read-only: deciding on a candidature stays with the recruiter who posted
+ * the offer.
+ */
+const JobApplications: React.FC<{ jobId: string }> = ({ jobId }) => {
+  const [applications, setApplications] = useState<AdminJobApplication[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminService
+      .getJobApplications(jobId)
+      .then(setApplications)
+      .catch((e) => setError(e?.response?.data?.message || "Échec du chargement des candidatures"));
+  }, [jobId]);
+
+  /* The CV lives in private storage behind a short-lived signed link. The tab
+     is opened before the request so the browser treats it as part of the
+     click rather than blocking it as a popup. */
+  const openCv = async (candidateId: string) => {
+    const win = window.open("", "_blank");
+    try {
+      const resume = await candidateProfileService.getCandidateCvFile(candidateId);
+      if (!resume?.url) throw new Error("Aucun CV disponible.");
+      if (win) win.location.href = resume.url;
+      else window.location.href = resume.url;
+    } catch (e: any) {
+      win?.close();
+      alert(e?.response?.data?.message || e.message || "Échec de l'ouverture du CV");
+    }
+  };
+
+  if (error) return <div className="text-sm text-red-600">{error}</div>;
+  if (!applications) return <div className="text-sm text-primary/50">Chargement…</div>;
+  if (applications.length === 0) {
+    return <div className="text-sm text-primary/50">Aucune candidature.</div>;
+  }
+
+  return (
+    <ul className="divide-y divide-primary/10">
+      {applications.map((a) => {
+        const { user } = a.candidate;
+        const status = APPLICATION_STATUS[a.status];
+        return (
+          <li key={a.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="min-w-[200px] flex-1">
+              <div className="font-medium">
+                {`${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "—"}
+              </div>
+              {a.candidate.headline && (
+                <div className="text-xs text-primary/50">{a.candidate.headline}</div>
+              )}
+            </div>
+            <div className="min-w-[200px] text-xs text-primary/70">
+              <a href={`mailto:${user.email}`} className="hover:underline break-all">
+                {user.email}
+              </a>
+              {user.phone && <div>{user.phone}</div>}
+            </div>
+            <div className="text-xs text-primary/60 w-28">{a.candidate.wilaya || "—"}</div>
+            <div className="text-xs text-primary/60 w-24">
+              {new Date(a.appliedAt).toLocaleDateString("fr-DZ")}
+            </div>
+            <span
+              className={`px-2 py-1 rounded-full text-[11px] font-bold ${status?.style ?? ""}`}
+            >
+              {status?.label ?? a.status}
+            </span>
+            <button
+              onClick={() => openCv(a.candidate.id)}
+              disabled={!a.candidate.resumeId}
+              title={a.candidate.resumeId ? "Voir le CV" : "Aucun CV téléversé"}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/20 text-xs text-primary/70 hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <FileText size={14} /> CV
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
 const JobsTab: React.FC = () => {
   const [jobs, setJobs] = useState<AdminJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +126,7 @@ const JobsTab: React.FC = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | AdminJobStatus>("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -163,14 +262,27 @@ const JobsTab: React.FC = () => {
             </thead>
             <tbody>
               {visible.map((j) => (
-                <tr key={j.id} className="border-t border-primary/10">
+                <React.Fragment key={j.id}>
+                <tr className="border-t border-primary/10">
                   <td className="px-4 py-3 font-medium max-w-[240px] break-words">{j.title}</td>
                   <td className="px-4 py-3">{j.company?.name ?? "—"}</td>
                   <td className="px-4 py-3">{j.wilaya || j.location || "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={j._count.applications > 0 ? "font-bold text-primary" : "text-primary/40"}>
-                      {j._count.applications}
-                    </span>
+                    {j._count.applications > 0 ? (
+                      <button
+                        onClick={() => setOpenId(openId === j.id ? null : j.id)}
+                        aria-expanded={openId === j.id}
+                        className="flex items-center gap-1 font-bold text-primary hover:underline"
+                      >
+                        {j._count.applications}
+                        <ChevronDown
+                          size={14}
+                          className={`transition-transform ${openId === j.id ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    ) : (
+                      <span className="text-primary/40">0</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <select
@@ -212,6 +324,14 @@ const JobsTab: React.FC = () => {
                     </button>
                   </td>
                 </tr>
+                {openId === j.id && (
+                  <tr className="bg-primary/[0.03]">
+                    <td colSpan={7} className="px-6 py-2">
+                      <JobApplications jobId={j.id} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

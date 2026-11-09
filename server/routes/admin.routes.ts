@@ -68,6 +68,7 @@ router.patch("/access/:id/password", requireSuperAdmin, adminManage.resetAdminPa
 
 // Job offers
 router.get("/jobs", scope("jobs"), adminManage.getAllJobsAdmin);
+router.get("/jobs/:id/applications", scope("jobs"), adminManage.getJobApplicationsAdmin);
 router.patch("/jobs/:id", scope("jobs"), adminManage.updateJobAdmin);
 router.delete("/jobs/:id", scope("jobs"), adminManage.deleteJobAdmin);
 

@@ -290,6 +290,47 @@ export const getAllJobsAdmin = async (req: Request, res: Response, next: NextFun
   }
 };
 
+/**
+ * Who applied to one offer.
+ *
+ * Read-only, and only what the table shows: the recruiter's own view of the
+ * same list carries AI analyses, quizzes and videos the admin does not need
+ * here. The CV itself is fetched on demand through the signed-link route, so
+ * no storage URL sits in this response.
+ */
+export const getJobApplicationsAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const job = await prisma.job.findUnique({ where: { id }, select: { id: true } });
+    if (!job) return next(new AppError("Offre introuvable.", 404));
+
+    const applications = await prisma.application.findMany({
+      where: { jobId: id },
+      orderBy: { appliedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        appliedAt: true,
+        finalScore: true,
+        candidate: {
+          select: {
+            id: true,
+            headline: true,
+            wilaya: true,
+            resumeId: true,
+            user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({ status: "success", results: applications.length, data: { applications } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const JOB_STATUSES = ["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"] as const;
 
 /** Changes an offer's status, or its featured placement. */

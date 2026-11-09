@@ -79,6 +79,21 @@ export interface AdminJob {
   _count: { applications: number };
 }
 
+export interface AdminJobApplication {
+  id: string;
+  status: "PENDING" | "REVIEWING" | "SHORTLISTED" | "INTERVIEW" | "HIRED" | "REJECTED";
+  appliedAt: string;
+  finalScore: number | null;
+  candidate: {
+    id: string;
+    headline: string | null;
+    wilaya: string | null;
+    /** Null when the candidate never uploaded a CV. */
+    resumeId: string | null;
+    user: { firstName: string; lastName: string; email: string; phone: string | null };
+  };
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -278,6 +293,11 @@ export const adminService = {
   getJobs: async (params?: { status?: string; q?: string }): Promise<AdminJob[]> => {
     const { data } = await api.get("/admin/jobs", { params });
     return data.data.jobs;
+  },
+
+  getJobApplications: async (id: string): Promise<AdminJobApplication[]> => {
+    const { data } = await api.get(`/admin/jobs/${id}/applications`);
+    return data.data.applications;
   },
 
   updateJob: async (

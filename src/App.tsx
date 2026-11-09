@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import Logo2 from './components/Logo2';
@@ -48,14 +48,16 @@ import {
   ListChecks,
   UserCheck
 } from 'lucide-react';
-import { db } from './firebase';
-import { doc, getDocFromServer } from 'firebase/firestore';
-import Dashboard from './components/Dashboard';
+// The dashboards are most of the code in this app (CV builder, PDF export,
+// Firebase, recruiter tools) and nobody arriving from a shared or advertised
+// /jobs/<id> link needs them. Loaded on demand, they stay out of the first
+// download, which is what a visitor on a phone waits for before seeing anything.
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
 import DomainModal from './components/DomainModal';
 import GoogleAuthCallback from './components/GoogleAuthCallback';
 import categoryService, { JobCategory } from './services/category.service';
 import jobService, { PublicJob } from './services/job.service';
-import AdminDashboard from './components/admin/AdminDashboard';
 import AuthModal from './components/AuthModal';
 import CookieNotice, { openCookiePolicy } from './components/CookieNotice';
 import { translations, Language } from './translations';
@@ -556,8 +558,18 @@ export default function App() {
     if (!match) return;
 
     let cancelled = false;
-    jobService
-      .getJob(match[1])
+    // index.html may already have started this request (see the script
+    // there). Use it when it is for this offer; if it failed, ask again
+    // through the normal client before giving up on the link.
+    const prefetch = (window as { __jobPrefetch?: { id: string; promise: Promise<{ data: { job: PublicJob } }> } }).__jobPrefetch;
+    const request =
+      prefetch && prefetch.id === match[1]
+        ? prefetch.promise
+            .then((body) => body.data.job)
+            .catch(() => jobService.getJob(match[1]))
+        : jobService.getJob(match[1]);
+
+    request
       .then((job) => {
         if (!cancelled) setSelectedJob(toCardJob(job));
       })
@@ -682,17 +694,10 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    // Test Firestore connection
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. ");
-        }
-      }
-    };
-    testConnection();
+    // A Firestore "test connection" read used to run here on every page load.
+    // It checked nothing the page relied on, but it pulled the whole Firebase
+    // SDK into the first download and made a round trip before anything else.
+    // The dashboard imports Firebase itself, where it is actually used.
 
     // Firebase anonymous sign-in was removed here. Authentication is handled
     // entirely by our own API (email + password, and Google OAuth), so this
@@ -828,7 +833,9 @@ export default function App() {
   if (user && view === 'dashboard' && user.role === 'admin') {
     return (
       <>
-        <AdminDashboard onGoHome={() => setView('landing')} />
+        <Suspense fallback={<div className="min-h-screen bg-[#173E7D]" />}>
+          <AdminDashboard onGoHome={() => setView('landing')} />
+        </Suspense>
         {emailConfirmation}
       </>
     );
@@ -841,7 +848,9 @@ export default function App() {
     // "Not authorized to access this route".
     return (
       <>
-        <Dashboard user={user} isDemo={isDemo} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />
+        <Suspense fallback={<div className="min-h-screen bg-[#173E7D]" />}>
+          <Dashboard user={user} isDemo={isDemo} language={language} setLanguage={setLanguage} onGoHome={() => setView('landing')} onLogout={handleLogout} />
+        </Suspense>
         {emailConfirmation}
       </>
     );

@@ -47,6 +47,28 @@
 
   <body>
     <div id="root"></div>
+
+    <!--
+      Shared and advertised offer links (/jobs/<id>) start fetching the offer
+      here, while the application script is still downloading. Without this
+      the request could only begin once that script had arrived and run, so
+      on a phone the two waits added up. App.tsx picks the promise up.
+    -->
+    <script>
+      (function () {
+        var m = location.pathname.match(/^\/jobs\/([\w-]+)$/);
+        if (!m || !window.fetch) return;
+        window.__jobPrefetch = {
+          id: m[1],
+          promise: fetch('/api/jobs/' + m[1], { headers: { Accept: 'application/json' } })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json();
+            }),
+        };
+        window.__jobPrefetch.promise.catch(function () {});
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

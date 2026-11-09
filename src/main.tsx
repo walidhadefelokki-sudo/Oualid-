@@ -1,7 +1,8 @@
-import {StrictMode} from 'react';
+import {StrictMode, lazy, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import FreelanceApp from './freelance/FreelanceApp.tsx';
+// Only /freelance needs the marketplace, so it is fetched only there.
+const FreelanceApp = lazy(() => import('./freelance/FreelanceApp.tsx'));
 import './index.css';
 import { initAnalytics } from './analytics';
 
@@ -26,5 +27,13 @@ initAnalytics();
 const isFreelance = window.location.pathname.startsWith('/freelance');
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{isFreelance ? <FreelanceApp /> : <App />}</StrictMode>,
+  <StrictMode>
+    {isFreelance ? (
+      <Suspense fallback={null}>
+        <FreelanceApp />
+      </Suspense>
+    ) : (
+      <App />
+    )}
+  </StrictMode>,
 );

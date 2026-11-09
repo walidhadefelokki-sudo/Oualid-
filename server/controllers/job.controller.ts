@@ -186,6 +186,13 @@ export const getJob = async (req: Request, res: Response, next: NextFunction) =>
       return next(new AppError("Job not found", 404));
     }
 
+    // Public and identical for every visitor, and an ad campaign sends many
+    // of them to the same offer at once. Letting Vercel's edge keep it for a
+    // minute answers those from the nearest edge (Paris for Algeria) instead
+    // of the function and the database each time. Browsers do not keep it
+    // (max-age=0), and an edit to the offer shows within a minute.
+    // Requests carrying an Authorization header are not cached by Vercel.
+    res.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=600");
     res.status(200).json({
       status: "success",
       data: { job },

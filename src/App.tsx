@@ -1701,7 +1701,7 @@ export default function App() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
-              onClick={() => setSelectedJob(spotlightJob as any)}
+              onClick={() => setSelectedJob(displaySpotlightJob)}
               className="group cursor-pointer relative overflow-hidden rounded-[3.5rem] bg-[#173E7D] text-white shadow-[0_40px_90px_-25px_rgba(23,62,125,0.55)]"
             >
               {/* Ambient shapes, purely decorative */}
@@ -1763,7 +1763,7 @@ export default function App() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedJob(spotlightJob as any);
+                      setSelectedJob(displaySpotlightJob);
                     }}
                     className={`w-full bg-white text-[#173E7D] px-8 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-[#F68D58] hover:text-white transition-all duration-500 flex items-center justify-center gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}
                   >

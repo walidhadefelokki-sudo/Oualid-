@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { AppError } from "./error.middleware";
-import { AVATAR_MAX_BYTES, VIDEO_MAX_BYTES } from "../utils/supabaseStorage";
+import {
+  AVATAR_MAX_BYTES,
+  SERVICE_MEDIA_MAX_BYTES,
+  SERVICE_MEDIA_MAX_COUNT,
+  VIDEO_MAX_BYTES,
+} from "../utils/supabaseStorage";
 
 /* -------------------------------------------------------------------------- */
 /*                                   images                                   */
@@ -204,4 +209,102 @@ export const assertVideoSize = (size: number | null): number => {
     throw new AppError("Your presentation must be smaller than 50 MB.", 400);
   }
   return size;
+};
+
+/* -------------------------------------------------------------------------- */
+/*                               service media                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pictures of the work a freelancer is selling.
+ *
+ * Several at once, because somebody photographing finished work has a handful
+ * on their phone and uploading them one at a time is how a gallery ends up
+ * with one picture in it.
+ *
+ * Same memory-then-inspect approach as the avatar above: the browser's
+ * declared MIME type is attacker-controlled, so the file signature decides.
+ */
+const serviceMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SERVICE_MEDIA_MAX_BYTES, files: SERVICE_MEDIA_MAX_COUNT },
+}).array("media", SERVICE_MEDIA_MAX_COUNT);
+
+export const handleServiceMediaUpload = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  serviceMediaUpload(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      /* Multer's own codes surface as a 500 through the global handler, which
+       * tells a freelancer the server broke when they picked a large photo. */
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(
+          new AppError("Chaque image doit faire moins de 5 Mo.", 400)
+        );
+      }
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+        return next(
+          new AppError(
+            `${SERVICE_MEDIA_MAX_COUNT} images au maximum par envoi.`,
+            400
+          )
+        );
+      }
+      return next(new AppError(`Envoi impossible : ${err.message}`, 400));
+    }
+    if (err) return next(err);
+    next();
+  });
+};
+
+/**
+ * Checks every picture, and refuses the whole batch if one is wrong.
+ *
+ * All or nothing on purpose: a partial upload leaves the freelancer guessing
+ * which of the eight failed, and the obvious next move — send them all again —
+ * duplicates the ones that worked.
+ */
+export const validateServiceMedia = (
+  files: Express.Multer.File[] | undefined
+): ValidatedMedia[] => {
+  if (!files || files.length === 0) {
+    throw new AppError("Choisissez au moins une image.", 400);
+  }
+
+  return files.map((file, index) => {
+    const where = files.length > 1 ? ` (image ${index + 1})` : "";
+
+    if (file.buffer.length === 0) {
+      throw new AppError(`Ce fichier est vide${where}.`, 400);
+    }
+
+    const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+    if (!(AVATAR_EXTENSIONS as readonly string[]).includes(extension)) {
+      throw new AppError(
+        `Les images doivent être au format JPG, PNG, WEBP ou GIF${where}.`,
+        400
+      );
+    }
+
+    const typed = extension as AvatarExtension;
+
+    // The bytes, not the name: an executable renamed .png arrives looking
+    // perfectly valid to everything that trusts the extension.
+    if (!hasImageSignature(file.buffer, typed)) {
+      throw new AppError(
+        `Ce fichier n'est pas une image valide${where}.`,
+        400
+      );
+    }
+
+    return {
+      buffer: file.buffer,
+      extension,
+      mimeType: AVATAR_MIME_TYPES[typed],
+      fileName: file.originalname,
+      size: file.buffer.length,
+    };
+  });
 };

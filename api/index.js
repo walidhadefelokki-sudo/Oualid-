@@ -1336,15 +1336,19 @@ import crypto3 from "crypto";
 var CV_BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
 var AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET?.trim() || "avatars";
 var PRESENTATION_BUCKET = process.env.SUPABASE_PRESENTATION_BUCKET?.trim() || "presentations";
+var SERVICE_MEDIA_BUCKET = process.env.SUPABASE_SERVICE_MEDIA_BUCKET?.trim() || "service-media";
 var SIGNED_URL_TTL_SECONDS = 300;
 var VIDEO_URL_TTL_SECONDS = 2 * 60 * 60;
 var CV_MAX_BYTES = 10 * 1024 * 1024;
 var AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+var SERVICE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+var SERVICE_MEDIA_MAX_COUNT = 8;
 var VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 var BUCKETS = {
   [CV_BUCKET]: { public: false, fileSizeLimit: CV_MAX_BYTES },
   [PRESENTATION_BUCKET]: { public: false, fileSizeLimit: VIDEO_MAX_BYTES },
-  [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES }
+  [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES },
+  [SERVICE_MEDIA_BUCKET]: { public: true, fileSizeLimit: SERVICE_MEDIA_MAX_BYTES }
 };
 var cachedClient = null;
 var getClient = () => {
@@ -1620,6 +1624,64 @@ var assertVideoSize = (size) => {
     throw new AppError("Your presentation must be smaller than 50 MB.", 400);
   }
   return size;
+};
+var serviceMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SERVICE_MEDIA_MAX_BYTES, files: SERVICE_MEDIA_MAX_COUNT }
+}).array("media", SERVICE_MEDIA_MAX_COUNT);
+var handleServiceMediaUpload = (req, res, next) => {
+  serviceMediaUpload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(
+          new AppError("Chaque image doit faire moins de 5 Mo.", 400)
+        );
+      }
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+        return next(
+          new AppError(
+            `${SERVICE_MEDIA_MAX_COUNT} images au maximum par envoi.`,
+            400
+          )
+        );
+      }
+      return next(new AppError(`Envoi impossible : ${err.message}`, 400));
+    }
+    if (err) return next(err);
+    next();
+  });
+};
+var validateServiceMedia = (files) => {
+  if (!files || files.length === 0) {
+    throw new AppError("Choisissez au moins une image.", 400);
+  }
+  return files.map((file, index) => {
+    const where = files.length > 1 ? ` (image ${index + 1})` : "";
+    if (file.buffer.length === 0) {
+      throw new AppError(`Ce fichier est vide${where}.`, 400);
+    }
+    const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+    if (!AVATAR_EXTENSIONS.includes(extension)) {
+      throw new AppError(
+        `Les images doivent \xEAtre au format JPG, PNG, WEBP ou GIF${where}.`,
+        400
+      );
+    }
+    const typed = extension;
+    if (!hasImageSignature(file.buffer, typed)) {
+      throw new AppError(
+        `Ce fichier n'est pas une image valide${where}.`,
+        400
+      );
+    }
+    return {
+      buffer: file.buffer,
+      extension,
+      mimeType: AVATAR_MIME_TYPES[typed],
+      fileName: file.originalname,
+      size: file.buffer.length
+    };
+  });
 };
 
 // server/controllers/auth.controller.ts
@@ -4409,7 +4471,17 @@ var getMyService = async (req, res, next) => {
           orderBy: { position: "asc" },
           select: { id: true, prompt: true, required: true }
         },
-        skills: { select: { skill: { select: { name: true } } } }
+        skills: { select: { skill: { select: { name: true } } } },
+        // The gallery, so the editor can show what is already there rather
+        // than only what is being added now.
+        media: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            position: true,
+            file: { select: { id: true, url: true, fileName: true, size: true } }
+          }
+        }
       }
     });
     if (!service) return next(new AppError("Service introuvable.", 404));
@@ -4582,6 +4654,140 @@ var deleteMyService = async (req, res, next) => {
     res.json({ success: true, data: { id: service.id } });
   } catch (err) {
     next(err);
+  }
+};
+var ownedService = async (serviceId, userId) => {
+  const freelancerId = await requireProfile(userId);
+  const service = await prisma_default.serviceListing.findFirst({
+    where: { id: serviceId, freelancerId },
+    select: { id: true, _count: { select: { media: true } } }
+  });
+  if (!service) throw new AppError("Service introuvable.", 404);
+  return service;
+};
+var galleryOf = (serviceId) => prisma_default.serviceMedia.findMany({
+  where: { serviceId },
+  orderBy: { position: "asc" },
+  select: {
+    id: true,
+    position: true,
+    file: { select: { id: true, url: true, fileName: true, size: true } }
+  }
+});
+var addServiceMedia = async (req, res, next) => {
+  const stored = [];
+  try {
+    const service = await ownedService(req.params.id, req.user.id);
+    const images = validateServiceMedia(req.files);
+    const room = SERVICE_MEDIA_MAX_COUNT - service._count.media;
+    if (images.length > room) {
+      return next(
+        new AppError(
+          room <= 0 ? `Ce service a d\xE9j\xE0 ${SERVICE_MEDIA_MAX_COUNT} images. Supprimez-en une d'abord.` : `Il ne reste de la place que pour ${room} image(s).`,
+          400
+        )
+      );
+    }
+    for (const image of images) {
+      stored.push(
+        await uploadObject({
+          bucket: SERVICE_MEDIA_BUCKET,
+          path: buildObjectPath(service.id, image.extension),
+          buffer: image.buffer,
+          mimeType: image.mimeType
+        })
+      );
+    }
+    try {
+      await prisma_default.$transaction(async (tx) => {
+        const last = await tx.serviceMedia.findFirst({
+          where: { serviceId: service.id },
+          orderBy: { position: "desc" },
+          select: { position: true }
+        });
+        let position = (last?.position ?? -1) + 1;
+        for (let i = 0; i < images.length; i += 1) {
+          const image = images[i];
+          const asset = await tx.fileAsset.create({
+            data: {
+              url: getPublicUrl(SERVICE_MEDIA_BUCKET, stored[i]),
+              provider: "supabase",
+              publicId: stored[i],
+              fileName: image.fileName,
+              mimeType: image.mimeType,
+              extension: image.extension,
+              size: image.size
+            }
+          });
+          await tx.serviceMedia.create({
+            data: { serviceId: service.id, fileId: asset.id, position }
+          });
+          position += 1;
+        }
+      });
+    } catch (dbErr) {
+      await Promise.all(stored.map((path) => removeObject(SERVICE_MEDIA_BUCKET, path)));
+      throw dbErr;
+    }
+    res.status(201).json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};
+var removeServiceMedia = async (req, res, next) => {
+  try {
+    const service = await ownedService(req.params.id, req.user.id);
+    const media = await prisma_default.serviceMedia.findFirst({
+      where: { id: req.params.mediaId, serviceId: service.id },
+      select: { id: true, file: { select: { id: true, publicId: true } } }
+    });
+    if (!media) return next(new AppError("Image introuvable.", 404));
+    await prisma_default.$transaction(async (tx) => {
+      await tx.serviceMedia.delete({ where: { id: media.id } });
+      await tx.fileAsset.delete({ where: { id: media.file.id } }).catch(() => void 0);
+      const rest = await tx.serviceMedia.findMany({
+        where: { serviceId: service.id },
+        orderBy: { position: "asc" },
+        select: { id: true }
+      });
+      for (let i = 0; i < rest.length; i += 1) {
+        await tx.serviceMedia.update({ where: { id: rest[i].id }, data: { position: i } });
+      }
+    });
+    if (media.file.publicId) {
+      await removeObject(SERVICE_MEDIA_BUCKET, media.file.publicId);
+    }
+    res.json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};
+var reorderServiceMedia = async (req, res, next) => {
+  try {
+    const service = await ownedService(req.params.id, req.user.id);
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.some((id) => typeof id !== "string")) {
+      return next(new AppError("Envoyez \xAB order \xBB : la liste des identifiants.", 400));
+    }
+    const current = await prisma_default.serviceMedia.findMany({
+      where: { serviceId: service.id },
+      select: { id: true }
+    });
+    const known = new Set(current.map((m) => m.id));
+    const asked = [...new Set(order)];
+    if (asked.length !== known.size || asked.some((id) => !known.has(id))) {
+      return next(
+        new AppError("La liste doit contenir toutes les images de ce service, une fois chacune.", 400)
+      );
+    }
+    await prisma_default.$transaction(
+      asked.map(
+        (id, position) => prisma_default.serviceMedia.update({ where: { id }, data: { position } })
+      )
+    );
+    res.json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
   }
 };
 
@@ -7192,6 +7398,14 @@ router4.post("/me/services/:id/submit", protect, submitMyService);
 router4.post("/me/services/:id/pause", protect, pauseMyService);
 router4.post("/me/services/:id/resume", protect, resumeMyService);
 router4.delete("/me/services/:id", protect, deleteMyService);
+router4.post(
+  "/me/services/:id/media",
+  protect,
+  handleServiceMediaUpload,
+  addServiceMedia
+);
+router4.patch("/me/services/:id/media/order", protect, reorderServiceMedia);
+router4.delete("/me/services/:id/media/:mediaId", protect, removeServiceMedia);
 router4.post("/me/projects", protect, createDraft2);
 router4.get("/me/projects", protect, listMine);
 router4.get("/me/projects/:id", protect, getMine);

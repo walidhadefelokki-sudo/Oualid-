@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Loader2, Plus, Send, Trash2 } from "lucide-react";
+import { ImagePlus, Loader2, Plus, Send, Trash2 } from "lucide-react";
 import api from "../../../services/api";
 import freelanceService, { MarketplaceCategory } from "../../freelance.service";
 import { ErrorState, Loading } from "../../ui";
@@ -50,6 +50,16 @@ const label =
   "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
 const card = "rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5";
 
+/** One picture on the service, as the server returns it. */
+interface ServiceImage {
+  id: string;
+  position: number;
+  file: { id: string; url: string; fileName: string | null; size: number | null };
+}
+
+/** Eight, matching the server. Said here so the form can stop asking. */
+const MAX_IMAGES = 8;
+
 const ServiceEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -71,6 +81,15 @@ const ServiceEditor: React.FC = () => {
   const [faqs, setFaqs] = useState<Array<{ question: string; answer: string }>>([]);
   const [skills, setSkills] = useState<string[]>([]);
   const [skillDraft, setSkillDraft] = useState("");
+
+  /* The gallery.
+   *
+   * Uploaded as it is chosen rather than held until the next save: the files
+   * go to storage, not into the form payload, and a picture that only existed
+   * in this component until somebody pressed "Enregistrer" would be lost by a
+   * refresh. */
+  const [media, setMedia] = useState<ServiceImage[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -114,6 +133,7 @@ const ServiceEditor: React.FC = () => {
           categoryId: s.categoryId ?? "",
         });
         setSkills(s.skills ?? []);
+        setMedia(s.media ?? []);
         setFaqs(s.faqs?.map((f: any) => ({ question: f.question, answer: f.answer })) ?? []);
 
         if (s.packages?.length) {
@@ -147,6 +167,70 @@ const ServiceEditor: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  /* Each call returns the whole gallery, so the component never has to work
+     out what the new order or the remaining pictures should be. */
+  const uploadImages = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !serviceId) return;
+
+    const room = MAX_IMAGES - media.length;
+    if (room <= 0) {
+      setError(`${MAX_IMAGES} images au maximum. Supprimez-en une d'abord.`);
+      return;
+    }
+
+    const body = new FormData();
+    // Trimmed here as well as refused there, so picking ten and getting a
+    // refusal is not the way a freelancer discovers the limit.
+    for (const file of Array.from(files).slice(0, room)) body.append("media", file);
+
+    setUploading(true);
+    setError(null);
+    try {
+      const { data } = await api.post(`/freelance/me/services/${serviceId}/media`, body);
+      setMedia(data.data.media);
+      setNote("Images ajoutées.");
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "L'envoi des images a échoué.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = async (imageId: string) => {
+    if (!serviceId) return;
+    setError(null);
+    try {
+      const { data } = await api.delete(
+        `/freelance/me/services/${serviceId}/media/${imageId}`
+      );
+      setMedia(data.data.media);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "La suppression a échoué.");
+    }
+  };
+
+  /** Moves a picture to the front, which is the cover every card reads. */
+  const makeCover = async (imageId: string) => {
+    if (!serviceId) return;
+    const order = [imageId, ...media.map((m) => m.id).filter((id) => id !== imageId)];
+
+    // Shown immediately and corrected by the response: reordering is the kind
+    // of thing that feels broken if the picture does not move until a round
+    // trip finishes.
+    setMedia((prev) => [...prev].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)));
+    setError(null);
+
+    try {
+      const { data } = await api.patch(
+        `/freelance/me/services/${serviceId}/media/order`,
+        { order }
+      );
+      setMedia(data.data.media);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Le changement d'ordre a échoué.");
+    }
+  };
 
   const payload = () => ({
     ...form,
@@ -360,6 +444,100 @@ const ServiceEditor: React.FC = () => {
               className={`${field} resize-y`}
             />
           </label>
+        </div>
+
+        {/* Pictures.
+         *
+         * A marketplace selling design, photography and craft showed every
+         * service as a coloured initial, because nothing could put an image
+         * on one. The first picture is the cover on every card. */}
+        <div className={card}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+            <span className={`${label} mb-0`}>Images du service</span>
+            <span className="text-[11px] text-[#2B3442]/45">
+              {media.length} / {MAX_IMAGES}
+            </span>
+          </div>
+          <p className="text-xs text-[#2B3442]/55 mb-3">
+            La première image est celle qui apparaît sur les cartes. JPG, PNG, WEBP ou
+            GIF, 5 Mo maximum par image.
+          </p>
+
+          {media.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              {media.map((image, i) => (
+                <figure
+                  key={image.id}
+                  className={`relative group rounded-xl overflow-hidden border-2 ${
+                    i === 0 ? "border-[#D4AF37]" : "border-[#173E7D]/12"
+                  }`}
+                >
+                  <img
+                    src={image.file.url}
+                    alt={image.file.fileName ?? ""}
+                    loading="lazy"
+                    className="w-full aspect-square object-cover bg-[#F7F9FC]"
+                  />
+
+                  {i === 0 && (
+                    <figcaption className="absolute top-1.5 start-1.5 rounded-full bg-[#D4AF37] px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#0B1E3D]">
+                      Couverture
+                    </figcaption>
+                  )}
+
+                  {!locked && (
+                    <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      {i !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() => makeCover(image.id)}
+                          className="flex-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-[#173E7D]"
+                        >
+                          Couverture
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeImage(image.id)}
+                        aria-label="Supprimer l'image"
+                        className="rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-red-600"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  )}
+                </figure>
+              ))}
+            </div>
+          )}
+
+          {!locked && media.length < MAX_IMAGES && (
+            <label className="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[#173E7D]/20 px-4 py-6 cursor-pointer hover:border-[#173E7D]/40 transition-colors">
+              <ImagePlus size={20} className="text-[#173E7D]/40" />
+              <span className="text-sm font-bold text-[#173E7D]">
+                {uploading ? "Envoi en cours…" : "Ajouter des images"}
+              </span>
+              <span className="text-[11px] text-[#2B3442]/45">
+                Vous pouvez en choisir plusieurs à la fois
+              </span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                disabled={uploading}
+                onChange={(e) => {
+                  uploadImages(e.target.files);
+                  // Cleared so re-picking the same file fires onChange again.
+                  e.target.value = "";
+                }}
+                className="hidden"
+              />
+            </label>
+          )}
+
+          {media.length === 0 && locked && (
+            <p className="text-sm text-[#2B3442]/50">Aucune image.</p>
+          )}
         </div>
 
         <div className={card}>

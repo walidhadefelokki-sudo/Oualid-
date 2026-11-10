@@ -45,32 +45,26 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
 | **Service editor** | Three formulas, draft, submit, pause, resume, delete | full loop verified: draft → charge → approve → public |
 | **Client projects** | Publish free, moderated, public feed, invite-only stays private | refusal, fix, approval, and no client e-mail in the payload |
 | **Moderation** | Admin queue with age, approve, refuse with a reason and refund, decision history | refusal refunded 10 and the resubmission charged again |
+| **Service media** | Up to 8 pictures a service, the first one the cover every card already read; signature-checked, reorderable, deletable | 11 tests, plus a real upload, reorder, disguised-file refusal and delete against Supabase |
 | **Messaging** | Threads from a profile, a paid proposal or an order; per-thread and total unread; polling with `after`; contact-detail flagging with its own moderation queue | 23 tests incl. a third account refused, find-or-create from both sides, and the database-clock skew that would freeze an unread badge |
 
-### Not done, in dependency order
+### Not done
 
-1. **Proposals.** Submit, withdraw, and the client's side — compare,
-   shortlist, hire. The credit charge and the quota decision are written and
-   tested (`resolveProposalCharge`); the endpoints are not.
-2. **Orders.** Created from a package, a hired proposal or an accepted custom
-   offer. Milestones, deliveries, revisions, completion.
-3. **Messaging attachments and custom offers.** Threads themselves are done
-   (above). Attachments need the same Supabase upload path as service media,
-   below, and should land with it. Custom offers create an order from a
-   thread, so they belong with the order rules and their own tests, not with
-   the chat.
-4. **Reviews.** Only after a completed order, both directions, one public
-   reply.
-5. **Payments.** Credit packs through Chargily, which is already live on the
-   recruitment side, plus the CCP/BaridiMob receipt queue a human approves.
-   Invoices reuse the existing PDF generator.
-6. **Service media.** Uploads through the existing Supabase storage. Cards
-   currently fall back to an initial. Message attachments want the same
-   endpoint, so the two are one piece of work.
+Proposals, orders, reviews and payments are finished and tested — this list
+had not been kept up and still claimed otherwise.
+
+1. **Custom offers.** A freelancer quotes a price inside a thread and the
+   client accepts, which creates an order. The model exists (`CustomOffer`);
+   the rules belong with the order rules and want their own tests, not the
+   chat's.
+2. **Message attachments.** The upload path now exists for service media and
+   generalises to this: same bucket, same signature check, a
+   `MessageAttachment` row instead of a `ServiceMedia` one.
 
 ### Known gaps in what is done
 
-- **No image on a service.** The editor has no upload.
+- **Portfolio extras.** The PDF export, the QR code and the custom subdomain
+  the specification describes are not built.
 - **Contact flagging is a guess, deliberately.** It never blocks and never
   bans, because a tradesman quoting their own landline and someone dodging the
   fees produce the same match. The queue in Modération freelance → Messages

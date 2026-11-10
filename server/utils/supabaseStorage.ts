@@ -28,6 +28,17 @@ export const AVATAR_BUCKET =
 export const PRESENTATION_BUCKET =
   process.env.SUPABASE_PRESENTATION_BUCKET?.trim() || "presentations";
 
+/**
+ * Images on a marketplace service, and later on a message.
+ *
+ * Public, like avatars and for the same reason: these appear on every service
+ * card in every list, and a signed URL per card would turn one query into one
+ * signing round trip per row. The path carries a uuid, so a URL cannot be
+ * guessed from a service id.
+ */
+export const SERVICE_MEDIA_BUCKET =
+  process.env.SUPABASE_SERVICE_MEDIA_BUCKET?.trim() || "service-media";
+
 /** How long a generated download link stays valid. */
 export const SIGNED_URL_TTL_SECONDS = 300;
 
@@ -39,6 +50,18 @@ export const VIDEO_URL_TTL_SECONDS = 2 * 60 * 60;
 
 export const CV_MAX_BYTES = 10 * 1024 * 1024;
 export const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 5 MB a picture.
+ *
+ * Generous for a photograph of finished work off a phone, and small enough
+ * that eight of them do not make a service page unloadable on the mobile
+ * connection most of this audience browses on.
+ */
+export const SERVICE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Per service. Past this a gallery is a slideshow nobody scrolls. */
+export const SERVICE_MEDIA_MAX_COUNT = 8;
 /**
  * 50 MB, because that is Supabase's own per-file ceiling for the project.
  * A bucket cannot declare a limit above it — creating one is refused with
@@ -60,6 +83,7 @@ const BUCKETS: Record<string, BucketConfig> = {
   [CV_BUCKET]: { public: false, fileSizeLimit: CV_MAX_BYTES },
   [PRESENTATION_BUCKET]: { public: false, fileSizeLimit: VIDEO_MAX_BYTES },
   [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES },
+  [SERVICE_MEDIA_BUCKET]: { public: true, fileSizeLimit: SERVICE_MEDIA_MAX_BYTES },
 };
 
 let cachedClient: SupabaseClient | null = null;

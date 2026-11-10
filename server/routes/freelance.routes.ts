@@ -10,6 +10,7 @@ import * as portfolio from "../controllers/portfolio.controller";
 import * as payment from "../controllers/marketplacePayment.controller";
 import * as message from "../controllers/message.controller";
 import { protect } from "../middleware/auth.middleware";
+import { handleServiceMediaUpload } from "../middleware/mediaUpload.middleware";
 
 /**
  * Public marketplace reads. No `protect` here on purpose: a visitor browses
@@ -58,6 +59,17 @@ router.post("/me/services/:id/submit", protect, service.submitMyService);
 router.post("/me/services/:id/pause", protect, service.pauseMyService);
 router.post("/me/services/:id/resume", protect, service.resumeMyService);
 router.delete("/me/services/:id", protect, service.deleteMyService);
+
+/* Pictures of the work. The first one is the cover every card already reads;
+   until now nothing could put one there, so every service showed an initial. */
+router.post(
+  "/me/services/:id/media",
+  protect,
+  handleServiceMediaUpload,
+  service.addServiceMedia
+);
+router.patch("/me/services/:id/media/order", protect, service.reorderServiceMedia);
+router.delete("/me/services/:id/media/:mediaId", protect, service.removeServiceMedia);
 
 // Client projects. Free: the platform earns from freelancers, and charging
 // clients to post work would thin out the demand that makes a subscription

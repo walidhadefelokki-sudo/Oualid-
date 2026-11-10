@@ -5,6 +5,15 @@ import { AppError } from "../middleware/error.middleware";
 import publication, { ServiceValidationError } from "../services/servicePublication.service";
 import { PlanLimitError } from "../services/plans.service";
 import { InsufficientCreditsError } from "../services/credits.service";
+import { validateServiceMedia } from "../middleware/mediaUpload.middleware";
+import {
+  SERVICE_MEDIA_BUCKET,
+  SERVICE_MEDIA_MAX_COUNT,
+  buildObjectPath,
+  getPublicUrl,
+  removeObject,
+  uploadObject,
+} from "../utils/supabaseStorage";
 
 /**
  * The freelancer's own services.
@@ -101,6 +110,16 @@ export const getMyService = async (req: Request, res: Response, next: NextFuncti
           select: { id: true, prompt: true, required: true },
         },
         skills: { select: { skill: { select: { name: true } } } },
+        // The gallery, so the editor can show what is already there rather
+        // than only what is being added now.
+        media: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            position: true,
+            file: { select: { id: true, url: true, fileName: true, size: true } },
+          },
+        },
       },
     });
 
@@ -327,5 +346,222 @@ export const deleteMyService = async (req: Request, res: Response, next: NextFun
     res.json({ success: true, data: { id: service.id } });
   } catch (err) {
     next(err);
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                   media                                    */
+/* -------------------------------------------------------------------------- */
+
+/** The service, if this freelancer owns it. Scoped, never compared after. */
+const ownedService = async (serviceId: string, userId: string) => {
+  const freelancerId = await requireProfile(userId);
+
+  const service = await prisma.serviceListing.findFirst({
+    where: { id: serviceId, freelancerId },
+    select: { id: true, _count: { select: { media: true } } },
+  });
+
+  // 404 rather than 403: a service nobody told you about should not be
+  // distinguishable from one that does not exist.
+  if (!service) throw new AppError("Service introuvable.", 404);
+
+  return service;
+};
+
+/** What the editor needs back after any change to the gallery. */
+const galleryOf = (serviceId: string) =>
+  prisma.serviceMedia.findMany({
+    where: { serviceId },
+    orderBy: { position: "asc" },
+    select: {
+      id: true,
+      position: true,
+      file: { select: { id: true, url: true, fileName: true, size: true } },
+    },
+  });
+
+/**
+ * Adds pictures to a service.
+ *
+ * A marketplace selling design, photography and craft work showed every
+ * service as a coloured initial, because nothing could put an image on one.
+ * The reading side was already there — every card does
+ * `coverUrl: media[0]?.file.url` — so the first picture becomes the cover
+ * everywhere at once.
+ *
+ * Published services included: a freelancer who photographs their work after
+ * it goes live should not have to unpublish to show it.
+ */
+export const addServiceMedia = async (req: Request, res: Response, next: NextFunction) => {
+  const stored: string[] = [];
+
+  try {
+    const service = await ownedService(req.params.id, req.user!.id);
+    const images = validateServiceMedia(req.files as Express.Multer.File[] | undefined);
+
+    const room = SERVICE_MEDIA_MAX_COUNT - service._count.media;
+    if (images.length > room) {
+      return next(
+        new AppError(
+          room <= 0
+            ? `Ce service a déjà ${SERVICE_MEDIA_MAX_COUNT} images. Supprimez-en une d'abord.`
+            : `Il ne reste de la place que pour ${room} image(s).`,
+          400
+        )
+      );
+    }
+
+    /* Storage first, every file, before a single row is written: a gallery
+     * must never point at an object that was never stored. */
+    for (const image of images) {
+      stored.push(
+        await uploadObject({
+          bucket: SERVICE_MEDIA_BUCKET,
+          path: buildObjectPath(service.id, image.extension),
+          buffer: image.buffer,
+          mimeType: image.mimeType,
+        })
+      );
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Appended after what is already there, so an upload never reshuffles
+        // a cover the freelancer chose.
+        const last = await tx.serviceMedia.findFirst({
+          where: { serviceId: service.id },
+          orderBy: { position: "desc" },
+          select: { position: true },
+        });
+
+        let position = (last?.position ?? -1) + 1;
+
+        for (let i = 0; i < images.length; i += 1) {
+          const image = images[i];
+          const asset = await tx.fileAsset.create({
+            data: {
+              url: getPublicUrl(SERVICE_MEDIA_BUCKET, stored[i]),
+              provider: "supabase",
+              publicId: stored[i],
+              fileName: image.fileName,
+              mimeType: image.mimeType,
+              extension: image.extension,
+              size: image.size,
+            },
+          });
+
+          await tx.serviceMedia.create({
+            data: { serviceId: service.id, fileId: asset.id, position },
+          });
+
+          position += 1;
+        }
+      });
+    } catch (dbErr) {
+      // Written but unreferenced. Remove them rather than leave stray files
+      // nothing will ever point at or clean up.
+      await Promise.all(stored.map((path) => removeObject(SERVICE_MEDIA_BUCKET, path)));
+      throw dbErr;
+    }
+
+    res.status(201).json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};
+
+/**
+ * Removes one picture.
+ *
+ * The remaining ones are renumbered from zero, so positions stay a sequence
+ * rather than developing holes that make "first is the cover" depend on which
+ * gaps happen to exist.
+ */
+export const removeServiceMedia = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const service = await ownedService(req.params.id, req.user!.id);
+
+    const media = await prisma.serviceMedia.findFirst({
+      where: { id: req.params.mediaId, serviceId: service.id },
+      select: { id: true, file: { select: { id: true, publicId: true } } },
+    });
+
+    if (!media) return next(new AppError("Image introuvable.", 404));
+
+    await prisma.$transaction(async (tx) => {
+      await tx.serviceMedia.delete({ where: { id: media.id } });
+      // The FileAsset goes too; nothing else references a service picture.
+      await tx.fileAsset.delete({ where: { id: media.file.id } }).catch(() => undefined);
+
+      const rest = await tx.serviceMedia.findMany({
+        where: { serviceId: service.id },
+        orderBy: { position: "asc" },
+        select: { id: true },
+      });
+
+      for (let i = 0; i < rest.length; i += 1) {
+        await tx.serviceMedia.update({ where: { id: rest[i].id }, data: { position: i } });
+      }
+    });
+
+    /* After the row is gone, not before. A failed delete that had already
+     * removed the object would leave a gallery pointing at nothing. */
+    if (media.file.publicId) {
+      await removeObject(SERVICE_MEDIA_BUCKET, media.file.publicId);
+    }
+
+    res.json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+};
+
+/**
+ * Reorders the gallery.
+ *
+ * Which picture is first is the one presentation decision a freelancer gets
+ * on a card, so it is worth an endpoint rather than "delete and re-upload in
+ * the right order".
+ *
+ * The whole order is sent, not a move: a list of ids is unambiguous, where
+ * "move index 2 to 0" has to be applied against the exact state the client
+ * last saw.
+ */
+export const reorderServiceMedia = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const service = await ownedService(req.params.id, req.user!.id);
+    const { order } = req.body as { order?: unknown };
+
+    if (!Array.isArray(order) || order.some((id) => typeof id !== "string")) {
+      return next(new AppError("Envoyez « order » : la liste des identifiants.", 400));
+    }
+
+    const current = await prisma.serviceMedia.findMany({
+      where: { serviceId: service.id },
+      select: { id: true },
+    });
+
+    const known = new Set(current.map((m) => m.id));
+    const asked = [...new Set(order as string[])];
+
+    /* Every picture, exactly once. A partial list would leave the rest at
+     * positions that no longer mean anything, and an id from another service
+     * would be a way to learn whether it exists. */
+    if (asked.length !== known.size || asked.some((id) => !known.has(id))) {
+      return next(
+        new AppError("La liste doit contenir toutes les images de ce service, une fois chacune.", 400)
+      );
+    }
+
+    await prisma.$transaction(
+      asked.map((id, position) =>
+        prisma.serviceMedia.update({ where: { id }, data: { position } })
+      )
+    );
+
+    res.json({ success: true, data: { media: await galleryOf(service.id) } });
+  } catch (err) {
+    next(asHttpError(err));
   }
 };

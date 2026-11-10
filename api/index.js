@@ -2986,6 +2986,7 @@ var getJob = async (req, res, next) => {
     if (!job) {
       return next(new AppError("Job not found", 404));
     }
+    res.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=600");
     res.status(200).json({
       status: "success",
       data: { job }
@@ -11290,6 +11291,35 @@ var getAllJobsAdmin = async (req, res, next) => {
     next(err);
   }
 };
+var getJobApplicationsAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const job = await prisma_default.job.findUnique({ where: { id }, select: { id: true } });
+    if (!job) return next(new AppError("Offre introuvable.", 404));
+    const applications = await prisma_default.application.findMany({
+      where: { jobId: id },
+      orderBy: { appliedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        appliedAt: true,
+        finalScore: true,
+        candidate: {
+          select: {
+            id: true,
+            headline: true,
+            wilaya: true,
+            resumeId: true,
+            user: { select: { firstName: true, lastName: true, email: true, phone: true } }
+          }
+        }
+      }
+    });
+    res.status(200).json({ status: "success", results: applications.length, data: { applications } });
+  } catch (err) {
+    next(err);
+  }
+};
 var JOB_STATUSES = ["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"];
 var updateJobAdmin = async (req, res, next) => {
   try {
@@ -13190,6 +13220,7 @@ router7.get("/access/scopes", requireSuperAdmin, listAdminScopes);
 router7.patch("/access/:id", requireSuperAdmin, updateAdminAccess);
 router7.patch("/access/:id/password", requireSuperAdmin, resetAdminPassword);
 router7.get("/jobs", scope("jobs"), getAllJobsAdmin);
+router7.get("/jobs/:id/applications", scope("jobs"), getJobApplicationsAdmin);
 router7.patch("/jobs/:id", scope("jobs"), updateJobAdmin);
 router7.delete("/jobs/:id", scope("jobs"), deleteJobAdmin);
 router7.get("/schedules", scope("schedules"), listSchedules);

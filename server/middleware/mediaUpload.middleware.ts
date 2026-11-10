@@ -3,6 +3,8 @@ import multer from "multer";
 import { AppError } from "./error.middleware";
 import {
   AVATAR_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_COUNT,
   SERVICE_MEDIA_MAX_BYTES,
   SERVICE_MEDIA_MAX_COUNT,
   VIDEO_MAX_BYTES,
@@ -303,6 +305,121 @@ export const validateServiceMedia = (
       buffer: file.buffer,
       extension,
       mimeType: AVATAR_MIME_TYPES[typed],
+      fileName: file.originalname,
+      size: file.buffer.length,
+    };
+  });
+};
+
+/* -------------------------------------------------------------------------- */
+/*                            message attachments                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What can be sent in a conversation.
+ *
+ * Images and PDFs, which is what a brief, a mockup and a quote actually are.
+ * Not an open file type: a thread is the one place on this platform where one
+ * person hands another a file directly, and "anything" there is a way to pass
+ * something executable to somebody who has reason to trust the sender.
+ */
+export const ATTACHMENT_EXTENSIONS = [
+  ...AVATAR_EXTENSIONS,
+  "pdf",
+] as const;
+
+export type AttachmentExtension = (typeof ATTACHMENT_EXTENSIONS)[number];
+
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MESSAGE_ATTACHMENT_MAX_BYTES,
+    files: MESSAGE_ATTACHMENT_MAX_COUNT,
+  },
+}).array("attachments", MESSAGE_ATTACHMENT_MAX_COUNT);
+
+/**
+ * Parses an attachment upload when there is one.
+ *
+ * Multer ignores a request that is not multipart, so this sits on the
+ * send-message route without disturbing the JSON path every text message
+ * still uses.
+ */
+export const handleMessageAttachments = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  attachmentUpload(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError("Chaque fichier doit faire moins de 10 Mo.", 400));
+      }
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+        return next(
+          new AppError(
+            `${MESSAGE_ATTACHMENT_MAX_COUNT} fichiers au maximum par message.`,
+            400
+          )
+        );
+      }
+      return next(new AppError(`Envoi impossible : ${err.message}`, 400));
+    }
+    if (err) return next(err);
+    next();
+  });
+};
+
+/** %PDF- at the very start. A PDF that does not say so is not one. */
+const hasPdfSignature = (buffer: Buffer): boolean =>
+  buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+
+/**
+ * Checks every attachment, refusing the whole message if one is wrong.
+ *
+ * Same reasoning as a service gallery: a message that arrived with three of
+ * its five files leaves the sender unsure what the other person got.
+ */
+export const validateMessageAttachments = (
+  files: Express.Multer.File[] | undefined
+): ValidatedMedia[] => {
+  if (!files || files.length === 0) return [];
+
+  return files.map((file, index) => {
+    const where = files.length > 1 ? ` (fichier ${index + 1})` : "";
+
+    if (file.buffer.length === 0) {
+      throw new AppError(`Ce fichier est vide${where}.`, 400);
+    }
+
+    const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+    if (!(ATTACHMENT_EXTENSIONS as readonly string[]).includes(extension)) {
+      throw new AppError(
+        `Seules les images et les PDF peuvent être envoyés${where}.`,
+        400
+      );
+    }
+
+    /* The bytes decide, not the name. The extension and the declared MIME
+     * type both come from the sender, and this is the one place on the
+     * platform where a file passes directly to somebody with reason to trust
+     * whoever sent it. */
+    const isPdf = extension === "pdf";
+    const valid = isPdf
+      ? hasPdfSignature(file.buffer)
+      : hasImageSignature(file.buffer, extension as AvatarExtension);
+
+    if (!valid) {
+      throw new AppError(
+        `Ce fichier ne correspond pas à son extension${where}.`,
+        400
+      );
+    }
+
+    return {
+      buffer: file.buffer,
+      extension,
+      mimeType: isPdf ? "application/pdf" : AVATAR_MIME_TYPES[extension as AvatarExtension],
       fileName: file.originalname,
       size: file.buffer.length,
     };

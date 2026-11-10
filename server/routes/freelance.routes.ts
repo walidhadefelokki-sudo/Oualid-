@@ -11,7 +11,10 @@ import * as payment from "../controllers/marketplacePayment.controller";
 import * as message from "../controllers/message.controller";
 import * as customOffer from "../controllers/customOffer.controller";
 import { protect } from "../middleware/auth.middleware";
-import { handleServiceMediaUpload } from "../middleware/mediaUpload.middleware";
+import {
+  handleMessageAttachments,
+  handleServiceMediaUpload,
+} from "../middleware/mediaUpload.middleware";
 
 /**
  * Public marketplace reads. No `protect` here on purpose: a visitor browses
@@ -128,7 +131,14 @@ router.post("/me/conversations", protect, message.openConversation);
 router.get("/me/conversations", protect, message.listConversations);
 router.get("/me/conversations/unread", protect, message.getUnreadCount);
 router.get("/me/conversations/:id", protect, message.getConversation);
-router.post("/me/conversations/:id/messages", protect, message.sendMessage);
+/* The upload middleware ignores a JSON request, so the text-only path is
+   untouched and a message with files takes the same route. */
+router.post(
+  "/me/conversations/:id/messages",
+  protect,
+  handleMessageAttachments,
+  message.sendMessage
+);
 router.post("/me/conversations/:id/read", protect, message.markConversationRead);
 
 /* Offers quoted inside a thread.

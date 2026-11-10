@@ -214,3 +214,64 @@ describe("the gallery", () => {
     expect(await prisma.serviceMedia.count({ where: { serviceId } })).toBe(0);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/*                            message attachments                             */
+/* -------------------------------------------------------------------------- */
+
+const { validateMessageAttachments } = await import("../middleware/mediaUpload.middleware");
+
+/** A real PDF header. A PDF that does not say %PDF- is not one. */
+const PDF = Buffer.concat([Buffer.from("%PDF-1.7\n", "latin1"), Buffer.alloc(32, 0)]);
+
+describe("validateMessageAttachments", () => {
+  it("accepts an image and a PDF, which is what a brief and a mockup are", () => {
+    const files = validateMessageAttachments([
+      asFile("maquette.png", PNG),
+      asFile("brief.pdf", PDF),
+    ]);
+
+    expect(files.map((f) => f.mimeType)).toEqual(["image/png", "application/pdf"]);
+  });
+
+  it("refuses anything else", () => {
+    // A thread is the one place somebody hands a file straight to a person
+    // with reason to trust them; "anything" there is a way to pass something
+    // executable.
+    expect(() => validateMessageAttachments([asFile("script.exe", PDF)])).toThrow(
+      /images et les PDF/
+    );
+    expect(() => validateMessageAttachments([asFile("archive.zip", PDF)])).toThrow(
+      /images et les PDF/
+    );
+  });
+
+  it("refuses a file whose bytes do not match its extension", () => {
+    expect(() => validateMessageAttachments([asFile("brief.pdf", PNG)])).toThrow(
+      /ne correspond pas/
+    );
+    expect(() =>
+      validateMessageAttachments([asFile("photo.png", Buffer.from("MZ executable"))])
+    ).toThrow(/ne correspond pas/);
+  });
+
+  it("refuses the whole message when one file is wrong", () => {
+    // A message that arrived with three of its five files leaves the sender
+    // unsure what the other person actually got.
+    expect(() =>
+      validateMessageAttachments([asFile("ok.png", PNG), asFile("faux.pdf", PNG)])
+    ).toThrow(/fichier 2/);
+  });
+
+  it("treats no attachment as a plain message rather than an error", () => {
+    // Every text message goes through this path.
+    expect(validateMessageAttachments(undefined)).toEqual([]);
+    expect(validateMessageAttachments([])).toEqual([]);
+  });
+
+  it("refuses an empty file", () => {
+    expect(() => validateMessageAttachments([asFile("vide.pdf", Buffer.alloc(0))])).toThrow(
+      /vide/
+    );
+  });
+});

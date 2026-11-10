@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../middleware/error.middleware";
+import prisma from "../utils/prisma";
 import messaging, { MessagingError } from "../services/messaging.service";
+import { validateMessageAttachments } from "../middleware/mediaUpload.middleware";
+import {
+  MESSAGE_ATTACHMENT_BUCKET,
+  buildObjectPath,
+  removeObject,
+  uploadObject,
+} from "../utils/supabaseStorage";
 
 /**
  * Conversations and messages.
@@ -80,11 +88,71 @@ export const getConversation = async (req: Request, res: Response, next: NextFun
   }
 };
 
+/**
+ * Sends a message, with files when there are any.
+ *
+ * One request rather than upload-then-send: a two-step flow leaves orphaned
+ * files behind every time somebody attaches something and then changes their
+ * mind, and nothing would ever collect them.
+ *
+ * Multer leaves a JSON request alone, so the text-only path every message
+ * still uses is untouched.
+ */
 export const sendMessage = async (req: Request, res: Response, next: NextFunction) => {
+  const stored: string[] = [];
+
   try {
     const { body } = req.body as { body?: string };
-    const message = await messaging.send(req.params.id, req.user!.id, String(body ?? ""));
-    res.status(201).json({ success: true, data: { message } });
+    const files = validateMessageAttachments(req.files as Express.Multer.File[] | undefined);
+
+    /* Checked before a single byte is stored. Without this, attaching a file
+     * to a thread you are not in would upload it first and refuse afterwards,
+     * leaving the object behind. */
+    if (files.length) await messaging.assertParticipant(req.params.id, req.user!.id);
+
+    const fileIds: string[] = [];
+
+    for (const file of files) {
+      const path = await uploadObject({
+        bucket: MESSAGE_ATTACHMENT_BUCKET,
+        path: buildObjectPath(req.user!.id, file.extension),
+        buffer: file.buffer,
+        mimeType: file.mimeType,
+      });
+      stored.push(path);
+
+      const asset = await prisma.fileAsset.create({
+        data: {
+          // The path, not a URL: this bucket is private and every read is
+          // signed, so a stored link would be one that stopped working.
+          url: path,
+          provider: "supabase",
+          publicId: path,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          extension: file.extension,
+          size: file.size,
+        },
+        select: { id: true },
+      });
+
+      fileIds.push(asset.id);
+    }
+
+    try {
+      const message = await messaging.send(
+        req.params.id,
+        req.user!.id,
+        String(body ?? ""),
+        fileIds
+      );
+      res.status(201).json({ success: true, data: { message } });
+    } catch (sendErr) {
+      // Stored but attached to nothing. Remove them rather than leave files
+      // no row points at.
+      await Promise.all(stored.map((path) => removeObject(MESSAGE_ATTACHMENT_BUCKET, path)));
+      throw sendErr;
+    }
   } catch (err) {
     next(asHttpError(err));
   }

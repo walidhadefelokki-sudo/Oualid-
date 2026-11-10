@@ -16,11 +16,22 @@ export interface Peer {
 
 export interface Attachment {
   id: string;
-  url: string;
+  /**
+   * A short-lived signed link, since the bucket is private.
+   *
+   * Null when signing failed. A conversation whose files are briefly
+   * unavailable is still a conversation, so the read returns the message
+   * rather than failing — the UI shows the name without a link.
+   */
+  url: string | null;
   fileName: string | null;
   mimeType: string | null;
   size: number | null;
 }
+
+/** Images and PDFs; see the validator for why not anything. */
+export const ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,application/pdf";
+export const MAX_ATTACHMENTS = 5;
 
 export interface ChatMessage {
   id: string;
@@ -83,8 +94,26 @@ const messaging = {
     return data.data;
   },
 
-  send: async (id: string, body: string): Promise<ChatMessage> => {
-    const { data } = await api.post(`/freelance/me/conversations/${id}/messages`, { body });
+  /**
+   * Sends a message, with files when there are any.
+   *
+   * One request either way. Uploading first and sending second would leave a
+   * file behind every time somebody attaches something and then changes their
+   * mind, and nothing would collect it.
+   */
+  send: async (id: string, body: string, files: File[] = []): Promise<ChatMessage> => {
+    const path = `/freelance/me/conversations/${id}/messages`;
+
+    if (files.length === 0) {
+      const { data } = await api.post(path, { body });
+      return data.data.message;
+    }
+
+    const form = new FormData();
+    form.append("body", body);
+    for (const file of files) form.append("attachments", file);
+
+    const { data } = await api.post(path, form);
     return data.data.message;
   },
 

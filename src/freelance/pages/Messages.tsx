@@ -1,7 +1,25 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Loader2, MessageSquare, Send, ShoppingBag } from "lucide-react";
-import messaging, { ChatMessage, Peer, Thread } from "../messaging";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  FileText,
+  ImageIcon,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+  Send,
+  ShoppingBag,
+  X,
+} from "lucide-react";
+import messaging, {
+  ATTACHMENT_ACCEPT,
+  Attachment,
+  ChatMessage,
+  MAX_ATTACHMENTS,
+  Peer,
+  Thread,
+} from "../messaging";
 import { useAuth } from "../auth";
 import { EmptyState, ErrorState, Loading } from "../ui";
 import { useI18n } from "../i18n";
@@ -139,6 +157,67 @@ const ThreadList: React.FC<{ activeId?: string }> = ({ activeId }) => {
   );
 };
 
+/** Readable size, so "is this worth opening on data" has an answer. */
+const weigh = (bytes: number | null) => {
+  if (!bytes) return "";
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+    : `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+};
+
+/**
+ * One file in a message.
+ *
+ * An image is shown; anything else is a line with its name. A thumbnail of a
+ * PDF would be a grey rectangle, and the name is what tells somebody whether
+ * it is the brief they were waiting for.
+ */
+const AttachmentView: React.FC<{ file: Attachment; mine: boolean }> = ({ file, mine }) => {
+  const isImage = (file.mimeType ?? "").startsWith("image/");
+
+  // Signing failed. The name still tells them something arrived, which beats
+  // a broken link or nothing at all.
+  if (!file.url) {
+    return (
+      <p
+        className={`mt-1.5 inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs ${
+          mine ? "bg-white/15 text-white/80" : "bg-[#173E7D]/8 text-[#2B3442]/70"
+        }`}
+      >
+        <FileText size={13} /> {file.fileName ?? "Fichier"} — lien indisponible
+      </p>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <a href={file.url} target="_blank" rel="noopener noreferrer" className="mt-1.5 block">
+        <img
+          src={file.url}
+          alt={file.fileName ?? ""}
+          loading="lazy"
+          className="max-h-56 w-auto rounded-xl border border-black/10 object-cover"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={file.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mt-1.5 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${
+        mine ? "bg-white/15 text-white hover:bg-white/25" : "bg-[#173E7D]/8 text-[#173E7D] hover:bg-[#173E7D]/15"
+      }`}
+    >
+      <FileText size={14} className="shrink-0" />
+      <span className="min-w-0 break-all">{file.fileName ?? "Fichier"}</span>
+      <span className="opacity-60 shrink-0">{weigh(file.size)}</span>
+    </a>
+  );
+};
+
 /* -------------------------------------------------------------------------- */
 /*                                 One thread                                 */
 /* -------------------------------------------------------------------------- */
@@ -153,6 +232,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
   const [failed, setFailed] = useState<string | null>(null);
 
   const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
 
   const bottom = useRef<HTMLDivElement>(null);
@@ -222,13 +302,15 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const body = draft.trim();
-    if (!body || sending) return;
+    // A message may be files alone: "here is the brief" needs no sentence.
+    if ((!body && files.length === 0) || sending) return;
 
     setSending(true);
     try {
-      const sent = await messaging.send(id, body);
+      const sent = await messaging.send(id, body, files);
       merge([sent]);
       setDraft("");
+      setFiles([]);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       setFailed(e?.response?.data?.message ?? t("common.error"));
@@ -311,6 +393,9 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
                   }`}
                 >
                   {m.body}
+                  {m.attachments?.map((file) => (
+                    <AttachmentView key={file.id} file={file} mine={m.mine} />
+                  ))}
                 </div>
 
                 <p
@@ -339,7 +424,52 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
         <p className="px-4 pb-2 text-[12px] font-semibold text-red-600">{failed}</p>
       )}
 
+      {/* Chosen but not sent. Shown so nobody wonders whether the file
+          attached, and removable without clearing the message. */}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pt-3 shrink-0">
+          {files.map((file, i) => (
+            <span
+              key={`${file.name}-${i}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#173E7D]/8 px-3 py-1.5 text-xs text-[#173E7D]"
+            >
+              {file.type.startsWith("image/") ? <ImageIcon size={12} /> : <FileText size={12} />}
+              <span className="max-w-[12rem] truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => setFiles((prev) => prev.filter((_, n) => n !== i))}
+                aria-label={`Retirer ${file.name}`}
+                className="opacity-60 hover:opacity-100"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <form onSubmit={submit} className="flex items-end gap-2 p-3 border-t border-[#173E7D]/10 shrink-0">
+        <label
+          className={`shrink-0 w-11 h-11 grid place-items-center rounded-xl border-2 border-[#173E7D]/15 text-[#173E7D]/60 hover:text-[#173E7D] cursor-pointer ${
+            files.length >= MAX_ATTACHMENTS ? "opacity-40 pointer-events-none" : ""
+          }`}
+          title={`Joindre un fichier (${MAX_ATTACHMENTS} maximum)`}
+        >
+          <Paperclip size={17} />
+          <input
+            type="file"
+            accept={ATTACHMENT_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? []);
+              // Trimmed here as well as refused there, so picking ten is not
+              // how somebody discovers the limit.
+              setFiles((prev) => [...prev, ...picked].slice(0, MAX_ATTACHMENTS));
+              e.target.value = "";
+            }}
+          />
+        </label>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -358,7 +488,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
         />
         <button
           type="submit"
-          disabled={sending || !draft.trim()}
+          disabled={sending || (!draft.trim() && files.length === 0)}
           aria-label={t("msg.send")}
           className="shrink-0 w-11 h-11 grid place-items-center rounded-xl bg-[#173E7D] text-white disabled:opacity-40"
         >

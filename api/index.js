@@ -1337,18 +1337,25 @@ var CV_BUCKET = process.env.SUPABASE_CV_BUCKET?.trim() || "cvs";
 var AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET?.trim() || "avatars";
 var PRESENTATION_BUCKET = process.env.SUPABASE_PRESENTATION_BUCKET?.trim() || "presentations";
 var SERVICE_MEDIA_BUCKET = process.env.SUPABASE_SERVICE_MEDIA_BUCKET?.trim() || "service-media";
+var MESSAGE_ATTACHMENT_BUCKET = process.env.SUPABASE_MESSAGE_BUCKET?.trim() || "message-attachments";
 var SIGNED_URL_TTL_SECONDS = 300;
 var VIDEO_URL_TTL_SECONDS = 2 * 60 * 60;
 var CV_MAX_BYTES = 10 * 1024 * 1024;
 var AVATAR_MAX_BYTES = 4 * 1024 * 1024;
 var SERVICE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
 var SERVICE_MEDIA_MAX_COUNT = 8;
+var MESSAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+var MESSAGE_ATTACHMENT_MAX_COUNT = 5;
 var VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 var BUCKETS = {
   [CV_BUCKET]: { public: false, fileSizeLimit: CV_MAX_BYTES },
   [PRESENTATION_BUCKET]: { public: false, fileSizeLimit: VIDEO_MAX_BYTES },
   [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES },
-  [SERVICE_MEDIA_BUCKET]: { public: true, fileSizeLimit: SERVICE_MEDIA_MAX_BYTES }
+  [SERVICE_MEDIA_BUCKET]: { public: true, fileSizeLimit: SERVICE_MEDIA_MAX_BYTES },
+  [MESSAGE_ATTACHMENT_BUCKET]: {
+    public: false,
+    fileSizeLimit: MESSAGE_ATTACHMENT_MAX_BYTES
+  }
 };
 var cachedClient = null;
 var getClient = () => {
@@ -1678,6 +1685,69 @@ var validateServiceMedia = (files) => {
       buffer: file.buffer,
       extension,
       mimeType: AVATAR_MIME_TYPES[typed],
+      fileName: file.originalname,
+      size: file.buffer.length
+    };
+  });
+};
+var ATTACHMENT_EXTENSIONS = [
+  ...AVATAR_EXTENSIONS,
+  "pdf"
+];
+var attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MESSAGE_ATTACHMENT_MAX_BYTES,
+    files: MESSAGE_ATTACHMENT_MAX_COUNT
+  }
+}).array("attachments", MESSAGE_ATTACHMENT_MAX_COUNT);
+var handleMessageAttachments = (req, res, next) => {
+  attachmentUpload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError("Chaque fichier doit faire moins de 10 Mo.", 400));
+      }
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+        return next(
+          new AppError(
+            `${MESSAGE_ATTACHMENT_MAX_COUNT} fichiers au maximum par message.`,
+            400
+          )
+        );
+      }
+      return next(new AppError(`Envoi impossible : ${err.message}`, 400));
+    }
+    if (err) return next(err);
+    next();
+  });
+};
+var hasPdfSignature = (buffer) => buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+var validateMessageAttachments = (files) => {
+  if (!files || files.length === 0) return [];
+  return files.map((file, index) => {
+    const where = files.length > 1 ? ` (fichier ${index + 1})` : "";
+    if (file.buffer.length === 0) {
+      throw new AppError(`Ce fichier est vide${where}.`, 400);
+    }
+    const extension = file.originalname.split(".").pop()?.toLowerCase() ?? "";
+    if (!ATTACHMENT_EXTENSIONS.includes(extension)) {
+      throw new AppError(
+        `Seules les images et les PDF peuvent \xEAtre envoy\xE9s${where}.`,
+        400
+      );
+    }
+    const isPdf = extension === "pdf";
+    const valid = isPdf ? hasPdfSignature(file.buffer) : hasImageSignature(file.buffer, extension);
+    if (!valid) {
+      throw new AppError(
+        `Ce fichier ne correspond pas \xE0 son extension${where}.`,
+        400
+      );
+    }
+    return {
+      buffer: file.buffer,
+      extension,
+      mimeType: isPdf ? "application/pdf" : AVATAR_MIME_TYPES[extension],
       fileName: file.originalname,
       size: file.buffer.length
     };
@@ -6970,6 +7040,9 @@ var rejectReceipt = async (req, res, next) => {
   }
 };
 
+// server/controllers/message.controller.ts
+init_prisma();
+
 // server/services/messaging.service.ts
 init_prisma();
 var MessagingError = class extends Error {
@@ -7012,6 +7085,15 @@ var contactFlags = (body) => {
   }
   return [...found];
 };
+var signAttachments = async (messages) => {
+  const paths = messages.flatMap((m) => m.attachments.map((a) => a.url)).filter(Boolean);
+  if (!paths.length) return messages;
+  const signed = await createSignedUrls(MESSAGE_ATTACHMENT_BUCKET, [...new Set(paths)]);
+  return messages.map((m) => ({
+    ...m,
+    attachments: m.attachments.map((a) => ({ ...a, url: signed.get(a.url) ?? null }))
+  }));
+};
 var participantIn = async (conversationId, userId) => {
   const conversation = await prisma_default.conversation.findUnique({
     where: { id: conversationId },
@@ -7025,6 +7107,9 @@ var participantIn = async (conversationId, userId) => {
     throw new MessagingError("Conversation introuvable.", 404);
   }
   return conversation;
+};
+var assertParticipant = async (conversationId, userId) => {
+  await participantIn(conversationId, userId);
 };
 var openWith = async (userId, otherUserId, orderId) => {
   if (userId === otherUserId) {
@@ -7228,17 +7313,19 @@ var threadFor = async (conversationId, userId, options = {}) => {
       orderId: conversation.orderId,
       with: other ? { id: other.id, name: nameOf(other), username: other.freelancerProfile?.username ?? null } : null
     },
-    messages: messages.map((m) => ({
-      id: m.id,
-      body: m.body,
-      mine: m.senderId === userId,
-      createdAt: m.createdAt,
-      /* The sender is told their own message was flagged; the recipient is
-       * not. Hiding it from the sender would be a shadow-ban, and showing it
-       * to the recipient would turn a guess into an accusation. */
-      flagged: m.senderId === userId ? m.flagged : false,
-      attachments: m.attachments.map((a) => a.file)
-    }))
+    messages: await signAttachments(
+      messages.map((m) => ({
+        id: m.id,
+        body: m.body,
+        mine: m.senderId === userId,
+        createdAt: m.createdAt,
+        /* The sender is told their own message was flagged; the recipient is
+         * not. Hiding it from the sender would be a shadow-ban, and showing it
+         * to the recipient would turn a guess into an accusation. */
+        flagged: m.senderId === userId ? m.flagged : false,
+        attachments: m.attachments.map((a) => a.file)
+      }))
+    )
   };
 };
 var send = async (conversationId, userId, body, fileIds = []) => {
@@ -7294,6 +7381,7 @@ var markRead = async (conversationId, userId) => {
 var messaging_service_default = {
   MessagingError,
   contactFlags,
+  assertParticipant,
   openWith,
   userBehindUsername,
   clientBehindProject,
@@ -7352,10 +7440,48 @@ var getConversation = async (req, res, next) => {
   }
 };
 var sendMessage = async (req, res, next) => {
+  const stored = [];
   try {
     const { body } = req.body;
-    const message = await messaging_service_default.send(req.params.id, req.user.id, String(body ?? ""));
-    res.status(201).json({ success: true, data: { message } });
+    const files = validateMessageAttachments(req.files);
+    if (files.length) await messaging_service_default.assertParticipant(req.params.id, req.user.id);
+    const fileIds = [];
+    for (const file of files) {
+      const path = await uploadObject({
+        bucket: MESSAGE_ATTACHMENT_BUCKET,
+        path: buildObjectPath(req.user.id, file.extension),
+        buffer: file.buffer,
+        mimeType: file.mimeType
+      });
+      stored.push(path);
+      const asset = await prisma_default.fileAsset.create({
+        data: {
+          // The path, not a URL: this bucket is private and every read is
+          // signed, so a stored link would be one that stopped working.
+          url: path,
+          provider: "supabase",
+          publicId: path,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          extension: file.extension,
+          size: file.size
+        },
+        select: { id: true }
+      });
+      fileIds.push(asset.id);
+    }
+    try {
+      const message = await messaging_service_default.send(
+        req.params.id,
+        req.user.id,
+        String(body ?? ""),
+        fileIds
+      );
+      res.status(201).json({ success: true, data: { message } });
+    } catch (sendErr) {
+      await Promise.all(stored.map((path) => removeObject(MESSAGE_ATTACHMENT_BUCKET, path)));
+      throw sendErr;
+    }
   } catch (err) {
     next(asHttpError7(err));
   }
@@ -7741,7 +7867,12 @@ router4.post("/me/conversations", protect, openConversation);
 router4.get("/me/conversations", protect, listConversations);
 router4.get("/me/conversations/unread", protect, getUnreadCount);
 router4.get("/me/conversations/:id", protect, getConversation);
-router4.post("/me/conversations/:id/messages", protect, sendMessage);
+router4.post(
+  "/me/conversations/:id/messages",
+  protect,
+  handleMessageAttachments,
+  sendMessage
+);
 router4.post("/me/conversations/:id/read", protect, markConversationRead);
 router4.get("/me/conversations/:id/offers", protect, listOffers);
 router4.post("/me/conversations/:id/offers", protect, sendOffer);

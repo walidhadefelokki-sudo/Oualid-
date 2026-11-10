@@ -1,4 +1,8 @@
 import prisma from "../utils/prisma";
+import {
+  MESSAGE_ATTACHMENT_BUCKET,
+  createSignedUrls,
+} from "../utils/supabaseStorage";
 
 /**
  * Conversations between a client and a freelancer.
@@ -85,6 +89,33 @@ export const contactFlags = (body: string): string[] => {
 /*                                  Threads                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Signs a thread's attachments.
+ *
+ * The bucket is private, so what is stored on a FileAsset is the object path
+ * rather than a URL. Signed in one batch: a message with five files in a
+ * thread of forty would otherwise be two hundred round trips.
+ *
+ * A path that cannot be signed comes back null rather than failing the read.
+ * A conversation whose files are briefly unavailable is still a conversation;
+ * refusing to show it would lose the text as well.
+ */
+const signAttachments = async <
+  T extends { attachments: Array<{ id: string; url: string }> },
+>(
+  messages: T[]
+): Promise<T[]> => {
+  const paths = messages.flatMap((m) => m.attachments.map((a) => a.url)).filter(Boolean);
+  if (!paths.length) return messages;
+
+  const signed = await createSignedUrls(MESSAGE_ATTACHMENT_BUCKET, [...new Set(paths)]);
+
+  return messages.map((m) => ({
+    ...m,
+    attachments: m.attachments.map((a) => ({ ...a, url: signed.get(a.url) ?? null })),
+  })) as T[];
+};
+
 /** The thread, if this account is in it. */
 const participantIn = async (conversationId: string, userId: string) => {
   const conversation = await prisma.conversation.findUnique({
@@ -116,6 +147,11 @@ const participantIn = async (conversationId: string, userId: string) => {
  * unique, so that one is found by the order and kept apart from the general
  * one, which is what makes an order's history readable on its own.
  */
+/** Throws unless this account is in the thread. Used before an upload. */
+export const assertParticipant = async (conversationId: string, userId: string) => {
+  await participantIn(conversationId, userId);
+};
+
 export const openWith = async (userId: string, otherUserId: string, orderId?: string) => {
   if (userId === otherUserId) {
     throw new MessagingError("Vous ne pouvez pas vous écrire à vous-même.", 400);
@@ -424,7 +460,8 @@ export const threadFor = async (
         ? { id: other.id, name: nameOf(other), username: other.freelancerProfile?.username ?? null }
         : null,
     },
-    messages: messages.map((m) => ({
+    messages: await signAttachments(
+      messages.map((m) => ({
       id: m.id,
       body: m.body,
       mine: m.senderId === userId,
@@ -434,7 +471,8 @@ export const threadFor = async (
        * to the recipient would turn a guess into an accusation. */
       flagged: m.senderId === userId ? m.flagged : false,
       attachments: m.attachments.map((a) => a.file),
-    })),
+      }))
+    ),
   };
 };
 
@@ -523,6 +561,7 @@ export const markRead = async (conversationId: string, userId: string) => {
 export default {
   MessagingError,
   contactFlags,
+  assertParticipant,
   openWith,
   userBehindUsername,
   clientBehindProject,

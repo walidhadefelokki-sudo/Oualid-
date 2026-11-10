@@ -39,6 +39,20 @@ export const PRESENTATION_BUCKET =
 export const SERVICE_MEDIA_BUCKET =
   process.env.SUPABASE_SERVICE_MEDIA_BUCKET?.trim() || "service-media";
 
+/**
+ * Files sent inside a conversation.
+ *
+ * Private, unlike service media, and the difference is the point. A service
+ * picture is advertising — it is meant to be seen by everyone, and signing it
+ * per card would turn one query into a round trip per row. A file in a thread
+ * is a brief, a mockup or an invoice between two people, and a permanent URL
+ * for one survives being forwarded, pasted or indexed long after the
+ * conversation ends. A thread shows a handful of messages rather than
+ * hundreds of rows, so signing them on read costs little.
+ */
+export const MESSAGE_ATTACHMENT_BUCKET =
+  process.env.SUPABASE_MESSAGE_BUCKET?.trim() || "message-attachments";
+
 /** How long a generated download link stays valid. */
 export const SIGNED_URL_TTL_SECONDS = 300;
 
@@ -62,6 +76,16 @@ export const SERVICE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
 
 /** Per service. Past this a gallery is a slideshow nobody scrolls. */
 export const SERVICE_MEDIA_MAX_COUNT = 8;
+
+/**
+ * 10 MB a file, five a message.
+ *
+ * Larger than a service picture because a brief is often a PDF and a mockup
+ * is often a full-resolution export — the things people actually need to send
+ * about a job.
+ */
+export const MESSAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_COUNT = 5;
 /**
  * 50 MB, because that is Supabase's own per-file ceiling for the project.
  * A bucket cannot declare a limit above it — creating one is refused with
@@ -84,6 +108,10 @@ const BUCKETS: Record<string, BucketConfig> = {
   [PRESENTATION_BUCKET]: { public: false, fileSizeLimit: VIDEO_MAX_BYTES },
   [AVATAR_BUCKET]: { public: true, fileSizeLimit: AVATAR_MAX_BYTES },
   [SERVICE_MEDIA_BUCKET]: { public: true, fileSizeLimit: SERVICE_MEDIA_MAX_BYTES },
+  [MESSAGE_ATTACHMENT_BUCKET]: {
+    public: false,
+    fileSizeLimit: MESSAGE_ATTACHMENT_MAX_BYTES,
+  },
 };
 
 let cachedClient: SupabaseClient | null = null;

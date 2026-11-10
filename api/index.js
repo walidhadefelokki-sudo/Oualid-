@@ -1109,11 +1109,11 @@ var sendCorporateEnquiryAck = async (enquiry) => {
     { from: FROM_INFO, text }
   );
 };
-var deliverEmail = async (label, send2, timeoutMs = 8e3) => {
+var deliverEmail = async (label, send3, timeoutMs = 8e3) => {
   let timer;
   try {
     await Promise.race([
-      send2(),
+      send3(),
       new Promise((_, reject2) => {
         timer = setTimeout(() => reject2(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
       })
@@ -7369,6 +7369,304 @@ var markConversationRead = async (req, res, next) => {
   }
 };
 
+// server/services/customOffer.service.ts
+init_prisma();
+import { FreelanceOrderStatus as FreelanceOrderStatus2 } from "@prisma/client";
+var CustomOfferError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+    this.name = "CustomOfferError";
+  }
+};
+var MAX_DELIVERY_DAYS = 365;
+var MAX_REVISIONS = 20;
+var MIN_PRICE = 500;
+var MAX_PRICE = 1e7;
+var DEFAULT_VALID_DAYS = 7;
+var OFFER_SELECT = {
+  id: true,
+  conversationId: true,
+  title: true,
+  description: true,
+  price: true,
+  deliveryDays: true,
+  revisions: true,
+  status: true,
+  expiresAt: true,
+  respondedAt: true,
+  orderId: true,
+  createdAt: true,
+  freelancer: { select: { id: true, username: true, displayName: true } },
+  client: { select: { id: true, firstName: true, lastName: true, email: true } },
+  order: { select: { id: true, reference: true, status: true } }
+};
+var effectiveStatus = (offer) => offer.status === "SENT" && offer.expiresAt && offer.expiresAt.getTime() < Date.now() ? "EXPIRED" : offer.status;
+var shape = (offer) => ({
+  ...offer,
+  price: Number(offer.price),
+  status: effectiveStatus(offer)
+});
+var sidesOf = async (conversationId, userId) => {
+  const conversation = await prisma_default.conversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      id: true,
+      participants: {
+        select: {
+          userId: true,
+          user: {
+            select: { id: true, freelancerProfile: { select: { id: true } } }
+          }
+        }
+      }
+    }
+  });
+  if (!conversation || !conversation.participants.some((p) => p.userId === userId)) {
+    throw new CustomOfferError("Conversation introuvable.", 404);
+  }
+  const me = conversation.participants.find((p) => p.userId === userId);
+  const other = conversation.participants.find((p) => p.userId !== userId);
+  if (!other) {
+    throw new CustomOfferError("Cette conversation n'a plus qu'un participant.", 409);
+  }
+  return { conversation, me, other };
+};
+var send2 = async (input) => {
+  const { me, other } = await sidesOf(input.conversationId, input.userId);
+  if (!me.user.freelancerProfile) {
+    throw new CustomOfferError(
+      "Seul un freelance peut envoyer une offre. Activez votre profil freelance.",
+      403
+    );
+  }
+  const title = (input.title ?? "").trim();
+  if (title.length < 3) {
+    throw new CustomOfferError("Donnez un titre \xE0 cette offre.", 400);
+  }
+  if (title.length > 120) {
+    throw new CustomOfferError("Le titre est trop long (120 caract\xE8res maximum).", 400);
+  }
+  const price = Math.round(Number(input.price));
+  if (!Number.isFinite(price) || price < MIN_PRICE || price > MAX_PRICE) {
+    throw new CustomOfferError(
+      `Le prix doit \xEAtre compris entre ${MIN_PRICE} et ${MAX_PRICE} DZD.`,
+      400
+    );
+  }
+  const deliveryDays = Math.trunc(Number(input.deliveryDays));
+  if (!Number.isFinite(deliveryDays) || deliveryDays < 1 || deliveryDays > MAX_DELIVERY_DAYS) {
+    throw new CustomOfferError(
+      `Le d\xE9lai doit \xEAtre compris entre 1 et ${MAX_DELIVERY_DAYS} jours.`,
+      400
+    );
+  }
+  const revisions = Math.trunc(Number(input.revisions ?? 0));
+  if (!Number.isFinite(revisions) || revisions < 0 || revisions > MAX_REVISIONS) {
+    throw new CustomOfferError(`Les r\xE9visions doivent aller de 0 \xE0 ${MAX_REVISIONS}.`, 400);
+  }
+  const live = await prisma_default.customOffer.findFirst({
+    where: { conversationId: input.conversationId, status: "SENT" },
+    select: { id: true, expiresAt: true, status: true }
+  });
+  const validDays = input.validDays ?? DEFAULT_VALID_DAYS;
+  if (!Number.isFinite(validDays) || validDays < 1 || validDays > 90) {
+    throw new CustomOfferError("La validit\xE9 doit aller de 1 \xE0 90 jours.", 400);
+  }
+  const offer = await prisma_default.$transaction(async (tx) => {
+    if (live) {
+      await tx.customOffer.update({
+        where: { id: live.id },
+        data: { status: "WITHDRAWN", respondedAt: /* @__PURE__ */ new Date() }
+      });
+    }
+    return tx.customOffer.create({
+      data: {
+        conversationId: input.conversationId,
+        freelancerId: me.user.freelancerProfile.id,
+        clientId: other.userId,
+        title,
+        description: input.description?.trim() || null,
+        price: String(price),
+        deliveryDays,
+        revisions,
+        expiresAt: new Date(Date.now() + validDays * 864e5)
+      },
+      select: OFFER_SELECT
+    });
+  });
+  await prisma_default.conversation.update({
+    where: { id: input.conversationId },
+    data: { updatedAt: /* @__PURE__ */ new Date() },
+    select: { id: true }
+  });
+  return shape(offer);
+};
+var listForConversation = async (conversationId, userId) => {
+  const { me } = await sidesOf(conversationId, userId);
+  const rows = await prisma_default.customOffer.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    select: OFFER_SELECT
+  });
+  return {
+    offers: rows.map(shape),
+    canSendOffer: Boolean(me.user.freelancerProfile)
+  };
+};
+var offerFor = async (offerId, userId) => {
+  const offer = await prisma_default.customOffer.findUnique({
+    where: { id: offerId },
+    select: { ...OFFER_SELECT, freelancer: { select: { id: true, userId: true, username: true, displayName: true } } }
+  });
+  if (!offer) throw new CustomOfferError("Offre introuvable.", 404);
+  const isClient = offer.client.id === userId;
+  const isFreelancer = offer.freelancer.userId === userId;
+  if (!isClient && !isFreelancer) throw new CustomOfferError("Offre introuvable.", 404);
+  return { offer, isClient, isFreelancer };
+};
+var accept2 = async (offerId, userId) => {
+  const { offer, isClient } = await offerFor(offerId, userId);
+  if (!isClient) {
+    throw new CustomOfferError("Seul le client peut accepter cette offre.", 403);
+  }
+  const status = effectiveStatus(offer);
+  if (status === "EXPIRED") {
+    throw new CustomOfferError(
+      "Cette offre a expir\xE9. Demandez au freelance de la renvoyer.",
+      409
+    );
+  }
+  if (status !== "SENT") {
+    throw new CustomOfferError("Cette offre n'est plus disponible.", 409);
+  }
+  const result = await prisma_default.$transaction(async (tx) => {
+    const order = await tx.freelanceOrder.create({
+      data: {
+        reference: `OFF-${Date.now().toString(36).toUpperCase()}`,
+        clientId: offer.client.id,
+        freelancerId: offer.freelancer.id,
+        // No service and no project: this order came from a conversation, and
+        // saying so by leaving both null is truer than pointing at something
+        // it did not come from.
+        agreedPrice: offer.price,
+        deliveryDueAt: new Date(Date.now() + offer.deliveryDays * 864e5),
+        status: FreelanceOrderStatus2.CREATED
+      },
+      select: { id: true, reference: true, status: true, agreedPrice: true }
+    });
+    await tx.orderEvent.create({
+      data: {
+        orderId: order.id,
+        actorId: userId,
+        fromStatus: FreelanceOrderStatus2.CREATED,
+        toStatus: FreelanceOrderStatus2.CREATED,
+        note: `Offre personnalis\xE9e accept\xE9e : ${offer.title}`
+      }
+    });
+    const updated = await tx.customOffer.update({
+      where: { id: offer.id },
+      data: { status: "ACCEPTED", respondedAt: /* @__PURE__ */ new Date(), orderId: order.id },
+      select: OFFER_SELECT
+    });
+    await tx.conversation.update({ where: { id: offer.conversationId }, data: { orderId: order.id } }).catch(() => void 0);
+    return { offer: updated, order };
+  });
+  return { offer: shape(result.offer), order: result.order };
+};
+var decline = async (offerId, userId) => {
+  const { offer, isClient } = await offerFor(offerId, userId);
+  if (!isClient) {
+    throw new CustomOfferError("Seul le client peut refuser cette offre.", 403);
+  }
+  if (effectiveStatus(offer) !== "SENT") {
+    throw new CustomOfferError("Cette offre n'est plus disponible.", 409);
+  }
+  const updated = await prisma_default.customOffer.update({
+    where: { id: offer.id },
+    data: { status: "DECLINED", respondedAt: /* @__PURE__ */ new Date() },
+    select: OFFER_SELECT
+  });
+  return shape(updated);
+};
+var withdraw2 = async (offerId, userId) => {
+  const { offer, isFreelancer } = await offerFor(offerId, userId);
+  if (!isFreelancer) {
+    throw new CustomOfferError("Seul le freelance peut retirer cette offre.", 403);
+  }
+  const status = effectiveStatus(offer);
+  if (status === "ACCEPTED") {
+    throw new CustomOfferError(
+      "Cette offre a \xE9t\xE9 accept\xE9e. Annulez la commande si besoin.",
+      409
+    );
+  }
+  if (status !== "SENT") {
+    throw new CustomOfferError("Cette offre n'est plus en attente.", 409);
+  }
+  const updated = await prisma_default.customOffer.update({
+    where: { id: offer.id },
+    data: { status: "WITHDRAWN", respondedAt: /* @__PURE__ */ new Date() },
+    select: OFFER_SELECT
+  });
+  return shape(updated);
+};
+var customOffer_service_default = { send: send2, listForConversation, accept: accept2, decline, withdraw: withdraw2, CustomOfferError };
+
+// server/controllers/customOffer.controller.ts
+var asHttpError8 = (err) => err instanceof CustomOfferError ? new AppError(err.message, err.status) : err;
+var sendOffer = async (req, res, next) => {
+  try {
+    const { title, description, price, deliveryDays, revisions, validDays } = req.body;
+    const offer = await customOffer_service_default.send({
+      conversationId: req.params.id,
+      userId: req.user.id,
+      title: String(title ?? ""),
+      description: description == null ? null : String(description),
+      price: Number(price),
+      deliveryDays: Number(deliveryDays),
+      revisions: revisions == null ? 0 : Number(revisions),
+      validDays: validDays == null ? null : Number(validDays)
+    });
+    res.status(201).json({ success: true, data: { offer } });
+  } catch (err) {
+    next(asHttpError8(err));
+  }
+};
+var listOffers = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: await customOffer_service_default.listForConversation(req.params.id, req.user.id)
+    });
+  } catch (err) {
+    next(asHttpError8(err));
+  }
+};
+var acceptOffer = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await customOffer_service_default.accept(req.params.offerId, req.user.id) });
+  } catch (err) {
+    next(asHttpError8(err));
+  }
+};
+var declineOffer = async (req, res, next) => {
+  try {
+    const offer = await customOffer_service_default.decline(req.params.offerId, req.user.id);
+    res.json({ success: true, data: { offer } });
+  } catch (err) {
+    next(asHttpError8(err));
+  }
+};
+var withdrawOffer = async (req, res, next) => {
+  try {
+    const offer = await customOffer_service_default.withdraw(req.params.offerId, req.user.id);
+    res.json({ success: true, data: { offer } });
+  } catch (err) {
+    next(asHttpError8(err));
+  }
+};
+
 // server/routes/freelance.routes.ts
 var router4 = Router4();
 router4.get("/categories", listCategories);
@@ -7445,6 +7743,11 @@ router4.get("/me/conversations/unread", protect, getUnreadCount);
 router4.get("/me/conversations/:id", protect, getConversation);
 router4.post("/me/conversations/:id/messages", protect, sendMessage);
 router4.post("/me/conversations/:id/read", protect, markConversationRead);
+router4.get("/me/conversations/:id/offers", protect, listOffers);
+router4.post("/me/conversations/:id/offers", protect, sendOffer);
+router4.post("/me/offers/:offerId/accept", protect, acceptOffer);
+router4.post("/me/offers/:offerId/decline", protect, declineOffer);
+router4.post("/me/offers/:offerId/withdraw", protect, withdrawOffer);
 var freelance_routes_default = router4;
 
 // server/routes/application.routes.ts
@@ -9243,7 +9546,7 @@ var aiAnalysis_service_default = new AIAnalysisService();
 
 // server/services/cvDirectory.service.ts
 init_prisma();
-import { Prisma as Prisma6 } from "@prisma/client";
+import { Prisma as Prisma7 } from "@prisma/client";
 var MAX_TERMS2 = 8;
 var MAX_PER_PAGE2 = 200;
 var searchSql = (q) => {
@@ -9251,7 +9554,7 @@ var searchSql = (q) => {
   if (!terms.length) return null;
   const perTerm = terms.map((term) => {
     const like = `%${term}%`;
-    return Prisma6.sql`(
+    return Prisma7.sql`(
       public.dl_unaccent(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", ''))
         ILIKE public.dl_unaccent(${like})
       OR public.dl_unaccent(coalesce(cp."currentJobTitle", '')) ILIKE public.dl_unaccent(${like})
@@ -9265,39 +9568,39 @@ var searchSql = (q) => {
       OR public.dl_unaccent(j.title) ILIKE public.dl_unaccent(${like})
     )`;
   });
-  return Prisma6.join(perTerm, " AND ");
+  return Prisma7.join(perTerm, " AND ");
 };
 var matchingCandidates = async (p, skip, take) => {
-  const where = [Prisma6.sql`a."recruiterId" = ${p.recruiterProfileId}`];
+  const where = [Prisma7.sql`a."recruiterId" = ${p.recruiterProfileId}`];
   const having = [];
-  if (p.jobId) where.push(Prisma6.sql`a."jobId" = ${p.jobId}`);
+  if (p.jobId) where.push(Prisma7.sql`a."jobId" = ${p.jobId}`);
   if (p.wilaya) {
-    where.push(Prisma6.sql`(
+    where.push(Prisma7.sql`(
       public.dl_unaccent(coalesce(cp.wilaya, '')) ILIKE public.dl_unaccent(${p.wilaya})
       OR public.dl_unaccent(coalesce(cp.city, '')) ILIKE public.dl_unaccent(${p.wilaya})
     )`);
   }
   if (typeof p.minExperience === "number" && Number.isFinite(p.minExperience)) {
     where.push(
-      Prisma6.sql`coalesce(cp."yearsExperience", 0) >= ${Math.trunc(p.minExperience)}`
+      Prisma7.sql`coalesce(cp."yearsExperience", 0) >= ${Math.trunc(p.minExperience)}`
     );
   }
   if (p.hasCv === true) {
-    where.push(Prisma6.sql`(cp."resumeId" IS NOT NULL OR cp."cvBuilderData" IS NOT NULL)`);
+    where.push(Prisma7.sql`(cp."resumeId" IS NOT NULL OR cp."cvBuilderData" IS NOT NULL)`);
   }
-  if (p.availableNow === true) where.push(Prisma6.sql`cp."availableImmediately" = true`);
+  if (p.availableNow === true) where.push(Prisma7.sql`cp."availableImmediately" = true`);
   if (p.q?.trim()) {
     const text = searchSql(p.q);
     if (text) where.push(text);
   }
   if (typeof p.minScore === "number" && Number.isFinite(p.minScore)) {
-    having.push(Prisma6.sql`coalesce(max(a."aiScore"), 0) >= ${p.minScore}`);
+    having.push(Prisma7.sql`coalesce(max(a."aiScore"), 0) >= ${p.minScore}`);
   }
   if (p.preselectedOnly === true) {
-    having.push(Prisma6.sql`bool_or(coalesce(a."isPreselected", false)) = true`);
+    having.push(Prisma7.sql`bool_or(coalesce(a."isPreselected", false)) = true`);
   }
-  const whereSql = Prisma6.join(where, " AND ");
-  const havingSql = having.length ? Prisma6.sql`HAVING ${Prisma6.join(having, " AND ")}` : Prisma6.empty;
+  const whereSql = Prisma7.join(where, " AND ");
+  const havingSql = having.length ? Prisma7.sql`HAVING ${Prisma7.join(having, " AND ")}` : Prisma7.empty;
   return prisma_default.$queryRaw`
     SELECT cp.id,
            count(*) OVER () AS total
@@ -11490,7 +11793,7 @@ var sendBroadcastPreview = async (req, res, next) => {
 // server/controllers/freelanceModeration.controller.ts
 init_prisma();
 init_plans_service();
-var asHttpError8 = (err) => {
+var asHttpError9 = (err) => {
   if (err instanceof ServiceValidationError) return new AppError(err.message, 400);
   if (err instanceof PlanLimitError) return new AppError(err.message, 409);
   return err;
@@ -11587,7 +11890,7 @@ var approveService = async (req, res, next) => {
     const service = await servicePublication_service_default.approve(req.params.id, req.user.id);
     res.json({ success: true, data: { id: service.id, status: service.status } });
   } catch (err) {
-    next(asHttpError8(err));
+    next(asHttpError9(err));
   }
 };
 var rejectService = async (req, res, next) => {
@@ -11596,7 +11899,7 @@ var rejectService = async (req, res, next) => {
     const result = await servicePublication_service_default.reject(req.params.id, req.user.id, String(reason ?? ""));
     res.json({ success: true, data: result });
   } catch (err) {
-    next(asHttpError8(err));
+    next(asHttpError9(err));
   }
 };
 var listHistory = async (req, res, next) => {
@@ -12215,7 +12518,7 @@ var cvHighlights = (data) => {
 var builderFilled = (data) => !!data && typeof data === "object" && Object.values(data).some(
   (v) => Array.isArray(v) ? v.length > 0 : v !== null && v !== void 0 && v !== ""
 );
-var shape = (a) => {
+var shape2 = (a) => {
   const c = a.candidate;
   const highlights = cvHighlights(c.cvBuilderData);
   return {
@@ -12339,7 +12642,7 @@ var listByOffer = async (params) => {
   const byJob = /* @__PURE__ */ new Map();
   for (const a of applications) {
     const list = byJob.get(a.jobId) ?? [];
-    list.push(shape(a));
+    list.push(shape2(a));
     byJob.set(a.jobId, list);
   }
   const offers = jobs.map((job) => {
@@ -12415,7 +12718,7 @@ var listCorporatePendingByOffer = async () => {
   const byJob = /* @__PURE__ */ new Map();
   for (const a of applications) {
     const list = byJob.get(a.jobId) ?? [];
-    list.push(shape(a));
+    list.push(shape2(a));
     byJob.set(a.jobId, list);
   }
   const offers = jobs.map((job) => {

@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { EmptyState, ErrorState, Loading } from "../ui";
 import { useI18n } from "../i18n";
 import SignIn from "./SignIn";
+import OfferPanel from "../OfferPanel";
 
 /**
  * Messages.
@@ -289,6 +290,11 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {/* Above the messages, not among them: an offer is the one thing in a
+            conversation that has to be found again later, and a card that
+            scrolls away with the chat is one the client has to hunt for. */}
+        <OfferPanel conversationId={id} onOrderCreated={() => navigate(`/messages/${id}`)} />
+
         {!messages ? (
           <Loading />
         ) : messages.length === 0 ? (

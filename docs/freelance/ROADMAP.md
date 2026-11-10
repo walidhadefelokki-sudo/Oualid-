@@ -45,21 +45,18 @@ npm run lint  →  tsc --noEmit, baseline 10 pre-existing errors
 | **Service editor** | Three formulas, draft, submit, pause, resume, delete | full loop verified: draft → charge → approve → public |
 | **Client projects** | Publish free, moderated, public feed, invite-only stays private | refusal, fix, approval, and no client e-mail in the payload |
 | **Moderation** | Admin queue with age, approve, refuse with a reason and refund, decision history | refusal refunded 10 and the resubmission charged again |
+| **Custom offers** | A freelancer quotes a price in a thread, the client accepts, an order exists on those terms; one live offer at a time, expiry computed on read | 19 tests incl. a second accept refused, each side barred from the other's action, and an expired quote refused |
 | **Service media** | Up to 8 pictures a service, the first one the cover every card already read; signature-checked, reorderable, deletable | 11 tests, plus a real upload, reorder, disguised-file refusal and delete against Supabase |
 | **Messaging** | Threads from a profile, a paid proposal or an order; per-thread and total unread; polling with `after`; contact-detail flagging with its own moderation queue | 23 tests incl. a third account refused, find-or-create from both sides, and the database-clock skew that would freeze an unread badge |
 
 ### Not done
 
-Proposals, orders, reviews and payments are finished and tested — this list
-had not been kept up and still claimed otherwise.
+Phase 1 is finished apart from one piece.
 
-1. **Custom offers.** A freelancer quotes a price inside a thread and the
-   client accepts, which creates an order. The model exists (`CustomOffer`);
-   the rules belong with the order rules and want their own tests, not the
-   chat's.
-2. **Message attachments.** The upload path now exists for service media and
+1. **Message attachments.** The upload path exists for service media and
    generalises to this: same bucket, same signature check, a
-   `MessageAttachment` row instead of a `ServiceMedia` one.
+   `MessageAttachment` row instead of a `ServiceMedia` one. The schema and
+   the thread's read path already carry attachments; nothing writes one.
 
 ### Known gaps in what is done
 

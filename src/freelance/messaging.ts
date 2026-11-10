@@ -92,3 +92,77 @@ const messaging = {
 };
 
 export default messaging;
+
+/* -------------------------------------------------------------------------- */
+/*                          offers quoted in a thread                         */
+/* -------------------------------------------------------------------------- */
+
+export type OfferStatus = "SENT" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED";
+
+export interface CustomOffer {
+  id: string;
+  conversationId: string;
+  title: string;
+  description: string | null;
+  price: number;
+  deliveryDays: number;
+  revisions: number;
+  status: OfferStatus;
+  expiresAt: string | null;
+  respondedAt: string | null;
+  orderId: string | null;
+  createdAt: string;
+  order: { id: string; reference: string; status: string } | null;
+}
+
+export interface NewOffer {
+  title: string;
+  description?: string;
+  price: number;
+  deliveryDays: number;
+  revisions?: number;
+  /** Days the offer stands. The server defaults to 7. */
+  validDays?: number;
+}
+
+export const offersApi = {
+  /**
+   * The thread's offers, and whether this reader may send one.
+   *
+   * The side comes from the server because it cannot be inferred from the
+   * offers themselves — before the first one exists there is nothing to
+   * infer it from.
+   */
+  list: async (
+    conversationId: string
+  ): Promise<{ offers: CustomOffer[]; canSendOffer: boolean }> => {
+    const { data } = await api.get(`/freelance/me/conversations/${conversationId}/offers`);
+    return data.data;
+  },
+
+  send: async (conversationId: string, offer: NewOffer): Promise<CustomOffer> => {
+    const { data } = await api.post(
+      `/freelance/me/conversations/${conversationId}/offers`,
+      offer
+    );
+    return data.data.offer;
+  },
+
+  /** Accepting returns the order it created, not only the offer. */
+  accept: async (
+    offerId: string
+  ): Promise<{ offer: CustomOffer; order: { id: string; reference: string } }> => {
+    const { data } = await api.post(`/freelance/me/offers/${offerId}/accept`);
+    return data.data;
+  },
+
+  decline: async (offerId: string): Promise<CustomOffer> => {
+    const { data } = await api.post(`/freelance/me/offers/${offerId}/decline`);
+    return data.data.offer;
+  },
+
+  withdraw: async (offerId: string): Promise<CustomOffer> => {
+    const { data } = await api.post(`/freelance/me/offers/${offerId}/withdraw`);
+    return data.data.offer;
+  },
+};

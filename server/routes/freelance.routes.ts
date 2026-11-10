@@ -9,6 +9,7 @@ import * as review from "../controllers/review.controller";
 import * as portfolio from "../controllers/portfolio.controller";
 import * as payment from "../controllers/marketplacePayment.controller";
 import * as message from "../controllers/message.controller";
+import * as customOffer from "../controllers/customOffer.controller";
 import { protect } from "../middleware/auth.middleware";
 import { handleServiceMediaUpload } from "../middleware/mediaUpload.middleware";
 
@@ -129,5 +130,15 @@ router.get("/me/conversations/unread", protect, message.getUnreadCount);
 router.get("/me/conversations/:id", protect, message.getConversation);
 router.post("/me/conversations/:id/messages", protect, message.sendMessage);
 router.post("/me/conversations/:id/read", protect, message.markConversationRead);
+
+/* Offers quoted inside a thread.
+   The marketplace sold two ways — a package off a service page, a proposal on
+   a published project — and neither covers two people agreeing a figure for
+   work that is not quite either. Accepting one creates an order. */
+router.get("/me/conversations/:id/offers", protect, customOffer.listOffers);
+router.post("/me/conversations/:id/offers", protect, customOffer.sendOffer);
+router.post("/me/offers/:offerId/accept", protect, customOffer.acceptOffer);
+router.post("/me/offers/:offerId/decline", protect, customOffer.declineOffer);
+router.post("/me/offers/:offerId/withdraw", protect, customOffer.withdrawOffer);
 
 export default router;

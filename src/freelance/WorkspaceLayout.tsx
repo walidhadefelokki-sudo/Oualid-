@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
+  BarChart3,
   Coins,
   Layout,
   LayoutDashboard,
@@ -11,10 +12,10 @@ import {
   UserCircle,
 } from "lucide-react";
 import { useAuth } from "./auth";
-import { Loading } from "./ui";
+import { Avatar, ErrorState, Loading } from "./ui";
 import SignIn from "./pages/SignIn";
 import Activate from "./pages/Activate";
-import { useWorkspace } from "./useWorkspace";
+import { useWorkspaceStore } from "./useWorkspace";
 
 /**
  * The freelancer workspace shell.
@@ -30,6 +31,10 @@ import { useWorkspace } from "./useWorkspace";
  * more sections than exist yet; the ones that are not built are absent
  * rather than present and dead, because a menu that opens nothing is worse
  * than a menu that is shorter.
+ *
+ * The header, the credit pill and the mode switch are the public shell's —
+ * these routes are nested inside it, and it draws the workspace variant of
+ * its bar when the path says so.
  */
 
 const ITEMS = [
@@ -37,24 +42,32 @@ const ITEMS = [
   { to: "/freelance-espace/services", icon: Package, label: "Mes services" },
   { to: "/freelance-espace/propositions", icon: Send, label: "Mes propositions" },
   { to: "/freelance-espace/commandes", icon: ShoppingBag, label: "Commandes" },
-  { to: "/freelance-espace/credits", icon: Coins, label: "Crédits" },
+  { to: "/freelance-espace/credits", icon: Coins, label: "Portefeuille et crédits" },
   { to: "/freelance-espace/portfolio", icon: Layout, label: "Mini portfolio" },
   { to: "/freelance-espace/profil", icon: Settings, label: "Profil" },
 ];
 
+/**
+ * A sidebar row. Navy and filled when it is the section you are reading,
+ * plain navy type on the ground otherwise — the canvas gives these rows no
+ * card and no border.
+ */
+const row = ({ isActive }: { isActive: boolean }) =>
+  "flex shrink-0 items-center gap-2.5 rounded-field px-3.5 py-3 text-[15px] font-semibold " +
+  "transition-colors " +
+  (isActive ? "bg-primary text-white" : "text-primary hover:bg-surface");
+
 const WorkspaceLayout: React.FC = () => {
   const { signedIn, loading: authLoading } = useAuth();
   const location = useLocation();
-  const { data, loading, error, reload } = useWorkspace(signedIn);
+  const { data, loading, error, reload } = useWorkspaceStore();
 
   if (authLoading) return <Loading />;
 
   // The sign-in screen is rendered in place rather than redirected to, so a
   // deep link survives the detour: sign in, and the page you asked for is
   // the page you get.
-  if (!signedIn) {
-    return <SignIn />;
-  }
+  if (!signedIn) return <SignIn />;
 
   if (loading) return <Loading />;
 
@@ -63,19 +76,11 @@ const WorkspaceLayout: React.FC = () => {
    * without a payload, which is what a server running older code does. */
   if (error || !data) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16">
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-          <p className="font-bold text-red-700">Impossible de charger votre espace</p>
-          <p className="mt-2 text-sm text-red-600 break-words">
-            {error ?? "Réponse inattendue du serveur."}
-          </p>
-          <button
-            onClick={reload}
-            className="mt-5 rounded-full px-6 py-2.5 bg-[#173E7D] text-white text-sm font-bold"
-          >
-            Réessayer
-          </button>
-        </div>
+      <div className="mx-auto max-w-2xl px-4 py-16">
+        <ErrorState
+          message={error ?? "Impossible de charger votre espace."}
+          onRetry={reload}
+        />
       </div>
     );
   }
@@ -85,56 +90,42 @@ const WorkspaceLayout: React.FC = () => {
   const p = data.profile!;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        <aside className="lg:w-60 shrink-0">
-          <div className="rounded-2xl border-2 border-[#173E7D]/15 bg-white p-4 mb-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0B1E3D] to-[#173E7D] text-white grid place-items-center font-display shrink-0">
-                {p.displayName.charAt(0).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <p className="font-bold text-[#173E7D] text-sm truncate">{p.displayName}</p>
-                <p className="text-[11px] text-[#2B3442]/50 truncate" dir="ltr">
-                  /@{p.username}
-                </p>
-              </div>
-            </div>
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-8 lg:flex-row lg:gap-8">
+      <aside className="lg:w-62 lg:shrink-0">
+        <div className="mb-4 flex min-w-0 items-center gap-3 px-1">
+          <Avatar name={p.displayName} size="md" tone="orange" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-primary">{p.displayName}</p>
+            <p className="truncate text-[11px] text-muted" dir="ltr">
+              /@{p.username}
+            </p>
           </div>
-
-          {/* Horizontally scrollable on narrow screens rather than a drawer:
-              six entries fit in a row and a drawer would hide the section
-              the reader is in. */}
-          <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-            {ITEMS.map(({ to, end, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  `shrink-0 inline-flex items-center gap-2.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
-                    isActive
-                      ? "bg-[#173E7D] text-white"
-                      : "text-[#2B3442]/70 hover:bg-[#173E7D]/8 hover:text-[#173E7D]"
-                  }`
-                }
-              >
-                <Icon size={16} />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-
-        <div className="flex-1 min-w-0">
-          {/* Keyed on the path so a section always mounts fresh rather than
-              briefly showing the previous one's data. */}
-          <Outlet key={location.pathname} context={{ data, reload }} />
         </div>
+
+        {/* Horizontally scrollable on narrow screens rather than a drawer:
+            seven entries fit in a row and a drawer would hide the section
+            the reader is in. */}
+        <nav
+          aria-label="Espace freelance"
+          className="no-scrollbar flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
+        >
+          {ITEMS.map(({ to, end, icon: Icon, label }) => (
+            <NavLink key={to} to={to} end={end} className={row}>
+              <Icon size={16} aria-hidden="true" />
+              <span className="whitespace-nowrap">{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        {/* Keyed on the path so a section always mounts fresh rather than
+            briefly showing the previous one's data. */}
+        <Outlet key={location.pathname} context={{ data, reload }} />
       </div>
     </div>
   );
 };
 
 export default WorkspaceLayout;
-export { UserCircle };
+export { UserCircle, BarChart3 };

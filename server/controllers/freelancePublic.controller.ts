@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../utils/prisma";
+import credits from "../services/credits.service";
 
 /**
  * The marketplace's public reads: what a visitor sees before signing in.
@@ -406,7 +407,7 @@ export const listFreelancers = async (req: Request, res: Response, next: NextFun
  */
 export const listPricing = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const [packs, plans] = await Promise.all([
+    const [packs, plans, costs] = await Promise.all([
       prisma.creditPack.findMany({
         where: { active: true },
         orderBy: { position: "asc" },
@@ -416,9 +417,17 @@ export const listPricing = async (_req: Request, res: Response, next: NextFuncti
         where: { active: true },
         orderBy: { price: "asc" },
       }),
+      /* What each action costs in credits.
+       *
+       * Published, because the tariff is the price list — a seller deciding
+       * whether to join should not have to sign up to read it. It is a
+       * platform setting rather than anything about a user, so there is
+       * nothing here to keep behind the session; the same figures were
+       * already served to the workspace. */
+      credits.getCreditCosts(),
     ]);
 
-    res.json({ success: true, data: { packs, plans } });
+    res.json({ success: true, data: { packs, plans, costs } });
   } catch (err) {
     next(err);
   }
@@ -502,6 +511,21 @@ export const getProject = async (req: Request, res: Response, next: NextFunction
  * endpoint instead — a freelancer refreshing their own page should not
  * inflate the number a buyer reads as interest.
  */
+/**
+ * How a reviewer is named on a public page: a first name and a surname
+ * initial, "Nadia R.".
+ *
+ * The full surname of someone who bought something is not this page's to
+ * publish, and an account with neither name still has to render as
+ * somebody rather than as an empty line.
+ */
+const reviewerName = (author: { firstName?: string | null; lastName?: string | null }) => {
+  const first = author.firstName?.trim();
+  const initial = author.lastName?.trim().charAt(0);
+  if (first && initial) return `${first} ${initial}.`;
+  return first || "Client";
+};
+
 export const getService = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const service = await prisma.serviceListing.findFirst({
@@ -548,7 +572,7 @@ export const getService = async (req: Request, res: Response, next: NextFunction
             completedOrders: true,
             wilaya: true,
             languages: true,
-            user: { select: { avatar: { select: { url: true } } } },
+            user: { select: { id: true, avatar: { select: { url: true } } } },
           },
         },
       },
@@ -557,6 +581,36 @@ export const getService = async (req: Request, res: Response, next: NextFunction
     if (!service) {
       return res.status(404).json({ success: false, message: "Service introuvable." });
     }
+
+    /* What previous buyers of THIS service said.
+     *
+     * A separate query rather than a nested one: reviews hang off the order,
+     * not the service, so reaching them from here would mean selecting every
+     * order of the service and discarding the ones with nothing to show.
+     *
+     * Two filters carry the meaning. `targetId` is the freelancer's own user,
+     * which keeps out the review they wrote about the client — the same table
+     * holds both directions, and without this a service page would quote the
+     * seller praising the buyer. `state` keeps out anything moderation has
+     * not passed. */
+    const reviews = await prisma.freelanceReview.findMany({
+      where: {
+        state: "APPROVED",
+        targetId: service.freelancer.user.id,
+        order: { serviceId: service.id },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        response: true,
+        respondedAt: true,
+        author: { select: { firstName: true, lastName: true } },
+      },
+    });
 
     // Fire-and-forget: a failed counter must not fail the page.
     prisma.serviceListing
@@ -570,8 +624,20 @@ export const getService = async (req: Request, res: Response, next: NextFunction
           ...service,
           images: service.media.map((m) => m.file.url),
           skills: service.skills.map((s) => s.skill.name),
+          reviews: reviews.map((r) => ({
+            id: r.id,
+            rating: r.rating,
+            comment: r.comment,
+            createdAt: r.createdAt,
+            response: r.response,
+            respondedAt: r.respondedAt,
+            author: reviewerName(r.author),
+          })),
           freelancer: {
             ...service.freelancer,
+            // Dropped rather than spread: the page needs the avatar, not the
+            // account id behind it.
+            user: undefined,
             avatarUrl: service.freelancer.user.avatar?.url ?? null,
           },
         },

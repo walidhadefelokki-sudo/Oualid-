@@ -107,6 +107,21 @@ export interface FreelancePlan {
   weeklyBoosts: number;
 }
 
+/**
+ * The tariff: what each action costs in credits.
+ *
+ * Read from platform settings rather than compiled in, so the figures on the
+ * pricing page are the ones the server will actually charge. The same shape
+ * comes back inside the workspace wallet.
+ */
+export interface CreditCosts {
+  servicePublication: number;
+  proposal: number;
+  serviceDurationDays: number;
+  trialServices: number;
+  trialProposals: number;
+}
+
 export type ServiceQuery = Record<string, string | number | boolean | undefined>;
 
 const freelanceService = {
@@ -133,7 +148,11 @@ const freelanceService = {
     return { ...d, items: d.freelancers };
   },
 
-  getPricing: async (): Promise<{ packs: CreditPack[]; plans: FreelancePlan[] }> => {
+  getPricing: async (): Promise<{
+    packs: CreditPack[];
+    plans: FreelancePlan[];
+    costs: CreditCosts;
+  }> => {
     const { data } = await api.get("/freelance/pricing");
     return data.data;
   },

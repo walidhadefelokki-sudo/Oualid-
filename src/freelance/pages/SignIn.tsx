@@ -4,7 +4,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import api from "../../services/api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import logoNavy from "../../assets/logo-v2.png";
+
+import { Card, FIELD, Wordmark, btn } from "../ui";
 
 /**
  * Sign in and register, inside the marketplace.
@@ -20,10 +21,10 @@ import logoNavy from "../../assets/logo-v2.png";
  */
 
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
+  FIELD;
 
 const label =
-  "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
+  "mb-2 block text-sm font-bold text-primary";
 
 /** Only same-site paths. Anything else falls back to the workspace. */
 const safeNext = (raw: string | null): string => {
@@ -114,16 +115,18 @@ const SignIn: React.FC<{ mode?: "signin" | "signup" }> = ({ mode = "signin" }) =
     : { to: "/inscription", label: t("nav.signup"), prompt: "Pas encore de compte ?" };
 
   return (
-    <div className="max-w-md mx-auto px-4 sm:px-6 py-12">
-      <div className="rounded-3xl border-2 border-[#173E7D]/15 bg-white p-7 sm:p-9">
-        <img src={logoNavy} alt="Dar L'Emploi" className="h-9 w-auto mx-auto" />
+    <div className="mx-auto max-w-md px-4 py-12 sm:px-8">
+      <Card className="rounded-hero">
+        {/* The wordmark as type, not the logo file: this card is white, and
+            the mark picks up the charte's navy on its own. */}
+        <div className="flex justify-center">
+          <Wordmark label={t("brand.freelance")} />
+        </div>
 
-        <h1 className="mt-6 text-2xl font-display font-bold text-[#173E7D] text-center">
+        <h1 className="mt-6 text-center text-2xl font-bold text-primary">
           {isSignUp ? t("nav.signup") : t("nav.signin")}
         </h1>
-        <p className="mt-1 text-sm text-[#2B3442]/60 text-center">
-          Un seul compte pour l'emploi et le freelance.
-        </p>
+        <p className="mt-1.5 text-center text-sm text-muted">{t("footer.oneAccount")}</p>
 
         <form onSubmit={submit} className="mt-7 space-y-4">
           {isSignUp && (
@@ -177,7 +180,7 @@ const SignIn: React.FC<{ mode?: "signin" | "signup" }> = ({ mode = "signin" }) =
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Masquer" : "Afficher"}
-                className="absolute top-1/2 -translate-y-1/2 end-4 text-[#173E7D]/40"
+                className="absolute top-1/2 -translate-y-1/2 end-4 text-muted"
               >
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
@@ -199,32 +202,25 @@ const SignIn: React.FC<{ mode?: "signin" | "signup" }> = ({ mode = "signin" }) =
           )}
 
           {error && (
-            <p className="rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+            <p className="rounded-field bg-tint-red p-3.5 text-sm font-bold text-danger">
               {error}
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-xl bg-[#173E7D] text-white font-bold py-3.5 inline-flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {busy && <Loader2 size={16} className="animate-spin" />}
+          <button type="submit" disabled={busy} className={btn("primary", "w-full")}>
+            {busy && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
             {isSignUp ? t("nav.signup") : t("nav.signin")}
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-[#2B3442]/40">
-          <span className="h-px flex-1 bg-[#173E7D]/10" />
+        <div className="my-5 flex items-center gap-3 text-sm text-muted">
+          <span className="h-px flex-1 bg-line" />
           ou
-          <span className="h-px flex-1 bg-[#173E7D]/10" />
+          <span className="h-px flex-1 bg-line" />
         </div>
 
         {/* A normal link, not fetch: OAuth is a browser redirect. */}
-        <a
-          href={googleHref}
-          className="w-full rounded-xl border-2 border-[#173E7D]/15 font-bold py-3.5 flex items-center justify-center gap-3 text-[#2B3442] hover:border-[#173E7D]/40"
-        >
+        <a href={googleHref} className={btn("ghost", "w-full")}>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"
@@ -246,16 +242,16 @@ const SignIn: React.FC<{ mode?: "signin" | "signup" }> = ({ mode = "signin" }) =
           Continuer avec Google
         </a>
 
-        <p className="mt-6 text-sm text-center text-[#2B3442]/60">
+        <p className="mt-6 text-center text-sm text-muted">
           {otherMode.prompt}{" "}
           <Link
             to={`${otherMode.to}${location.search}`}
-            className="font-bold text-[#173E7D] hover:underline"
+            className="font-bold text-primary hover:underline"
           >
             {otherMode.label}
           </Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 };

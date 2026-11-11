@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, Send } from "lucide-react";
 import api from "../../../services/api";
 import freelanceService, { MarketplaceCategory } from "../../freelance.service";
-import { ErrorState, Loading } from "../../ui";
+import { Card, ErrorState, FIELD, Loading, btn } from "../../ui";
 
 /**
  * Publishing a project, for a client.
@@ -17,10 +17,10 @@ import { ErrorState, Loading } from "../../ui";
  */
 
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
+  FIELD;
 const label =
-  "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
-const card = "rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5";
+  "mb-2 block text-sm font-bold text-primary";
+const card = "rounded-panel bg-surface p-6";
 
 const ProjectEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -149,21 +149,21 @@ const ProjectEditor: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-display font-bold text-[#173E7D]">
+        <h1 className="text-2xl font-bold text-primary">
           {id ? "Modifier le projet" : "Publier un projet"}
         </h1>
-        <span className="text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+        <span className="text-sm font-bold text-success bg-tint-green rounded-full px-3 py-1">
           Gratuit
         </span>
       </div>
 
       {rejection && (
-        <p className="mb-5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-4">
+        <p className="mb-5 rounded-xl bg-tint-red text-danger text-sm p-4">
           <strong>Refusé :</strong> {rejection}
         </p>
       )}
       {locked && (
-        <p className="mb-5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4">
+        <p className="mb-5 rounded-xl bg-tint-orange text-warn text-sm p-4">
           Ce projet est en cours de validation et ne peut pas être modifié.
         </p>
       )}
@@ -191,7 +191,7 @@ const ProjectEditor: React.FC = () => {
               placeholder="Ce que vous attendez, le contexte, les contraintes…"
               className={`${field} resize-y`}
             />
-            <span className="mt-1 block text-[11px] text-[#2B3442]/40">
+            <span className="mt-1 block text-[11px] text-muted">
               60 caractères minimum · {form.description.trim().length} écrits.
             </span>
           </label>
@@ -228,8 +228,8 @@ const ProjectEditor: React.FC = () => {
                 disabled={locked}
                 className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold border-2 ${
                   form.budgetType === o.v
-                    ? "border-[#173E7D] bg-[#173E7D] text-white"
-                    : "border-[#173E7D]/15 text-[#2B3442]/70"
+                    ? "border-primary bg-primary text-white"
+                    : "border-line text-body"
                 }`}
               >
                 {o.l}
@@ -279,7 +279,7 @@ const ProjectEditor: React.FC = () => {
 
         <div className={card}>
           <div className="flex flex-wrap gap-4">
-            <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#2B3442]">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-body">
               <input
                 type="checkbox"
                 checked={form.remote}
@@ -341,7 +341,7 @@ const ProjectEditor: React.FC = () => {
                   type="button"
                   onClick={() => setSkills(skills.filter((x) => x !== s))}
                   disabled={locked}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#173E7D]/8 text-[#173E7D] hover:bg-red-50 hover:text-red-600"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-ground text-primary hover:bg-tint-red hover:text-danger"
                 >
                   {s} ×
                 </button>
@@ -351,12 +351,12 @@ const ProjectEditor: React.FC = () => {
         </div>
 
         {note && (
-          <p className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-3">
+          <p className="rounded-xl bg-tint-green text-success text-sm p-3">
             {note}
           </p>
         )}
         {error && (
-          <p className="rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+          <p className="rounded-xl bg-tint-red text-danger text-sm p-3">
             {error}
           </p>
         )}
@@ -365,7 +365,7 @@ const ProjectEditor: React.FC = () => {
           <button
             onClick={save}
             disabled={locked || saving}
-            className="rounded-xl border-2 border-[#173E7D]/20 text-[#173E7D] font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+            className="rounded-xl border-2 border-line text-primary font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
             Enregistrer le brouillon
@@ -373,7 +373,7 @@ const ProjectEditor: React.FC = () => {
           <button
             onClick={submit}
             disabled={locked || submitting}
-            className="rounded-xl bg-[#173E7D] text-white font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+            className="rounded-xl bg-primary text-white font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
           >
             {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             Publier le projet

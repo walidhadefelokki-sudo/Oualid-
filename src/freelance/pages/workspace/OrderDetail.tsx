@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Check, Loader2, Package, RotateCcw, Send, X } from "lucide-react";
 import api from "../../../services/api";
-import { ErrorState, Loading, Price } from "../../ui";
+import { Card, ErrorState, FIELD, Loading, Price, btn } from "../../ui";
 import ReviewForm from "../../ReviewForm";
 import ContactButton from "../../ContactButton";
 
@@ -20,20 +20,20 @@ import ContactButton from "../../ContactButton";
  */
 
 const STATUS: Record<string, { label: string; chip: string }> = {
-  CREATED: { label: "Créée", chip: "bg-gray-100 text-gray-600" },
-  IN_PROGRESS: { label: "En cours", chip: "bg-sky-50 text-sky-700 border border-sky-200" },
-  DELIVERED: { label: "Livrée", chip: "bg-amber-50 text-amber-700 border border-amber-200" },
+  CREATED: { label: "Créée", chip: "bg-tint-grey text-neutral-ink" },
+  IN_PROGRESS: { label: "En cours", chip: "bg-tint-blue text-primary" },
+  DELIVERED: { label: "Livrée", chip: "bg-tint-orange text-warn" },
   REVISION_REQUESTED: {
     label: "Révision demandée",
-    chip: "bg-orange-50 text-orange-700 border border-orange-200",
+    chip: "bg-tint-orange text-warn",
   },
-  COMPLETED: { label: "Terminée", chip: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
-  CANCELLED: { label: "Annulée", chip: "bg-gray-100 text-gray-500" },
+  COMPLETED: { label: "Terminée", chip: "bg-tint-green text-success" },
+  CANCELLED: { label: "Annulée", chip: "bg-tint-grey text-neutral-ink" },
 };
 
-const card = "rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5";
+const card = "rounded-panel bg-surface p-6";
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
+  FIELD;
 
 const dateTime = (iso: string) =>
   new Date(iso).toLocaleDateString("fr-FR", {
@@ -84,7 +84,7 @@ const OrderDetail: React.FC = () => {
 
   const o = data.order;
   const mine = data.side as "client" | "freelancer";
-  const status = STATUS[o.status] ?? { label: o.status, chip: "bg-gray-100" };
+  const status = STATUS[o.status] ?? { label: o.status, chip: "bg-tint-grey" };
 
   const canDeliver =
     mine === "freelancer" && ["CREATED", "IN_PROGRESS", "REVISION_REQUESTED"].includes(o.status);
@@ -96,10 +96,10 @@ const OrderDetail: React.FC = () => {
     <>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div className="min-w-0">
-          <h1 className="text-2xl font-display font-bold text-[#173E7D] break-words">
+          <h1 className="text-2xl font-bold text-primary break-words">
             {o.service?.title ?? o.project?.title ?? o.reference}
           </h1>
-          <p className="text-sm text-[#2B3442]/60">
+          <p className="text-sm text-muted">
             <span dir="ltr">{o.reference}</span>
             {" · "}
             {mine === "client" ? `Avec ${o.freelancer.displayName}` : `Pour ${o.clientName ?? "—"}`}
@@ -107,7 +107,7 @@ const OrderDetail: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <span
-            className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${status.chip}`}
+            className={`text-sm font-bold px-3 py-1.5 rounded-full ${status.chip}`}
           >
             {status.label}
           </span>
@@ -119,27 +119,27 @@ const OrderDetail: React.FC = () => {
 
       <div className={`${card} mb-5 flex flex-wrap items-center gap-x-8 gap-y-3`}>
         <div>
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+          <p className="text-sm font-bold text-primary">
             Montant convenu
           </p>
-          <p className="text-xl font-display font-bold">
+          <p className="text-xl font-bold">
             <Price value={o.agreedPrice} currency={o.currency} />
           </p>
         </div>
         {o.deliveryDueAt && (
           <div>
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+            <p className="text-sm font-bold text-primary">
               Échéance
             </p>
-            <p className="text-sm font-semibold text-[#2B3442]">{dateTime(o.deliveryDueAt)}</p>
+            <p className="text-sm font-semibold text-body">{dateTime(o.deliveryDueAt)}</p>
           </div>
         )}
         {o.package && (
           <div>
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+            <p className="text-sm font-bold text-primary">
               Formule
             </p>
-            <p className="text-sm font-semibold text-[#2B3442]">
+            <p className="text-sm font-semibold text-body">
               {o.package.name} · {o.package.revisions} révision(s)
             </p>
           </div>
@@ -148,13 +148,13 @@ const OrderDetail: React.FC = () => {
 
       {/* The platform does not hold the money under this model, and saying so
           is better than letting someone assume it does. */}
-      <p className="mb-5 rounded-xl bg-[#173E7D]/5 border border-[#173E7D]/15 text-xs text-[#2B3442]/70 p-3">
+      <p className="mb-5 rounded-xl bg-ground border border-line text-xs text-body p-3">
         Le paiement se règle directement entre le client et le freelance. Dar L'emploi ne détient
         pas les fonds et suit uniquement le déroulement du travail.
       </p>
 
       {error && (
-        <p className="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+        <p className="mb-4 rounded-xl bg-tint-red text-danger text-sm p-3">
           {error}
         </p>
       )}
@@ -163,7 +163,7 @@ const OrderDetail: React.FC = () => {
         <button
           onClick={() => act("start")}
           disabled={busy}
-          className="mb-5 rounded-xl border-2 border-[#173E7D]/20 text-[#173E7D] font-bold px-6 py-2.5 disabled:opacity-40"
+          className="mb-5 rounded-xl border-2 border-line text-primary font-bold px-6 py-2.5 disabled:opacity-40"
         >
           Démarrer le travail
         </button>
@@ -171,7 +171,7 @@ const OrderDetail: React.FC = () => {
 
       {canDeliver && (
         <section className={`${card} mb-5`}>
-          <h2 className="font-display font-bold text-[#173E7D] mb-3">
+          <h2 className="font-bold text-primary mb-3">
             {o.status === "REVISION_REQUESTED" ? "Renvoyer après révision" : "Livrer le travail"}
           </h2>
           <textarea
@@ -184,7 +184,7 @@ const OrderDetail: React.FC = () => {
           <button
             onClick={() => act("deliver", { message })}
             disabled={busy}
-            className="mt-3 rounded-xl bg-[#173E7D] text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
+            className="mt-3 rounded-xl bg-primary text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
           >
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             Livrer
@@ -194,8 +194,8 @@ const OrderDetail: React.FC = () => {
 
       {canDecide && (
         <section className={`${card} mb-5`}>
-          <h2 className="font-display font-bold text-[#173E7D] mb-1">Cette livraison vous convient ?</h2>
-          <p className="text-sm text-[#2B3442]/60 mb-4">
+          <h2 className="font-bold text-primary mb-1">Cette livraison vous convient ?</h2>
+          <p className="text-sm text-muted mb-4">
             Accepter clôture la commande. Sinon, dites ce qui doit être revu.
           </p>
 
@@ -211,14 +211,14 @@ const OrderDetail: React.FC = () => {
             <button
               onClick={() => act("accept")}
               disabled={busy}
-              className="rounded-xl bg-emerald-600 text-white font-bold px-6 py-2.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+              className="rounded-xl bg-success text-white font-bold px-6 py-2.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
             >
               <Check size={15} /> Accepter et clôturer
             </button>
             <button
               onClick={() => act("revision", { reason: revision })}
               disabled={busy || !revision.trim()}
-              className="rounded-xl border-2 border-[#173E7D]/20 text-[#173E7D] font-bold px-6 py-2.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+              className="rounded-xl border-2 border-line text-primary font-bold px-6 py-2.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
             >
               <RotateCcw size={15} /> Demander une révision
             </button>
@@ -227,32 +227,32 @@ const OrderDetail: React.FC = () => {
       )}
 
       <section className={`${card} mb-5`}>
-        <h2 className="font-display font-bold text-[#173E7D] mb-3 inline-flex items-center gap-2">
+        <h2 className="font-bold text-primary mb-3 inline-flex items-center gap-2">
           <Package size={16} /> Livraisons ({o.deliveries.length})
         </h2>
 
         {o.deliveries.length === 0 ? (
-          <p className="text-sm text-[#2B3442]/40">Aucune livraison pour le moment.</p>
+          <p className="text-sm text-muted">Aucune livraison pour le moment.</p>
         ) : (
           <ol className="space-y-3">
             {o.deliveries.map((d: any) => (
-              <li key={d.id} className="rounded-xl border border-[#173E7D]/10 p-4">
+              <li key={d.id} className="rounded-xl border border-line-soft p-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+                  <span className="text-sm font-bold text-primary">
                     Livraison {d.attempt}
                   </span>
-                  <span className="text-xs text-[#2B3442]/50">{dateTime(d.createdAt)}</span>
+                  <span className="text-xs text-muted">{dateTime(d.createdAt)}</span>
                   {d.acceptedAt && (
-                    <span className="text-[11px] font-bold text-emerald-700">Acceptée</span>
+                    <span className="text-[11px] font-bold text-success">Acceptée</span>
                   )}
                 </div>
                 {d.message && (
-                  <p className="mt-2 text-sm text-[#2B3442]/80 whitespace-pre-wrap break-words">
+                  <p className="mt-2 text-sm text-body whitespace-pre-wrap break-words">
                     {d.message}
                   </p>
                 )}
                 {d.revisionRequested && d.revisionNote && (
-                  <p className="mt-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-xs p-2.5">
+                  <p className="mt-2 rounded-lg bg-tint-orange text-warn text-xs p-2.5">
                     <strong>Révision demandée :</strong> {d.revisionNote}
                   </p>
                 )}
@@ -269,23 +269,23 @@ const OrderDetail: React.FC = () => {
       )}
 
       <section className={card}>
-        <h2 className="font-display font-bold text-[#173E7D] mb-3">Historique</h2>
+        <h2 className="font-bold text-primary mb-3">Historique</h2>
         <ol className="space-y-2">
           {o.events.map((e: any) => (
             <li key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-              <span className="text-xs text-[#2B3442]/40 w-36 shrink-0">
+              <span className="text-xs text-muted w-36 shrink-0">
                 {dateTime(e.createdAt)}
               </span>
-              <span className="font-semibold text-[#173E7D]">
+              <span className="font-semibold text-primary">
                 {STATUS[e.toStatus]?.label ?? e.toStatus}
               </span>
               {e.actor && (
-                <span className="text-xs text-[#2B3442]/50">
+                <span className="text-xs text-muted">
                   {[e.actor.firstName, e.actor.lastName].filter(Boolean).join(" ")}
                 </span>
               )}
               {e.note && (
-                <span className="w-full text-xs text-[#2B3442]/60 ps-36 break-words">{e.note}</span>
+                <span className="w-full text-xs text-muted ps-36 break-words">{e.note}</span>
               )}
             </li>
           ))}
@@ -299,7 +299,7 @@ const OrderDetail: React.FC = () => {
             if (why?.trim()) act("cancel", { reason: why.trim() });
           }}
           disabled={busy}
-          className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-red-600 disabled:opacity-40"
+          className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-danger disabled:opacity-40"
         >
           <X size={15} /> Annuler la commande
         </button>

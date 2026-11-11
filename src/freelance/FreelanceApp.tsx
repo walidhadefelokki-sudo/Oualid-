@@ -1,7 +1,9 @@
 import React from "react";
 import { BrowserRouter, Link, Route, Routes, useParams } from "react-router-dom";
 import { I18nProvider, useI18n } from "./i18n";
-import { AuthProvider } from "./auth";
+import { AuthProvider, useAuth } from "./auth";
+import { WorkspaceProvider } from "./useWorkspace";
+import { btn } from "./ui";
 import PublicLayout from "./PublicLayout";
 import WorkspaceLayout from "./WorkspaceLayout";
 import Home from "./pages/Home";
@@ -50,15 +52,10 @@ const NotFound: React.FC = () => {
   const { t } = useI18n();
   return (
     <div className="max-w-xl mx-auto px-4 py-24 text-center">
-      <p className="text-6xl font-display font-bold text-[#173E7D]/20">404</p>
-      <h1 className="mt-4 text-2xl font-display font-bold text-[#173E7D]">Page introuvable</h1>
-      <p className="mt-2 text-[#2B3442]/60">
-        Cette page n'existe pas encore sur la marketplace.
-      </p>
-      <Link
-        to="/"
-        className="inline-block mt-6 rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
-      >
+      <p className="font-serif text-7xl text-primary/25">404</p>
+      <h1 className="mt-4 text-2xl font-bold text-primary">Page introuvable</h1>
+      <p className="mt-2 text-muted">Cette page n&apos;existe pas encore sur la marketplace.</p>
+      <Link to="/" className={btn("primary", "mt-7")}>
         {t("brand.freelance")}
       </Link>
     </div>
@@ -88,9 +85,16 @@ const HandleRoute: React.FC = () => {
   return handle?.startsWith("@") ? <Portfolio /> : <NotFound />;
 };
 
-const FreelanceApp: React.FC = () => (
-  <I18nProvider>
-    <AuthProvider>
+/**
+ * Inside AuthProvider, so the workspace store knows whether to load at all.
+ * Separate component only because a provider cannot read the context of a
+ * provider declared in the same element.
+ */
+const Shell: React.FC = () => {
+  const { signedIn } = useAuth();
+
+  return (
+    <WorkspaceProvider enabled={signedIn}>
       <BrowserRouter basename={BASENAME}>
         <Routes>
           <Route element={<PublicLayout />}>
@@ -145,6 +149,14 @@ const FreelanceApp: React.FC = () => (
           </Route>
         </Routes>
       </BrowserRouter>
+    </WorkspaceProvider>
+  );
+};
+
+const FreelanceApp: React.FC = () => (
+  <I18nProvider>
+    <AuthProvider>
+      <Shell />
     </AuthProvider>
   </I18nProvider>
 );

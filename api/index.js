@@ -3376,6 +3376,7 @@ import { Router as Router4 } from "express";
 
 // server/controllers/freelancePublic.controller.ts
 init_prisma();
+init_credits_service();
 var PAGE_SIZE = 24;
 var MAX_PAGE_SIZE = 48;
 var paging = (req) => {
@@ -3695,7 +3696,7 @@ var listFreelancers = async (req, res, next) => {
 };
 var listPricing = async (_req, res, next) => {
   try {
-    const [packs, plans] = await Promise.all([
+    const [packs, plans, costs] = await Promise.all([
       prisma_default.creditPack.findMany({
         where: { active: true },
         orderBy: { position: "asc" },
@@ -3704,9 +3705,17 @@ var listPricing = async (_req, res, next) => {
       prisma_default.freelancePlan.findMany({
         where: { active: true },
         orderBy: { price: "asc" }
-      })
+      }),
+      /* What each action costs in credits.
+       *
+       * Published, because the tariff is the price list — a seller deciding
+       * whether to join should not have to sign up to read it. It is a
+       * platform setting rather than anything about a user, so there is
+       * nothing here to keep behind the session; the same figures were
+       * already served to the workspace. */
+      credits_service_default.getCreditCosts()
     ]);
-    res.json({ success: true, data: { packs, plans } });
+    res.json({ success: true, data: { packs, plans, costs } });
   } catch (err) {
     next(err);
   }
@@ -3764,6 +3773,12 @@ var getProject = async (req, res, next) => {
     next(err);
   }
 };
+var reviewerName = (author) => {
+  const first = author.firstName?.trim();
+  const initial = author.lastName?.trim().charAt(0);
+  if (first && initial) return `${first} ${initial}.`;
+  return first || "Client";
+};
 var getService = async (req, res, next) => {
   try {
     const service = await prisma_default.serviceListing.findFirst({
@@ -3810,7 +3825,7 @@ var getService = async (req, res, next) => {
             completedOrders: true,
             wilaya: true,
             languages: true,
-            user: { select: { avatar: { select: { url: true } } } }
+            user: { select: { id: true, avatar: { select: { url: true } } } }
           }
         }
       }
@@ -3818,6 +3833,24 @@ var getService = async (req, res, next) => {
     if (!service) {
       return res.status(404).json({ success: false, message: "Service introuvable." });
     }
+    const reviews = await prisma_default.freelanceReview.findMany({
+      where: {
+        state: "APPROVED",
+        targetId: service.freelancer.user.id,
+        order: { serviceId: service.id }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        response: true,
+        respondedAt: true,
+        author: { select: { firstName: true, lastName: true } }
+      }
+    });
     prisma_default.serviceListing.update({ where: { id: service.id }, data: { views: { increment: 1 } } }).catch(() => {
     });
     res.json({
@@ -3827,8 +3860,20 @@ var getService = async (req, res, next) => {
           ...service,
           images: service.media.map((m) => m.file.url),
           skills: service.skills.map((s) => s.skill.name),
+          reviews: reviews.map((r) => ({
+            id: r.id,
+            rating: r.rating,
+            comment: r.comment,
+            createdAt: r.createdAt,
+            response: r.response,
+            respondedAt: r.respondedAt,
+            author: reviewerName(r.author)
+          })),
           freelancer: {
             ...service.freelancer,
+            // Dropped rather than spread: the page needs the avatar, not the
+            // account id behind it.
+            user: void 0,
             avatarUrl: service.freelancer.user.avatar?.url ?? null
           }
         }

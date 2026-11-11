@@ -1,44 +1,61 @@
 import React, { useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
-import { Briefcase, Globe, LayoutDashboard, Menu, X } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Bell, Briefcase, Globe, Menu, X } from "lucide-react";
 import { Lang, useI18n } from "./i18n";
-import logoLight from "../assets/logo2-v2.png";
 import { useAuth } from "./auth";
 import { usePageViews } from "./usePageViews";
 import { useUnread } from "./useUnread";
+import { useCredits } from "./useWorkspace";
+import { Avatar, Badge, Wordmark, btn } from "./ui";
 import CookieNotice, { openCookiePolicy } from "../components/CookieNotice";
 
 /**
- * The shell around every public marketplace page.
+ * The shell around every marketplace page.
  *
- * Shares the recruitment platform's navy and gold rather than inventing a
- * second identity: the specification asks for one charte graphique across
- * both sides.
+ * One header, two modes. The canvas draws a public header (navigation,
+ * language, a "publier un service" call to action) and a workspace header
+ * (mode switch, credit balance, avatar) — same white bar, same hairline,
+ * different contents. They are one component here rather than two layouts
+ * because the workspace routes are nested inside this one: splitting them
+ * would mean two copies of the cookie notice and the page-view tracking.
+ *
+ * The footer belongs to the public pages only. None of the workspace
+ * artboards has one, and a dashboard that scrolls into a sitemap is a
+ * dashboard nobody reaches the bottom of.
  */
 
 const LANGS: Array<{ code: Lang; label: string }> = [
   { code: "fr", label: "FR" },
-  { code: "ar", label: "ع" },
+  { code: "ar", label: "AR" },
   { code: "en", label: "EN" },
 ];
 
-const LanguageSwitch: React.FC = () => {
+/**
+ * The language trough: a ground-coloured pill with the active language as a
+ * navy pill inside it.
+ *
+ * `aria-pressed` rather than `role="tab"` — these do not reveal panels, they
+ * change the whole document's language.
+ */
+const LanguageSwitch: React.FC<{ className?: string }> = ({ className = "" }) => {
   const { lang, setLang } = useI18n();
 
   return (
     <div
-      className="inline-flex items-center rounded-full border border-white/25 p-0.5"
+      className={"inline-flex items-center rounded-full bg-ground p-1 " + className}
       role="group"
       aria-label="Langue"
     >
       {LANGS.map((l) => (
         <button
           key={l.code}
+          type="button"
           onClick={() => setLang(l.code)}
           aria-pressed={lang === l.code}
-          className={`px-2.5 py-1 text-xs font-bold rounded-full transition-colors ${
-            lang === l.code ? "bg-white text-[#173E7D]" : "text-white/70 hover:text-white"
-          }`}
+          className={
+            "min-h-9 rounded-full px-3 text-[13px] font-bold transition-colors " +
+            (lang === l.code ? "bg-primary text-white" : "text-primary hover:bg-surface")
+          }
         >
           {l.label}
         </button>
@@ -47,139 +64,250 @@ const LanguageSwitch: React.FC = () => {
   );
 };
 
+/* -------------------------------------------------------------------------- */
+
 const navClass = ({ isActive }: { isActive: boolean }) =>
-  `text-sm font-semibold transition-colors ${
-    isActive ? "text-white" : "text-white/70 hover:text-white"
-  }`;
+  "text-[15px] font-semibold transition-colors " +
+  (isActive ? "text-accent-ink" : "text-primary hover:text-navy-deep");
+
+/** The unread count, as a navy pill. Hidden from the count itself at zero. */
+const Unread: React.FC<{ count: number }> = ({ count }) =>
+  count > 0 ? (
+    <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  ) : null;
 
 const PublicLayout: React.FC = () => {
   const { t, lang } = useI18n();
-  const { signedIn, loading } = useAuth();
+  const { signedIn, loading, user } = useAuth();
+  const location = useLocation();
   usePageViews();
   const unread = useUnread(signedIn);
+  const credits = useCredits();
   const [open, setOpen] = useState(false);
+
+  /* The workspace and the client area are the signed-in product; the rest is
+   * the shopfront. The header follows the route rather than the session,
+   * because a signed-in visitor browsing categories still wants the
+   * shopfront's navigation. */
+  const inWorkspace = location.pathname.startsWith("/freelance-espace");
+  const inClientArea = location.pathname.startsWith("/client");
+  const atWork = inWorkspace || inClientArea;
+
+  const close = () => setOpen(false);
 
   const links = (
     <>
-      <NavLink to="/categories" className={navClass} onClick={() => setOpen(false)}>
+      <NavLink to="/categories" className={navClass} onClick={close}>
         {t("nav.categories")}
       </NavLink>
-      <NavLink to="/projets" className={navClass} onClick={() => setOpen(false)}>
+      <NavLink to="/projets" className={navClass} onClick={close}>
         {t("nav.projects")}
       </NavLink>
-      <NavLink to="/freelances" className={navClass} onClick={() => setOpen(false)}>
+      <NavLink to="/freelances" className={navClass} onClick={close}>
         {t("nav.freelancers")}
       </NavLink>
-      <NavLink to="/tarifs" className={navClass} onClick={() => setOpen(false)}>
+      <NavLink to="/tarifs" className={navClass} onClick={close}>
         {t("nav.pricing")}
       </NavLink>
-      <NavLink to="/client/projets" className={navClass} onClick={() => setOpen(false)}>
-        Publier un projet
-      </NavLink>
-      {/* Only once there is a session: an inbox link for a visitor who has no
-          inbox is a link to a sign-in screen pretending to be a feature. */}
       {signedIn && (
         <NavLink
           to="/messages"
-          className={(state) => `${navClass(state)} inline-flex items-center gap-1.5`}
-          onClick={() => setOpen(false)}
+          className={(s) => navClass(s) + " inline-flex items-center gap-1.5"}
+          onClick={close}
         >
           {t("nav.messages")}
-          {unread > 0 && (
-            <span className="min-w-4.5 h-4.5 px-1.5 grid place-items-center rounded-full bg-[#D4AF37] text-[#0B1E3D] text-[10px] font-black">
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
+          <Unread count={unread} />
         </NavLink>
       )}
     </>
   );
 
+  /** Freelance / client, the two sides of one account. */
+  const modeSwitch = (
+    <div className="inline-flex items-center rounded-full bg-ground p-1" role="group" aria-label="Changer de mode">
+      <Link
+        to="/freelance-espace"
+        aria-current={inWorkspace ? "page" : undefined}
+        className={
+          "min-h-9 rounded-full px-3.5 text-[13px] font-bold transition-colors " +
+          (inWorkspace ? "bg-secondary text-ink" : "text-primary hover:bg-surface")
+        }
+      >
+        {t("mode.freelance")}
+      </Link>
+      <Link
+        to="/client/projets"
+        aria-current={inClientArea ? "page" : undefined}
+        className={
+          "min-h-9 rounded-full px-3.5 text-[13px] font-bold transition-colors " +
+          (inClientArea ? "bg-success text-white" : "text-primary hover:bg-surface")
+        }
+      >
+        {t("mode.client")}
+      </Link>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F7FA] text-[#2B3442]">
-      <header className="bg-gradient-to-r from-[#0B1E3D] to-[#173E7D] text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="h-16 flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-2 shrink-0">
-              {/* The pale wordmark, not the navy one: this header is a navy
-                  gradient and logo-v2.png would disappear into it. The asset
-                  is imported rather than the Logo2 component because that
-                  component only offers h-6, h-12 and h-24, and none of the
-                  three sits well in a 64px bar. */}
-              <img
-                src={logoLight}
-                alt="Dar L'Emploi"
-                className="h-7 sm:h-8 w-auto block object-contain"
-              />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4AF37] border border-[#D4AF37]/50 rounded px-1.5 py-0.5">
-                {t("brand.freelance")}
-              </span>
-            </Link>
+    <div className="flex min-h-screen flex-col bg-ground text-primary">
+      <header className="bg-surface border-b border-line">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-5 px-4 py-3 sm:px-8">
+          <Link to="/" className="shrink-0" aria-label="Dar L'emploi Freelance">
+            <Wordmark label={t("brand.freelance")} />
+          </Link>
 
-            <nav className="hidden lg:flex items-center gap-6">{links}</nav>
+          {atWork ? (
+            <>
+              <div className="hidden sm:block">{modeSwitch}</div>
 
-            <div className="ms-auto flex items-center gap-3">
-              <LanguageSwitch />
-
-              {/* Shown only once we know: rendering "Connexion" during the
-                  check and swapping it a moment later reads as a glitch. */}
-              {!loading &&
-                (signedIn ? (
-                  <Link
-                    to="/freelance-espace"
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 bg-[#D4AF37] text-[#0B1E3D] text-xs font-bold"
-                  >
-                    <LayoutDashboard size={14} /> {t("nav.dashboard")}
+              <div className="ms-auto flex items-center gap-3">
+                {/* Only when there is a balance to state. A pill reading
+                    "0 crédits" to someone with no freelance account is a
+                    number about nothing. */}
+                {credits !== null && (
+                  <Link to="/acheter-credits" className="shrink-0">
+                    <Badge tone="warn" className="min-h-10 px-3.5 text-sm">
+                      ◆ {credits} {t("ws.credits")}
+                    </Badge>
                   </Link>
-                ) : (
-                  <Link
-                    to="/connexion"
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 border border-white/30 text-xs font-bold text-white hover:bg-white/10"
-                  >
-                    {t("nav.signin")}
-                  </Link>
-                ))}
+                )}
 
-              {/* Back to the recruitment site. A full page load on purpose:
-                  it is the other application, not another route. */}
-              <a
-                href="/"
-                className="hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 hover:text-white"
+                <Link
+                  to="/messages"
+                  aria-label={t("nav.messages")}
+                  className="relative grid h-11 w-11 place-items-center rounded-full bg-ground text-primary hover:bg-line"
+                >
+                  <Bell size={20} aria-hidden="true" />
+                  {unread > 0 && (
+                    <span className="absolute -top-0.5 -end-0.5">
+                      <Unread count={unread} />
+                    </span>
+                  )}
+                </Link>
+
+                <Avatar
+                  name={user?.firstName || user?.email || "?"}
+                  url={user?.avatar?.url}
+                  tone="orange"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <nav
+                aria-label="Navigation principale"
+                className="hidden flex-wrap items-center gap-6 lg:flex"
               >
-                <Briefcase size={14} /> {t("nav.backToJobs")}
-              </a>
+                {links}
+              </nav>
 
-              <button
-                onClick={() => setOpen((v) => !v)}
-                className="lg:hidden text-white"
-                aria-label="Menu"
-                aria-expanded={open}
-              >
-                {open ? <X size={22} /> : <Menu size={22} />}
-              </button>
-            </div>
-          </div>
+              <div className="ms-auto flex items-center gap-3">
+                <LanguageSwitch className="hidden sm:inline-flex" />
 
-          {open && (
-            <nav className="lg:hidden flex flex-col gap-3 pb-4 border-t border-white/10 pt-4">
-              {links}
-              <a href="/" className="text-sm font-semibold text-white/70">
-                {t("nav.backToJobs")}
-              </a>
-            </nav>
+                {/* Shown only once we know: rendering "Connexion" during the
+                    check and swapping it a moment later reads as a glitch. */}
+                {!loading &&
+                  (signedIn ? (
+                    <Link
+                      to="/freelance-espace"
+                      className="hidden text-[15px] font-bold text-primary hover:underline sm:inline-flex"
+                    >
+                      {t("nav.dashboard")}
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/connexion"
+                      className="hidden px-3 text-[15px] font-bold text-primary hover:underline sm:inline-flex"
+                    >
+                      {t("nav.signin")}
+                    </Link>
+                  ))}
+
+                <Link
+                  to="/freelance-espace/services/nouveau"
+                  className={btn("accent", "hidden sm:inline-flex")}
+                >
+                  {t("home.ctaPublishService")}
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setOpen((v) => !v)}
+                  className="grid h-11 w-11 place-items-center rounded-full bg-ground text-primary lg:hidden"
+                  aria-label="Menu"
+                  aria-expanded={open}
+                >
+                  {open ? <X size={22} /> : <Menu size={22} />}
+                </button>
+              </div>
+            </>
           )}
         </div>
+
+        {open && !atWork && (
+          <nav
+            aria-label="Navigation principale"
+            className="flex flex-col gap-4 border-t border-line px-4 py-5 sm:px-8 lg:hidden"
+          >
+            {links}
+            <LanguageSwitch className="self-start sm:hidden" />
+            {!signedIn && (
+              <Link to="/connexion" className={btn("ghost", "self-start")} onClick={close}>
+                {t("nav.signin")}
+              </Link>
+            )}
+            <Link
+              to="/freelance-espace/services/nouveau"
+              className={btn("accent", "self-start sm:hidden")}
+              onClick={close}
+            >
+              {t("home.ctaPublishService")}
+            </Link>
+            <a href="/" className="text-[15px] font-semibold text-muted">
+              {t("nav.backToJobs")}
+            </a>
+          </nav>
+        )}
+
+        {/* The mode switch does not fit the top row on a phone. */}
+        {atWork && <div className="border-t border-line px-4 py-3 sm:hidden">{modeSwitch}</div>}
       </header>
 
       <main className="flex-1">
         <Outlet />
       </main>
 
-      <footer className="bg-[#0B1E3D] text-white/60 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
-            <span className="font-display text-white text-base">Dar L'Emploi Freelance</span>
-            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      {!atWork && (
+        <footer className="mt-16 bg-ink text-on-ink">
+          <div className="mx-auto flex max-w-7xl flex-wrap gap-10 px-4 py-14 sm:px-8">
+            <div className="flex flex-1 basis-70 flex-col gap-3">
+              <Wordmark on="dark" size="lg" label={t("brand.freelance")} />
+              <p className="max-w-80 text-sm leading-relaxed">{t("footer.oneAccount")}</p>
+              <a
+                href="/"
+                className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-white hover:underline"
+              >
+                <Briefcase size={14} aria-hidden="true" /> {t("nav.backToJobs")}
+              </a>
+            </div>
+
+            <nav aria-label={t("footer.platform")} className="flex basis-44 flex-col gap-2.5 text-sm">
+              <b className="text-white">{t("footer.platform")}</b>
+              <Link to="/categories" className="hover:text-white">
+                {t("nav.categories")}
+              </Link>
+              <Link to="/projets" className="hover:text-white">
+                {t("nav.projects")}
+              </Link>
+              <Link to="/tarifs" className="hover:text-white">
+                {t("nav.pricing")}
+              </Link>
+            </nav>
+
+            <nav aria-label={t("footer.help")} className="flex basis-44 flex-col gap-2.5 text-sm">
+              <b className="text-white">{t("footer.help")}</b>
               <Link to="/aide" className="hover:text-white">
                 {t("footer.help")}
               </Link>
@@ -189,16 +317,27 @@ const PublicLayout: React.FC = () => {
               <Link to="/confidentialite" className="hover:text-white">
                 {t("footer.privacy")}
               </Link>
-              <button type="button" onClick={openCookiePolicy} className="hover:text-white">
+              <button type="button" onClick={openCookiePolicy} className="text-start hover:text-white">
                 {t("footer.cookies")}
               </button>
             </nav>
+
+            <nav aria-label="Dar L'emploi" className="flex basis-44 flex-col gap-2.5 text-sm">
+              <b className="text-white">Dar L&apos;emploi</b>
+              <a href="https://www.darlemploi.dz" className="hover:text-white">
+                {t("footer.jobs")}
+              </a>
+              <a href="https://www.darlemploi.dz" className="hover:text-white">
+                {t("footer.postCv")}
+              </a>
+            </nav>
           </div>
-          <p className="mt-6 text-xs">
-            © {new Date().getFullYear()} Dar L'Emploi. {t("footer.rights")}
-          </p>
-        </div>
-      </footer>
+
+          <div className="mx-auto max-w-7xl border-t border-white/10 px-4 py-6 text-xs sm:px-8">
+            © {new Date().getFullYear()} Dar L&apos;emploi. {t("footer.rights")}
+          </div>
+        </footer>
+      )}
 
       <CookieNotice language={lang} />
     </div>

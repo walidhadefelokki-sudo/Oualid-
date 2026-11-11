@@ -82,18 +82,18 @@ const AuthCallback: React.FC = () => {
 
       {error ? (
         <>
-          <p className="mt-8 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-4">
+          <p className="mt-8 rounded-xl bg-tint-red text-danger text-sm p-4">
             {error}
           </p>
           <Link
             to="/connexion"
-            className="inline-block mt-6 rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
+            className="inline-block mt-6 rounded-full px-6 py-3 bg-primary text-white font-bold"
           >
             {t("nav.signin")}
           </Link>
         </>
       ) : (
-        <div className="mt-10 flex items-center justify-center gap-3 text-[#173E7D]/60">
+        <div className="mt-10 flex items-center justify-center gap-3 text-muted">
           <Loader2 size={20} className="animate-spin" />
           <span className="font-semibold">{t("common.loading")}</span>
         </div>

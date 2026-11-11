@@ -35,10 +35,10 @@ const TEMPLATES = [
 
 const COLOURS = ["#173E7D", "#0B1E3D", "#D4AF37", "#F68D58", "#1E7D5A", "#7D1E5A"];
 
-const card = "rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5";
-const label = "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
+const card = "rounded-panel bg-surface p-6";
+const label = "mb-2 block text-sm font-bold text-primary";
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#173E7D]";
+  "w-full rounded-xl border-2 border-line bg-white px-4 py-2.5 text-sm outline-none focus:border-primary";
 
 const PortfolioEditor: React.FC = () => {
   const [data, setData] = useState<any>(null);
@@ -142,10 +142,10 @@ const PortfolioEditor: React.FC = () => {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-display font-bold text-[#173E7D]">Mini portfolio</h1>
+        <h1 className="text-2xl font-bold text-primary">Mini portfolio</h1>
         <Link
           to={`/@${data.username}`}
-          className="inline-flex items-center gap-2 text-sm font-bold text-[#173E7D] hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline"
         >
           <ExternalLink size={15} />
           <span dir="ltr">/@{data.username}</span>
@@ -154,14 +154,14 @@ const PortfolioEditor: React.FC = () => {
 
       <div
         className={`${card} mb-5 flex flex-wrap items-center gap-4 ${
-          p.published ? "border-emerald-300" : ""
+          p.published ? "border-tint-green" : ""
         }`}
       >
         <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+          <p className="text-sm font-bold text-primary">
             {p.published ? "En ligne" : "Brouillon"}
           </p>
-          <p className="text-sm text-[#2B3442]/60">
+          <p className="text-sm text-muted">
             {p.published
               ? "Votre page est visible par tout le monde."
               : "Votre page n'est pas encore visible."}
@@ -170,10 +170,10 @@ const PortfolioEditor: React.FC = () => {
 
         {limits.stats !== "none" && (
           <div>
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+            <p className="text-sm font-bold text-primary">
               Vues
             </p>
-            <p className="text-xl font-display font-bold text-[#173E7D]" dir="ltr">
+            <p className="text-xl font-bold text-primary" dir="ltr">
               {p.views}
             </p>
           </div>
@@ -184,8 +184,8 @@ const PortfolioEditor: React.FC = () => {
           disabled={busy}
           className={`ms-auto rounded-full px-5 py-2.5 text-sm font-bold disabled:opacity-40 ${
             p.published
-              ? "border-2 border-[#173E7D]/20 text-[#173E7D]"
-              : "bg-[#173E7D] text-white"
+              ? "border-2 border-line text-primary"
+              : "bg-primary text-white"
           }`}
         >
           {p.published ? "Dépublier" : "Publier"}
@@ -193,18 +193,18 @@ const PortfolioEditor: React.FC = () => {
       </div>
 
       {note && (
-        <p className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-3">
+        <p className="mb-4 rounded-xl bg-tint-green text-success text-sm p-3">
           {note}
         </p>
       )}
       {error && (
-        <p className="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+        <p className="mb-4 rounded-xl bg-tint-red text-danger text-sm p-3">
           {error}
         </p>
       )}
 
       <section className={`${card} mb-5`}>
-        <h2 className="font-display font-bold text-[#173E7D] mb-4">Apparence</h2>
+        <h2 className="font-bold text-primary mb-4">Apparence</h2>
 
         <span className={label}>Modèle</span>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
@@ -217,10 +217,10 @@ const PortfolioEditor: React.FC = () => {
                 disabled={locked || busy}
                 className={`rounded-xl px-3 py-2.5 text-sm font-bold border-2 inline-flex items-center justify-center gap-1.5 ${
                   p.template === tpl.id
-                    ? "border-[#173E7D] bg-[#173E7D] text-white"
+                    ? "border-primary bg-primary text-white"
                     : locked
-                      ? "border-[#173E7D]/10 text-[#2B3442]/30"
-                      : "border-[#173E7D]/15 text-[#2B3442]/70"
+                      ? "border-line-soft text-body/30"
+                      : "border-line text-body"
                 }`}
               >
                 {locked && <Lock size={12} />}
@@ -239,7 +239,7 @@ const PortfolioEditor: React.FC = () => {
               disabled={busy}
               aria-label={c}
               className={`w-9 h-9 rounded-full border-4 ${
-                p.accentColor === c ? "border-[#173E7D]/40" : "border-transparent"
+                p.accentColor === c ? "border-primary" : "border-transparent"
               }`}
               style={{ background: c }}
             />
@@ -267,8 +267,8 @@ const PortfolioEditor: React.FC = () => {
       </section>
 
       <section className={`${card} mb-5`}>
-        <h2 className="font-display font-bold text-[#173E7D] mb-1">Sections</h2>
-        <p className="text-sm text-[#2B3442]/60 mb-4">
+        <h2 className="font-bold text-primary mb-1">Sections</h2>
+        <p className="text-sm text-muted mb-4">
           Activez, désactivez et réordonnez ce qui apparaît sur votre page.
         </p>
 
@@ -276,10 +276,10 @@ const PortfolioEditor: React.FC = () => {
           {data.sections.map((s: any, i: number) => (
             <li
               key={s.type}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-[#173E7D]/[0.04]"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-primary/[0.04]"
             >
-              <GripVertical size={15} className="text-[#173E7D]/20 shrink-0" />
-              <span className="flex-1 min-w-0 text-sm font-semibold text-[#2B3442]">
+              <GripVertical size={15} className="text-primary/25 shrink-0" />
+              <span className="flex-1 min-w-0 text-sm font-semibold text-body">
                 {SECTION_LABEL[s.type] ?? s.type}
               </span>
 
@@ -288,7 +288,7 @@ const PortfolioEditor: React.FC = () => {
                   onClick={() => move(i, -1)}
                   disabled={i === 0}
                   aria-label="Monter"
-                  className="px-2 text-[#173E7D]/40 hover:text-[#173E7D] disabled:opacity-20"
+                  className="px-2 text-muted hover:text-primary disabled:opacity-20"
                 >
                   ↑
                 </button>
@@ -296,7 +296,7 @@ const PortfolioEditor: React.FC = () => {
                   onClick={() => move(i, 1)}
                   disabled={i === data.sections.length - 1}
                   aria-label="Descendre"
-                  className="px-2 text-[#173E7D]/40 hover:text-[#173E7D] disabled:opacity-20"
+                  className="px-2 text-muted hover:text-primary disabled:opacity-20"
                 >
                   ↓
                 </button>
@@ -309,7 +309,7 @@ const PortfolioEditor: React.FC = () => {
                     )
                   }
                   aria-label={s.visible ? "Masquer" : "Afficher"}
-                  className="p-1.5 text-[#173E7D]/50 hover:text-[#173E7D]"
+                  className="p-1.5 text-muted hover:text-primary"
                 >
                   {s.visible ? <Eye size={16} /> : <EyeOff size={16} />}
                 </button>
@@ -322,8 +322,8 @@ const PortfolioEditor: React.FC = () => {
       <section className={card}>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="font-display font-bold text-[#173E7D]">Réalisations</h2>
-            <p className="text-sm text-[#2B3442]/60">
+            <h2 className="font-bold text-primary">Réalisations</h2>
+            <p className="text-sm text-muted">
               {limits.usedProjects} / {limits.maxProjects ?? "illimité"} · formule{" "}
               {limits.planName}
             </p>
@@ -331,21 +331,21 @@ const PortfolioEditor: React.FC = () => {
           <button
             onClick={() => setAdding((v) => !v)}
             disabled={full}
-            className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 bg-[#173E7D] text-white text-sm font-bold disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 bg-primary text-white text-sm font-bold disabled:opacity-40"
           >
             <Plus size={15} /> Ajouter
           </button>
         </div>
 
         {full && (
-          <p className="mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+          <p className="mb-4 rounded-xl bg-tint-orange text-warn text-sm p-3">
             Votre formule permet {limits.maxProjects} réalisations. Supprimez-en une ou changez de
             formule.
           </p>
         )}
 
         {adding && (
-          <div className="mb-5 rounded-xl border-2 border-[#173E7D]/15 p-4 space-y-3">
+          <div className="mb-5 rounded-xl border-2 border-line p-4 space-y-3">
             <input
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -406,7 +406,7 @@ const PortfolioEditor: React.FC = () => {
             <button
               onClick={addProject}
               disabled={busy || !draft.title.trim()}
-              className="rounded-xl bg-[#173E7D] text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
+              className="rounded-xl bg-primary text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
             >
               {busy && <Loader2 size={15} className="animate-spin" />}
               Enregistrer
@@ -415,17 +415,17 @@ const PortfolioEditor: React.FC = () => {
         )}
 
         {data.projects.length === 0 ? (
-          <p className="text-sm text-[#2B3442]/40">Aucune réalisation pour le moment.</p>
+          <p className="text-sm text-muted">Aucune réalisation pour le moment.</p>
         ) : (
           <ul className="space-y-2">
             {data.projects.map((pr: any) => (
               <li
                 key={pr.id}
-                className="flex items-center gap-3 rounded-xl border border-[#173E7D]/10 p-3"
+                className="flex items-center gap-3 rounded-xl border border-line-soft p-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[#173E7D] break-words">{pr.title}</p>
-                  {pr.role && <p className="text-xs text-[#2B3442]/50">{pr.role}</p>}
+                  <p className="font-semibold text-primary break-words">{pr.title}</p>
+                  {pr.role && <p className="text-xs text-muted">{pr.role}</p>}
                 </div>
 
                 <button
@@ -439,10 +439,10 @@ const PortfolioEditor: React.FC = () => {
                         setError(e?.response?.data?.message || "Échec de la mise à la une.")
                       )
                   }
-                  className={`shrink-0 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                  className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${
                     pr.featured
-                      ? "bg-[#D4AF37] text-[#0B1E3D]"
-                      : "bg-[#173E7D]/8 text-[#173E7D]/60"
+                      ? "bg-secondary text-ink"
+                      : "bg-ground text-muted"
                   }`}
                 >
                   À la une
@@ -457,7 +457,7 @@ const PortfolioEditor: React.FC = () => {
                       .catch(() => setError("Échec de la suppression."))
                   }
                   aria-label="Supprimer"
-                  className="shrink-0 p-2 text-gray-300 hover:text-red-500"
+                  className="shrink-0 p-2 text-line hover:text-danger"
                 >
                   <Trash2 size={15} />
                 </button>

@@ -97,13 +97,13 @@ const ThreadList: React.FC<{ activeId?: string }> = ({ activeId }) => {
     return (
       <div>
         <EmptyState message={t("msg.empty")} />
-        <p className="mt-3 text-center text-sm text-[#2B3442]/50">{t("msg.emptyHint")}</p>
+        <p className="mt-3 text-center text-sm text-muted">{t("msg.emptyHint")}</p>
       </div>
     );
   }
 
   return (
-    <ul className="rounded-2xl border-2 border-[#173E7D]/15 bg-white divide-y divide-[#173E7D]/10 overflow-hidden">
+    <ul className="rounded-card border-2 border-line bg-white divide-y divide-line-soft overflow-hidden">
       {threads.map((thread) => {
         const name = thread.with?.name ?? "—";
         const active = thread.id === activeId;
@@ -113,29 +113,29 @@ const ThreadList: React.FC<{ activeId?: string }> = ({ activeId }) => {
             <Link
               to={`/messages/${thread.id}`}
               className={`flex items-start gap-3 px-4 py-3.5 transition-colors ${
-                active ? "bg-[#173E7D]/8" : "hover:bg-[#173E7D]/4"
+                active ? "bg-ground" : "hover:bg-primary/4"
               }`}
             >
-              <span className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#0B1E3D] to-[#173E7D] text-white grid place-items-center font-display text-sm">
+              <span className="w-9 h-9 shrink-0 rounded-full bg-primary text-white grid place-items-center font-display text-sm">
                 {initial(name)}
               </span>
 
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-2">
-                  <span className="font-bold text-[#173E7D] text-sm truncate">{name}</span>
-                  <span className="ms-auto shrink-0 text-[10px] font-semibold text-[#2B3442]/40">
+                  <span className="font-bold text-primary text-sm truncate">{name}</span>
+                  <span className="ms-auto shrink-0 text-[10px] font-semibold text-muted">
                     {stamp(thread.updatedAt, lang)}
                   </span>
                 </span>
 
                 {thread.order && (
-                  <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-secondary">
                     <ShoppingBag size={11} /> {thread.order.reference}
                   </span>
                 )}
 
                 <span className="mt-0.5 flex items-center gap-2">
-                  <span className="text-[13px] text-[#2B3442]/60 truncate">
+                  <span className="text-[13px] text-muted truncate">
                     {thread.lastMessage
                       ? `${thread.lastMessage.mine ? `${t("msg.you")}: ` : ""}${
                           thread.lastMessage.body ?? "—"
@@ -143,7 +143,7 @@ const ThreadList: React.FC<{ activeId?: string }> = ({ activeId }) => {
                       : t("msg.noMessages")}
                   </span>
                   {thread.unread > 0 && (
-                    <span className="ms-auto shrink-0 min-w-5 h-5 px-1.5 grid place-items-center rounded-full bg-[#173E7D] text-white text-[10px] font-black">
+                    <span className="ms-auto shrink-0 min-w-5 h-5 px-1.5 grid place-items-center rounded-full bg-primary text-white text-[10px] font-black">
                       {thread.unread}
                     </span>
                   )}
@@ -181,7 +181,7 @@ const AttachmentView: React.FC<{ file: Attachment; mine: boolean }> = ({ file, m
     return (
       <p
         className={`mt-1.5 inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs ${
-          mine ? "bg-white/15 text-white/80" : "bg-[#173E7D]/8 text-[#2B3442]/70"
+          mine ? "bg-white/15 text-white/80" : "bg-ground text-body"
         }`}
       >
         <FileText size={13} /> {file.fileName ?? "Fichier"} — lien indisponible
@@ -208,7 +208,7 @@ const AttachmentView: React.FC<{ file: Attachment; mine: boolean }> = ({ file, m
       target="_blank"
       rel="noopener noreferrer"
       className={`mt-1.5 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${
-        mine ? "bg-white/15 text-white hover:bg-white/25" : "bg-[#173E7D]/8 text-[#173E7D] hover:bg-[#173E7D]/15"
+        mine ? "bg-white/15 text-white hover:bg-white/25" : "bg-ground text-primary hover:bg-line"
       }`}
     >
       <FileText size={14} className="shrink-0" />
@@ -321,11 +321,11 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
 
   if (failed && !messages) {
     return (
-      <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-6 text-center">
-        <p className="font-bold text-red-700">{failed}</p>
+      <div className="rounded-card border-2 border-tint-red bg-tint-red p-6 text-center">
+        <p className="font-bold text-danger">{failed}</p>
         <button
           onClick={() => navigate("/messages")}
-          className="mt-4 rounded-full px-5 py-2 bg-[#173E7D] text-white text-sm font-bold"
+          className="mt-4 rounded-full px-5 py-2 bg-primary text-white text-sm font-bold"
         >
           {t("msg.threads")}
         </button>
@@ -334,18 +334,18 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
   }
 
   return (
-    <div className="rounded-2xl border-2 border-[#173E7D]/15 bg-white flex flex-col h-[70vh] min-h-[26rem] overflow-hidden">
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-[#173E7D]/10 shrink-0">
+    <div className="rounded-card border-2 border-line bg-white flex flex-col h-[70vh] min-h-[26rem] overflow-hidden">
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-line-soft shrink-0">
         {/* Back to the list, which on a narrow screen is the whole page. */}
         <Link
           to="/messages"
-          className="lg:hidden p-1.5 -ms-1.5 rounded-lg text-[#173E7D]/60 hover:text-[#173E7D]"
+          className="lg:hidden p-1.5 -ms-1.5 rounded-lg text-muted hover:text-primary"
           aria-label={t("msg.threads")}
         >
           <ArrowLeft size={18} className="rtl:rotate-180" />
         </Link>
 
-        <span className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#0B1E3D] to-[#173E7D] text-white grid place-items-center font-display text-sm">
+        <span className="w-9 h-9 shrink-0 rounded-full bg-primary text-white grid place-items-center font-display text-sm">
           {initial(peer?.name ?? "?")}
         </span>
 
@@ -353,17 +353,17 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
           {peer?.username ? (
             <Link
               to={`/@${peer.username}`}
-              className="font-bold text-[#173E7D] text-sm truncate hover:underline block"
+              className="font-bold text-primary text-sm truncate hover:underline block"
             >
               {peer.name}
             </Link>
           ) : (
-            <p className="font-bold text-[#173E7D] text-sm truncate">{peer?.name ?? "—"}</p>
+            <p className="font-bold text-primary text-sm truncate">{peer?.name ?? "—"}</p>
           )}
           {orderId && (
             <Link
               to={`/freelance-espace/commandes/${orderId}`}
-              className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:underline"
+              className="text-xs font-bold text-secondary hover:underline"
             >
               {t("msg.aboutOrder")}
             </Link>
@@ -380,16 +380,16 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
         {!messages ? (
           <Loading />
         ) : messages.length === 0 ? (
-          <p className="text-center text-sm text-[#2B3442]/50 py-8">{t("msg.noMessages")}</p>
+          <p className="text-center text-sm text-muted py-8">{t("msg.noMessages")}</p>
         ) : (
           messages.map((m) => (
             <div key={m.id} className={`flex ${m.mine ? "justify-end" : "justify-start"}`}>
               <div className="max-w-[min(32rem,85%)]">
                 <div
-                  className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words ${
+                  className={`rounded-card px-4 py-2.5 text-sm whitespace-pre-wrap break-words ${
                     m.mine
-                      ? "bg-[#173E7D] text-white rounded-se-sm"
-                      : "bg-[#173E7D]/8 text-[#2B3442] rounded-ss-sm"
+                      ? "bg-primary text-white rounded-se-sm"
+                      : "bg-ground text-body rounded-ss-sm"
                   }`}
                 >
                   {m.body}
@@ -399,7 +399,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
                 </div>
 
                 <p
-                  className={`mt-1 text-[10px] font-semibold text-[#2B3442]/40 ${
+                  className={`mt-1 text-[10px] font-semibold text-muted ${
                     m.mine ? "text-end" : "text-start"
                   }`}
                 >
@@ -408,7 +408,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
 
                 {/* Shown to the sender only — see the service. */}
                 {m.flagged && (
-                  <p className="mt-1 inline-flex items-start gap-1.5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                  <p className="mt-1 inline-flex items-start gap-1.5 rounded-xl bg-tint-orange px-3 py-2 text-[11px] text-warn">
                     <AlertTriangle size={13} className="mt-px shrink-0" />
                     {t("msg.flagged")}
                   </p>
@@ -421,7 +421,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
       </div>
 
       {failed && messages && (
-        <p className="px-4 pb-2 text-[12px] font-semibold text-red-600">{failed}</p>
+        <p className="px-4 pb-2 text-[12px] font-semibold text-danger">{failed}</p>
       )}
 
       {/* Chosen but not sent. Shown so nobody wonders whether the file
@@ -431,7 +431,7 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
           {files.map((file, i) => (
             <span
               key={`${file.name}-${i}`}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#173E7D]/8 px-3 py-1.5 text-xs text-[#173E7D]"
+              className="inline-flex items-center gap-1.5 rounded-full bg-ground px-3 py-1.5 text-xs text-primary"
             >
               {file.type.startsWith("image/") ? <ImageIcon size={12} /> : <FileText size={12} />}
               <span className="max-w-[12rem] truncate">{file.name}</span>
@@ -448,9 +448,9 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
         </div>
       )}
 
-      <form onSubmit={submit} className="flex items-end gap-2 p-3 border-t border-[#173E7D]/10 shrink-0">
+      <form onSubmit={submit} className="flex items-end gap-2 p-3 border-t border-line-soft shrink-0">
         <label
-          className={`shrink-0 w-11 h-11 grid place-items-center rounded-xl border-2 border-[#173E7D]/15 text-[#173E7D]/60 hover:text-[#173E7D] cursor-pointer ${
+          className={`shrink-0 w-11 h-11 grid place-items-center rounded-xl border-2 border-line text-muted hover:text-primary cursor-pointer ${
             files.length >= MAX_ATTACHMENTS ? "opacity-40 pointer-events-none" : ""
           }`}
           title={`Joindre un fichier (${MAX_ATTACHMENTS} maximum)`}
@@ -484,13 +484,13 @@ const Conversation: React.FC<{ id: string }> = ({ id }) => {
           rows={1}
           maxLength={5000}
           placeholder={t("msg.placeholder")}
-          className="flex-1 resize-none rounded-xl border-2 border-[#173E7D]/15 px-3.5 py-2.5 text-sm max-h-32 focus:outline-none focus:border-[#173E7D]/40"
+          className="flex-1 resize-none rounded-xl border-2 border-line px-3.5 py-2.5 text-sm max-h-32 focus:outline-none focus:border-primary"
         />
         <button
           type="submit"
           disabled={sending || (!draft.trim() && files.length === 0)}
           aria-label={t("msg.send")}
-          className="shrink-0 w-11 h-11 grid place-items-center rounded-xl bg-[#173E7D] text-white disabled:opacity-40"
+          className="shrink-0 w-11 h-11 grid place-items-center rounded-xl bg-primary text-white disabled:opacity-40"
         >
           {sending ? (
             <Loader2 size={17} className="animate-spin" />
@@ -517,11 +517,11 @@ const Messages: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-2xl font-display font-bold text-[#173E7D] mb-5 inline-flex items-center gap-2">
+      <h1 className="text-2xl font-bold text-primary mb-5 inline-flex items-center gap-2">
         <MessageSquare size={22} /> {t("msg.title")}
       </h1>
 
-      <p className="mb-5 rounded-xl bg-[#173E7D]/5 border border-[#173E7D]/15 px-4 py-3 text-[13px] text-[#2B3442]/70">
+      <p className="mb-5 rounded-xl bg-ground border border-line px-4 py-3 text-[13px] text-body">
         {t("msg.offPlatform")}
       </p>
 
@@ -536,8 +536,8 @@ const Messages: React.FC = () => {
           {id ? (
             <Conversation id={id} />
           ) : (
-            <div className="rounded-2xl border-2 border-dashed border-[#173E7D]/15 h-full min-h-[26rem] grid place-items-center">
-              <p className="text-sm text-[#2B3442]/50">{t("msg.pick")}</p>
+            <div className="rounded-card border-2 border-dashed border-line h-full min-h-[26rem] grid place-items-center">
+              <p className="text-sm text-muted">{t("msg.pick")}</p>
             </div>
           )}
         </div>

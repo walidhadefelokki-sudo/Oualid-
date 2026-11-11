@@ -4,6 +4,7 @@ import { Loader2, MessageSquare } from "lucide-react";
 import messaging, { OpenRequest } from "./messaging";
 import { useAuth } from "./auth";
 import { useI18n } from "./i18n";
+import { btn } from "./ui";
 
 /**
  * The way a conversation starts.
@@ -26,16 +27,6 @@ interface Props extends OpenRequest {
   size?: "md" | "sm";
   className?: string;
 }
-
-const STYLE = {
-  solid: "bg-[#173E7D] text-white",
-  outline: "border-2 border-[#173E7D]/20 text-[#173E7D] hover:bg-[#173E7D]/5",
-} as const;
-
-const SIZE = {
-  md: "w-full px-6 py-3",
-  sm: "px-4 py-1.5 text-xs",
-} as const;
 
 const ContactButton: React.FC<Props> = ({
   label,
@@ -72,22 +63,28 @@ const ContactButton: React.FC<Props> = ({
     }
   };
 
+  const icon = size === "sm" ? 13 : 16;
+
   return (
     <div className={className}>
       <button
+        type="button"
         onClick={open}
         disabled={busy}
-        className={`inline-flex items-center justify-center gap-2 rounded-full font-bold disabled:opacity-50 ${SIZE[size]} ${STYLE[variant]}`}
+        className={btn(
+          variant === "solid" ? "primary" : "ghost",
+          size === "sm" ? "min-h-9 px-4 text-[13px]" : "w-full"
+        )}
       >
         {busy ? (
-          <Loader2 size={size === "sm" ? 13 : 16} className="animate-spin" />
+          <Loader2 size={icon} className="animate-spin" aria-hidden="true" />
         ) : (
-          <MessageSquare size={size === "sm" ? 13 : 16} />
+          <MessageSquare size={icon} aria-hidden="true" />
         )}
         {label ?? t("msg.contact")}
       </button>
 
-      {error && <p className="mt-2 text-[12px] font-semibold text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-[13px] font-bold text-danger">{error}</p>}
     </div>
   );
 };

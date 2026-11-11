@@ -36,15 +36,15 @@ const STATUS: Record<
   CustomOffer["status"],
   { label: string; tone: string }
 > = {
-  SENT: { label: "En attente", tone: "bg-amber-50 text-amber-700 border-amber-200" },
-  ACCEPTED: { label: "Acceptée", tone: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  DECLINED: { label: "Refusée", tone: "bg-red-50 text-red-600 border-red-200" },
-  WITHDRAWN: { label: "Retirée", tone: "bg-gray-100 text-gray-500 border-gray-200" },
-  EXPIRED: { label: "Expirée", tone: "bg-gray-100 text-gray-500 border-gray-200" },
+  SENT: { label: "En attente", tone: "bg-tint-orange text-warn border-secondary" },
+  ACCEPTED: { label: "Acceptée", tone: "bg-tint-green text-success" },
+  DECLINED: { label: "Refusée", tone: "bg-tint-red text-danger" },
+  WITHDRAWN: { label: "Retirée", tone: "bg-tint-grey text-neutral-ink border-line" },
+  EXPIRED: { label: "Expirée", tone: "bg-tint-grey text-neutral-ink border-line" },
 };
 
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#173E7D]/40";
+  "w-full rounded-xl border-2 border-line bg-white px-3.5 py-2.5 text-sm outline-none focus:border-primary";
 
 const dayCount = (iso: string | null) => {
   if (!iso) return null;
@@ -151,10 +151,10 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
   if (loading || (offers.length === 0 && !canSend)) return null;
 
   return (
-    <section className="rounded-2xl border-2 border-[#D4AF37]/40 bg-white overflow-hidden mb-4">
-      <header className="flex flex-wrap items-center gap-2 bg-gradient-to-r from-[#0B1E3D] to-[#173E7D] px-4 py-3 text-white">
-        <Tag size={16} className="text-[#D4AF37]" />
-        <h3 className="font-display font-bold text-sm">Offre personnalisée</h3>
+    <section className="rounded-card border-2 border-secondary/40 bg-white overflow-hidden mb-4">
+      <header className="flex flex-wrap items-center gap-2 bg-primary px-4 py-3 text-white">
+        <Tag size={16} className="text-secondary" />
+        <h3 className="font-bold text-sm">Offre personnalisée</h3>
 
         {canSend && !composing && (
           <button
@@ -168,7 +168,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
 
       <div className="p-4">
         {error && (
-          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-600">
+          <p className="mb-3 rounded-xl bg-tint-red px-3.5 py-2.5 text-sm text-danger">
             {error}
           </p>
         )}
@@ -177,7 +177,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
           <form onSubmit={send} className="mb-4 space-y-3">
             {/* Said before they type it, not after the server refuses. */}
             {live && (
-              <p className="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs text-amber-800">
+              <p className="rounded-xl bg-tint-orange px-3.5 py-2.5 text-xs text-warn">
                 L'offre en attente sera remplacée par celle-ci.
               </p>
             )}
@@ -200,7 +200,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
 
             <div className="grid grid-cols-3 gap-2">
               <label className="block">
-                <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/45">
+                <span className="text-sm font-bold text-primary/45">
                   Prix (DZD)
                 </span>
                 <input
@@ -212,7 +212,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
                 />
               </label>
               <label className="block">
-                <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/45">
+                <span className="text-sm font-bold text-primary/45">
                   Délai (jours)
                 </span>
                 <input
@@ -224,7 +224,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
                 />
               </label>
               <label className="block">
-                <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/45">
+                <span className="text-sm font-bold text-primary/45">
                   Révisions
                 </span>
                 <input
@@ -241,7 +241,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
               <button
                 type="submit"
                 disabled={busyId === "new" || !form.title.trim() || !form.price}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#173E7D] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
               >
                 {busyId === "new" && <Loader2 size={14} className="animate-spin" />}
                 Envoyer l'offre
@@ -249,7 +249,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
               <button
                 type="button"
                 onClick={() => setComposing(false)}
-                className="rounded-xl border-2 border-[#173E7D]/15 px-4 py-2.5 text-sm font-bold text-[#173E7D]"
+                className="rounded-xl border-2 border-line px-4 py-2.5 text-sm font-bold text-primary"
               >
                 Annuler
               </button>
@@ -258,7 +258,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
         )}
 
         {offers.length === 0 && !composing && (
-          <p className="text-sm text-[#2B3442]/50">
+          <p className="text-sm text-muted">
             Proposez un prix pour un travail qui ne correspond à aucune de vos formules.
           </p>
         )}
@@ -271,34 +271,34 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
             <article
               key={offer.id}
               className={`rounded-xl border-2 p-4 mb-3 last:mb-0 ${
-                offer.status === "SENT" ? "border-[#D4AF37]/50" : "border-[#173E7D]/10 opacity-80"
+                offer.status === "SENT" ? "border-secondary" : "border-line-soft opacity-80"
               }`}
             >
               <div className="flex flex-wrap items-start gap-2">
-                <h4 className="font-bold text-[#173E7D] min-w-0 flex-1 break-words">
+                <h4 className="font-bold text-primary min-w-0 flex-1 break-words">
                   {offer.title}
                 </h4>
                 <span
-                  className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${STATUS[offer.status].tone}`}
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${STATUS[offer.status].tone}`}
                 >
                   {STATUS[offer.status].label}
                 </span>
               </div>
 
               {offer.description && (
-                <p className="mt-2 text-sm text-[#2B3442]/70 whitespace-pre-wrap break-words">
+                <p className="mt-2 text-sm text-body whitespace-pre-wrap break-words">
                   {offer.description}
                 </p>
               )}
 
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-                <span className="text-lg font-display font-bold text-[#173E7D]">
+                <span className="text-lg font-bold text-primary">
                   <Price value={offer.price} />
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-[#2B3442]/60">
+                <span className="inline-flex items-center gap-1.5 text-muted">
                   <Clock size={13} /> {offer.deliveryDays} jour(s)
                 </span>
-                <span className="text-[#2B3442]/60">
+                <span className="text-muted">
                   <RotateCcw size={13} className="inline me-1.5" />
                   {offer.revisions} révision(s)
                 </span>
@@ -306,7 +306,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
 
               {/* How long it stands, while it still stands. */}
               {offer.status === "SENT" && days !== null && (
-                <p className="mt-2 text-[11px] text-[#2B3442]/45">
+                <p className="mt-2 text-[11px] text-muted">
                   {days === 0 ? "Expire aujourd'hui" : `Valable encore ${days} jour(s)`}
                 </p>
               )}
@@ -314,7 +314,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
               {offer.order && (
                 <Link
                   to={`/freelance-espace/commandes/${offer.order.id}`}
-                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-[#173E7D] hover:underline"
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline"
                 >
                   <FileText size={14} /> Commande {offer.order.reference}
                 </Link>
@@ -326,7 +326,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
                     <button
                       onClick={() => act(offer, "withdraw")}
                       disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-xl border-2 border-[#173E7D]/15 px-4 py-2 text-sm font-bold text-[#173E7D] disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-xl border-2 border-line px-4 py-2 text-sm font-bold text-primary disabled:opacity-50"
                     >
                       {busy && <Loader2 size={13} className="animate-spin" />}
                       Retirer
@@ -336,7 +336,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
                       <button
                         onClick={() => act(offer, "accept")}
                         disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#173E7D] px-5 py-2 text-sm font-bold text-white disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2 text-sm font-bold text-white disabled:opacity-50"
                       >
                         {busy ? (
                           <Loader2 size={13} className="animate-spin" />
@@ -348,7 +348,7 @@ const OfferPanel: React.FC<Props> = ({ conversationId, onOrderCreated }) => {
                       <button
                         onClick={() => act(offer, "decline")}
                         disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-[#173E7D]/15 px-4 py-2 text-sm font-bold text-[#2B3442]/70 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-line px-4 py-2 text-sm font-bold text-body disabled:opacity-50"
                       >
                         <X size={14} /> Refuser
                       </button>

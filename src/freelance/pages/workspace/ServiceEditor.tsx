@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ImagePlus, Loader2, Plus, Send, Trash2 } from "lucide-react";
 import api from "../../../services/api";
 import freelanceService, { MarketplaceCategory } from "../../freelance.service";
-import { ErrorState, Loading } from "../../ui";
+import { Card, ErrorState, FIELD, Loading, btn } from "../../ui";
 import { useWorkspaceContext } from "../../useWorkspace";
 
 /**
@@ -45,10 +45,10 @@ const emptyPackage = (tier: PackageForm["tier"], label: string): PackageForm => 
 });
 
 const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
+  FIELD;
 const label =
-  "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
-const card = "rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5";
+  "mb-2 block text-sm font-bold text-primary";
+const card = "rounded-panel bg-surface p-6";
 
 /** One picture on the service, as the server returns it. */
 interface ServiceImage {
@@ -300,22 +300,22 @@ const ServiceEditor: React.FC = () => {
   return (
     <>
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
-        <h1 className="text-2xl font-display font-bold text-[#173E7D]">
+        <h1 className="text-2xl font-bold text-primary">
           {id ? "Modifier le service" : "Nouveau service"}
         </h1>
-        <span className="text-sm text-[#2B3442]/50">
+        <span className="text-sm text-muted">
           Publication : {costs.servicePublication} crédits · {costs.serviceDurationDays} jours
         </span>
       </div>
 
       {rejection && (
-        <p className="mb-5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-4">
+        <p className="mb-5 rounded-xl bg-tint-red text-danger text-sm p-4">
           <strong>Refusé par la modération :</strong> {rejection}
         </p>
       )}
 
       {locked && (
-        <p className="mb-5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4">
+        <p className="mb-5 rounded-xl bg-tint-orange text-warn text-sm p-4">
           Ce service est en cours de validation et ne peut pas être modifié.
         </p>
       )}
@@ -331,7 +331,7 @@ const ServiceEditor: React.FC = () => {
               placeholder="Je crée un site vitrine responsive pour votre entreprise"
               className={field}
             />
-            <span className="mt-1 block text-[11px] text-[#2B3442]/40">
+            <span className="mt-1 block text-[11px] text-muted">
               10 caractères minimum.
             </span>
           </label>
@@ -362,15 +362,15 @@ const ServiceEditor: React.FC = () => {
               rows={8}
               className={`${field} resize-y`}
             />
-            <span className="mt-1 block text-[11px] text-[#2B3442]/40">
+            <span className="mt-1 block text-[11px] text-muted">
               60 caractères minimum · {form.description.trim().length} écrits.
             </span>
           </label>
         </div>
 
         <div className={card}>
-          <h2 className="font-display font-bold text-[#173E7D] mb-1">Formules</h2>
-          <p className="text-sm text-[#2B3442]/50 mb-4">
+          <h2 className="font-bold text-primary mb-1">Formules</h2>
+          <p className="text-sm text-muted mb-4">
             Remplissez au moins une formule. Celles laissées sans prix ne sont pas publiées.
           </p>
 
@@ -384,12 +384,12 @@ const ServiceEditor: React.FC = () => {
                   onClick={() => setActiveTier(t.tier)}
                   className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-bold border-2 transition-colors ${
                     activeTier === t.tier
-                      ? "border-[#173E7D] bg-[#173E7D] text-white"
-                      : "border-[#173E7D]/15 text-[#2B3442]/70"
+                      ? "border-primary bg-primary text-white"
+                      : "border-line text-body"
                   }`}
                 >
                   {t.label}
-                  {filled && <span className="ms-1.5 text-[#D4AF37]">•</span>}
+                  {filled && <span className="ms-1.5 text-secondary">•</span>}
                 </button>
               );
             })}
@@ -454,11 +454,11 @@ const ServiceEditor: React.FC = () => {
         <div className={card}>
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
             <span className={`${label} mb-0`}>Images du service</span>
-            <span className="text-[11px] text-[#2B3442]/45">
+            <span className="text-[11px] text-muted">
               {media.length} / {MAX_IMAGES}
             </span>
           </div>
-          <p className="text-xs text-[#2B3442]/55 mb-3">
+          <p className="text-xs text-muted mb-3">
             La première image est celle qui apparaît sur les cartes. JPG, PNG, WEBP ou
             GIF, 5 Mo maximum par image.
           </p>
@@ -469,18 +469,18 @@ const ServiceEditor: React.FC = () => {
                 <figure
                   key={image.id}
                   className={`relative group rounded-xl overflow-hidden border-2 ${
-                    i === 0 ? "border-[#D4AF37]" : "border-[#173E7D]/12"
+                    i === 0 ? "border-secondary" : "border-line"
                   }`}
                 >
                   <img
                     src={image.file.url}
                     alt={image.file.fileName ?? ""}
                     loading="lazy"
-                    className="w-full aspect-square object-cover bg-[#F7F9FC]"
+                    className="w-full aspect-square object-cover bg-ground"
                   />
 
                   {i === 0 && (
-                    <figcaption className="absolute top-1.5 start-1.5 rounded-full bg-[#D4AF37] px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#0B1E3D]">
+                    <figcaption className="absolute top-1.5 start-1.5 rounded-full bg-secondary px-2 py-0.5 text-xs font-bold text-ink">
                       Couverture
                     </figcaption>
                   )}
@@ -491,7 +491,7 @@ const ServiceEditor: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => makeCover(image.id)}
-                          className="flex-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-[#173E7D]"
+                          className="flex-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-primary"
                         >
                           Couverture
                         </button>
@@ -500,7 +500,7 @@ const ServiceEditor: React.FC = () => {
                         type="button"
                         onClick={() => removeImage(image.id)}
                         aria-label="Supprimer l'image"
-                        className="rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-red-600"
+                        className="rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-danger"
                       >
                         Supprimer
                       </button>
@@ -512,12 +512,12 @@ const ServiceEditor: React.FC = () => {
           )}
 
           {!locked && media.length < MAX_IMAGES && (
-            <label className="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[#173E7D]/20 px-4 py-6 cursor-pointer hover:border-[#173E7D]/40 transition-colors">
-              <ImagePlus size={20} className="text-[#173E7D]/40" />
-              <span className="text-sm font-bold text-[#173E7D]">
+            <label className="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-line px-4 py-6 cursor-pointer hover:border-primary transition-colors">
+              <ImagePlus size={20} className="text-muted" />
+              <span className="text-sm font-bold text-primary">
                 {uploading ? "Envoi en cours…" : "Ajouter des images"}
               </span>
-              <span className="text-[11px] text-[#2B3442]/45">
+              <span className="text-[11px] text-muted">
                 Vous pouvez en choisir plusieurs à la fois
               </span>
               <input
@@ -536,7 +536,7 @@ const ServiceEditor: React.FC = () => {
           )}
 
           {media.length === 0 && locked && (
-            <p className="text-sm text-[#2B3442]/50">Aucune image.</p>
+            <p className="text-sm text-muted">Aucune image.</p>
           )}
         </div>
 
@@ -566,7 +566,7 @@ const ServiceEditor: React.FC = () => {
                   type="button"
                   onClick={() => setSkills(skills.filter((x) => x !== s))}
                   disabled={locked}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#173E7D]/8 text-[#173E7D] hover:bg-red-50 hover:text-red-600"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-ground text-primary hover:bg-tint-red hover:text-danger"
                 >
                   {s} ×
                 </button>
@@ -582,14 +582,14 @@ const ServiceEditor: React.FC = () => {
               type="button"
               onClick={() => setFaqs([...faqs, { question: "", answer: "" }])}
               disabled={locked || faqs.length >= 15}
-              className="inline-flex items-center gap-1.5 text-sm font-bold text-[#173E7D] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 text-sm font-bold text-primary disabled:opacity-40"
             >
               <Plus size={15} /> Ajouter
             </button>
           </div>
 
           {faqs.length === 0 ? (
-            <p className="text-sm text-[#2B3442]/40">Aucune question pour le moment.</p>
+            <p className="text-sm text-muted">Aucune question pour le moment.</p>
           ) : (
             <div className="space-y-3">
               {faqs.map((f, i) => (
@@ -620,7 +620,7 @@ const ServiceEditor: React.FC = () => {
                     onClick={() => setFaqs(faqs.filter((_, j) => j !== i))}
                     disabled={locked}
                     aria-label="Supprimer"
-                    className="shrink-0 self-start p-2.5 rounded-lg border border-red-200 text-red-500"
+                    className="shrink-0 self-start p-2.5 rounded-lg text-danger"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -631,12 +631,12 @@ const ServiceEditor: React.FC = () => {
         </div>
 
         {note && (
-          <p className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-3">
+          <p className="rounded-xl bg-tint-green text-success text-sm p-3">
             {note}
           </p>
         )}
         {error && (
-          <p className="rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+          <p className="rounded-xl bg-tint-red text-danger text-sm p-3">
             {error}
           </p>
         )}
@@ -644,38 +644,65 @@ const ServiceEditor: React.FC = () => {
         {/* Said before the button is pressed, rather than after the request
             comes back refused. The server checks both regardless. */}
         {!locked && noSlot && (
-          <p className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+          <p className="rounded-xl bg-tint-orange text-warn text-sm p-3">
             Votre formule n'autorise pas de service supplémentaire en ligne. Mettez-en un en pause
             ou changez de formule.
           </p>
         )}
         {!locked && cannotAfford && (
-          <p className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+          <p className="rounded-xl bg-tint-orange text-warn text-sm p-3">
             Il vous faut {costs.servicePublication} crédits pour publier — vous en avez {balance}.
           </p>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={save}
-            disabled={locked || saving}
-            className="rounded-xl border-2 border-[#173E7D]/20 text-[#173E7D] font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
-          >
-            {saving && <Loader2 size={15} className="animate-spin" />}
+        {/* What publishing costs, totalled where the canvas puts it: beside
+            the button that spends it. Every figure is the server's — the
+            tariff, the balance, and the balance that will be left. */}
+        {!locked && (
+          <Card className="flex flex-col gap-3 rounded-card bg-ground">
+            <h2 className="text-lg font-bold text-primary">Coût de publication</h2>
+
+            <div className="flex items-baseline justify-between gap-3 text-[15px] text-body">
+              <span>Publication ({costs.serviceDurationDays} jours)</span>
+              <b className="text-primary">{costs.servicePublication} crédits</b>
+            </div>
+
+            <div className="flex items-baseline justify-between gap-3 border-t-2 border-line pt-3">
+              <span className="text-base font-bold text-primary">Solde après publication</span>
+              <span
+                className={
+                  "text-2xl font-bold " + (cannotAfford ? "text-accent-ink" : "text-primary")
+                }
+                dir="ltr"
+              >
+                {balance - costs.servicePublication}
+              </span>
+            </div>
+
+            <p className="text-[13px] leading-relaxed text-muted">
+              Votre service passe en modération avant d&apos;être visible. En cas de refus, les
+              crédits sont restitués.
+            </p>
+          </Card>
+        )}
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button onClick={save} disabled={locked || saving} className={btn("ghost")}>
+            {saving && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
             Enregistrer le brouillon
           </button>
 
           <button
             onClick={submit}
             disabled={locked || submitting || cannotAfford || !!noSlot}
-            className="rounded-xl bg-[#173E7D] text-white font-bold px-7 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+            className={btn("accent")}
           >
             {submitting ? (
-              <Loader2 size={15} className="animate-spin" />
+              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
             ) : (
-              <Send size={15} />
+              <Send size={15} aria-hidden="true" />
             )}
-            Envoyer en validation ({costs.servicePublication} crédits)
+            Publier · {costs.servicePublication} crédits
           </button>
         </div>
       </div>

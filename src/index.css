@@ -1,20 +1,86 @@
-@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300..700&family=DM+Serif+Display&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-display: "Retolia", "Comfortaa", sans-serif;
   --font-sans: "Comfortaa", sans-serif;
-  
+  /* The wordmark, the portfolio title and pull-quotes only. Headings stay
+     Comfortaa bold — the charte uses the serif as a signature, not a voice. */
+  --font-serif: "DM Serif Display", Georgia, serif;
+
   --color-primary: #173E7D;
   --color-secondary: #F68D58;
   --color-accent: #DEE6E2;
+
+  /* ----------------------------------------------------------------------
+     Charte graphique — marketplace freelance.
+
+     Taken from the design canvas rather than chosen here, so a colour that
+     changes there changes in one place. The three tokens above predate it
+     and are left alone: the recruitment app paints its body with them.
+     ---------------------------------------------------------------------- */
+
+  /* Grounds and surfaces */
+  --color-ground: #EEF2F0;
+  --color-surface: #FFFFFF;
+  --color-ink: #0A1118;
+
+  /* Navy, and what reads on top of it */
+  --color-navy-deep: #0F2C5C;
+  --color-on-navy: #D6E0F0;
+  --color-on-navy-line: #4A6DA6;
+  --color-on-ink: #C9D3E0;
+
+  /* Text. `muted` is 4.6:1 on white and 4.4:1 on the ground, so it is the
+     lightest grey allowed to carry words; anything paler is decoration. */
+  --color-body: #33465F;
+  --color-muted: #5A6B85;
+
+  /* Hairlines */
+  --color-line: #DCE3EC;
+  --color-line-soft: #E8EDF3;
+
+  /* Category and placeholder tints. Backgrounds only — none of them has
+     enough contrast to be a text colour. */
+  --color-tint-blue: #E4ECF7;
+  --color-tint-orange: #FDE7DA;
+  --color-tint-green: #DDF1E4;
+  --color-tint-purple: #EDE7F6;
+  --color-tint-yellow: #FFF1C9;
+  --color-tint-grey: #EEF0F3;
+  --color-tint-red: #FBE3DC;
+
+  /* Status inks, each paired with the tint of the same name. Paired so a
+     badge is told apart by lightness as well as hue. */
+  --color-success: #1D6B3A;
+  --color-warn: #7A3410;
+  --color-warn-strong: #8A3E12;
+  --color-danger: #A33A1A;
+  --color-neutral-ink: #4A5568;
+  /* Orange is unreadable as text; this is its legible stand-in on light. */
+  --color-accent-ink: #B4511F;
+
+  /* Back-office, a shade cooler than the public ground so the two are not
+     mistaken for one another. */
+  --color-admin-ground: #F4F6F9;
+  --color-admin-line: #E3E8EF;
+
+  /* The radius scale. Small for controls, wide for panels — the charte
+     leans on that difference rather than on borders. */
+  --radius-field: 14px;
+  --radius-chip: 16px;
+  --radius-tile: 20px;
+  --radius-card: 24px;
+  --radius-panel: 28px;
+  --radius-hero: 32px;
+  --radius-bloom: 40px;
 }
 
 @layer base {
   body {
     @apply font-sans antialiased bg-accent text-primary;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }
@@ -27,4 +93,3 @@
     display: none;
   }
 }
-

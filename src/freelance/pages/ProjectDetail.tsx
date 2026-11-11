@@ -4,7 +4,7 @@ import { Calendar, Loader2, MapPin, Send, Users } from "lucide-react";
 import api from "../../services/api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { ErrorState, Loading, Price } from "../ui";
+import { Card, Chip, ErrorState, FIELD, HINT, LABEL, Loading, Price, btn } from "../ui";
 import ContactButton from "../ContactButton";
 
 /**
@@ -13,7 +13,8 @@ import ContactButton from "../ContactButton";
  * What it costs to answer is shown before the form, not after the refusal:
  * a freelancer on a subscription spends one of their monthly allowance, one
  * on the free plan spends credits, and being told which afterwards is how a
- * balance quietly empties.
+ * balance quietly empties. The canvas puts the same figure on the send
+ * button itself, which is where somebody about to click reads it.
  *
  * The server decides again on submission. This only spares the reader a
  * refusal they could have been warned about.
@@ -55,11 +56,6 @@ interface Eligibility {
   planName: string;
 }
 
-const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
-const label =
-  "block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5";
-
 const longDate = (iso: string) =>
   new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
@@ -82,9 +78,7 @@ const ProjectDetail: React.FC = () => {
     api
       .get(`/freelance/projects/by-slug/${slug}`)
       .then((r) => setProject(r.data.data.project))
-      .catch((e) =>
-        setFailed(e?.response?.data?.message || "Ce projet n'est pas disponible.")
-      );
+      .catch((e) => setFailed(e?.response?.data?.message || "Ce projet n'est pas disponible."));
   };
 
   useEffect(load, [slug]);
@@ -124,9 +118,8 @@ const ProjectDetail: React.FC = () => {
 
   if (failed)
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16">
-        <ErrorState onRetry={load} />
-        <p className="mt-4 text-center text-sm text-[#2B3442]/60">{failed}</p>
+      <div className="mx-auto max-w-3xl px-4 py-16">
+        <ErrorState onRetry={load} message={failed} />
       </div>
     );
 
@@ -142,15 +135,16 @@ const ProjectDetail: React.FC = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-      <article className="rounded-2xl border-2 border-[#173E7D]/15 bg-white p-6">
-        <h1 className="text-2xl sm:text-3xl font-display font-bold text-[#173E7D] break-words">
-          {project.title}
-        </h1>
+    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-8 sm:py-10">
+      {/* ---------------------------- the project ---------------------- */}
+      <Card as="article" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="min-w-0 flex-1 break-words text-2xl font-bold leading-snug text-primary sm:text-3xl">
+            {project.title}
+          </h1>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[#2B3442]/60">
           {(project.budgetMin || project.budgetMax) && (
-            <span className="font-bold text-[#173E7D]">
+            <span className="whitespace-nowrap text-lg font-bold text-primary">
               <Price value={project.budgetMin} />
               {project.budgetMax && project.budgetMin !== project.budgetMax && (
                 <>
@@ -158,68 +152,67 @@ const ProjectDetail: React.FC = () => {
                   <Price value={project.budgetMax} />
                 </>
               )}
-              <span className="ms-1 text-xs font-normal text-[#2B3442]/50">
+              <span className="ms-1.5 text-[13px] font-normal text-muted">
                 {project.budgetType === "HOURLY" ? "/ heure" : "forfait"}
               </span>
             </span>
           )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted">
           <span className="inline-flex items-center gap-1.5">
-            <MapPin size={14} /> {project.remote ? "À distance" : project.wilaya || "Sur site"}
+            <MapPin size={14} aria-hidden="true" />{" "}
+            {project.remote ? t("home.remote") : project.wilaya || "Sur site"}
           </span>
           {project.deadline && (
             <span className="inline-flex items-center gap-1.5">
-              <Calendar size={14} /> {longDate(project.deadline)}
+              <Calendar size={14} aria-hidden="true" /> {longDate(project.deadline)}
             </span>
           )}
           <span className="inline-flex items-center gap-1.5">
-            <Users size={14} /> {project.proposalCount} proposition
-            {project.proposalCount > 1 ? "s" : ""}
+            <Users size={14} aria-hidden="true" /> {project.proposalCount}{" "}
+            {t("project.proposals")}
           </span>
+          {project.category && <span>{project.category.name}</span>}
         </div>
 
-        <p className="mt-5 whitespace-pre-wrap break-words text-[#2B3442]/80 leading-relaxed">
+        <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-body">
           {project.description}
         </p>
 
         {project.skills.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {project.skills.map((s) => (
-              <span
-                key={s}
-                className="text-xs font-semibold px-3 py-1 rounded-full bg-[#173E7D]/8 text-[#173E7D]"
-              >
-                {s}
-              </span>
+              <Chip key={s}>{s}</Chip>
             ))}
           </div>
         )}
 
-        <footer className="mt-6 pt-5 border-t border-[#173E7D]/10 text-sm text-[#2B3442]/60">
-          Publié par <strong className="text-[#173E7D]">{project.client.name ?? "—"}</strong>
+        <footer className="border-t border-line-soft pt-4 text-sm text-muted">
+          Publié par <b className="text-primary">{project.client.name ?? "—"}</b>
           {project.publishedAt && ` · ${longDate(project.publishedAt)}`}
         </footer>
-      </article>
+      </Card>
 
-      <section className="mt-6 rounded-2xl border-2 border-[#173E7D]/15 bg-white p-6">
-        <h2 className="text-lg font-display font-bold text-[#173E7D]">Répondre à ce projet</h2>
+      {/* ---------------------------- the answer ----------------------- */}
+      <Card as="section" className="flex flex-col gap-4">
+        <h2 className="text-xl font-bold text-primary">Répondre à ce projet</h2>
 
         {authLoading ? (
           <Loading />
         ) : !signedIn ? (
           <>
-            <p className="mt-2 text-sm text-[#2B3442]/60">
-              Connectez-vous pour envoyer une proposition.
-            </p>
+            <p className="text-[15px] text-muted">Connectez-vous pour envoyer une proposition.</p>
             <Link
               to={`/connexion?next=${encodeURIComponent(`/projet/${slug}`)}`}
-              className="inline-block mt-4 rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
+              className={btn("primary", "self-start")}
             >
               {t("nav.signin")}
             </Link>
           </>
         ) : sent ? (
           <>
-            <p className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-4">
+            <p className="rounded-field bg-tint-green p-4 text-sm leading-relaxed font-bold text-success">
               {sent}
             </p>
             {/* Only now. The proposal has been charged, and paying for it is
@@ -227,30 +220,24 @@ const ProjectDetail: React.FC = () => {
             <ContactButton
               projectId={project.id}
               label="Discuter avec le client"
-              className="mt-4 sm:max-w-xs"
+              className="sm:max-w-xs"
             />
           </>
         ) : !eligibility ? (
           <Loading />
         ) : !eligibility.canPropose ? (
           <>
-            <p className="mt-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4">
+            <p className="rounded-field bg-tint-orange p-4 text-sm leading-relaxed text-warn">
               {blocked[eligibility.reason ?? ""] ?? "Vous ne pouvez pas répondre à ce projet."}
             </p>
             {eligibility.reason === "no-profile" && (
-              <Link
-                to="/freelance-espace"
-                className="inline-block mt-4 rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
-              >
+              <Link to="/freelance-espace" className={btn("primary", "self-start")}>
                 Activer mon profil
               </Link>
             )}
             {eligibility.reason === "insufficient-credits" && (
-              <Link
-                to="/tarifs"
-                className="inline-block mt-4 rounded-full px-6 py-3 bg-[#D4AF37] text-[#0B1E3D] font-bold"
-              >
-                Acheter des crédits
+              <Link to="/acheter-credits" className={btn("accent", "self-start")}>
+                {t("pricing.buyCredits")}
               </Link>
             )}
             {/* Already answered on an earlier visit: the thread is theirs. */}
@@ -258,78 +245,90 @@ const ProjectDetail: React.FC = () => {
               <ContactButton
                 projectId={project.id}
                 label="Discuter avec le client"
-                className="mt-4 sm:max-w-xs"
+                className="sm:max-w-xs"
               />
             )}
           </>
         ) : (
-          <form onSubmit={submit} className="mt-4 space-y-4">
+          <form onSubmit={submit} className="flex flex-col gap-4">
             {/* Said before the form, not after the refusal. */}
-            <p className="rounded-xl bg-[#173E7D]/5 border border-[#173E7D]/15 text-sm text-[#2B3442]/80 p-3">
+            <p className="rounded-field bg-tint-blue p-3.5 text-sm leading-relaxed text-body">
               {eligibility.method === "quota"
                 ? `Cette proposition utilise 1 de vos ${eligibility.proposalsRemaining} propositions restantes (${eligibility.planName}).`
-                : `Cette proposition coûte ${eligibility.creditCost} crédits. Solde : ${eligibility.balance}.`}
+                : `Cette proposition coûte ${eligibility.creditCost} ${t("ws.credits")}. Solde : ${eligibility.balance}.`}
             </p>
 
-            <label className="block">
-              <span className={label}>Lettre de motivation *</span>
+            <label className={LABEL}>
+              Lettre de motivation *
               <textarea
                 value={form.coverLetter}
                 onChange={(e) => setForm({ ...form, coverLetter: e.target.value })}
                 rows={7}
                 placeholder="Pourquoi vous, comment vous comptez procéder, ce que vous avez déjà fait de comparable…"
-                className={`${field} resize-y`}
+                className={FIELD + " resize-y"}
                 required
               />
-              <span className="mt-1 block text-[11px] text-[#2B3442]/40">
+              <span className={HINT}>
                 40 caractères minimum · {form.coverLetter.trim().length} écrits.
               </span>
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="block">
-                <span className={label}>Votre prix (DZD) *</span>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className={LABEL}>
+                Votre prix (DZD) *
                 <input
                   type="number"
                   min={1}
                   dir="ltr"
                   value={form.price}
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  className={field}
+                  className={FIELD}
                   required
                 />
               </label>
-              <label className="block">
-                <span className={label}>Délai (jours) *</span>
+              <label className={LABEL}>
+                Délai (jours) *
                 <input
                   type="number"
                   min={1}
                   dir="ltr"
                   value={form.deliveryDays}
                   onChange={(e) => setForm({ ...form, deliveryDays: e.target.value })}
-                  className={field}
+                  className={FIELD}
                   required
                 />
               </label>
             </div>
 
             {error && (
-              <p className="rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+              <p className="rounded-field bg-tint-red p-3.5 text-sm font-bold text-danger">
                 {error}
               </p>
             )}
 
-            <button
-              type="submit"
-              disabled={sending}
-              className="rounded-xl bg-[#173E7D] text-white font-bold px-7 py-3 inline-flex items-center gap-2 disabled:opacity-40"
-            >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-              Envoyer ma proposition
-            </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-4">
+              <span className="text-sm text-muted">
+                {eligibility.method === "quota"
+                  ? `${eligibility.proposalsRemaining} propositions restantes`
+                  : `Solde après envoi : ${eligibility.balance - eligibility.creditCost}`}
+              </span>
+
+              {/* The cost is on the button, as the canvas has it: the last
+                  thing read before the click is what the click costs. */}
+              <button type="submit" disabled={sending} className={btn("accent")}>
+                {sending ? (
+                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Send size={15} aria-hidden="true" />
+                )}
+                {eligibility.method === "quota"
+                  ? "Envoyer ma proposition"
+                  : `Envoyer · ${eligibility.creditCost} ${t("ws.credits")}`}
+              </button>
+            </div>
           </form>
         )}
-      </section>
+      </Card>
     </div>
   );
 };

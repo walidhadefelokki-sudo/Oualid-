@@ -16,32 +16,32 @@ import { ErrorState, Loading, Price } from "../ui";
 const STATUS: Record<string, { label: string; tone: string; icon: React.ReactNode }> = {
   PENDING: {
     label: "En attente de confirmation",
-    tone: "bg-amber-50 border-amber-200 text-amber-800",
+    tone: "bg-tint-orange border-secondary text-warn",
     icon: <Clock size={18} />,
   },
   AWAITING_REVIEW: {
     label: "En attente de vérification",
-    tone: "bg-amber-50 border-amber-200 text-amber-800",
+    tone: "bg-tint-orange border-secondary text-warn",
     icon: <Clock size={18} />,
   },
   PAID: {
     label: "Paiement confirmé",
-    tone: "bg-emerald-50 border-emerald-200 text-emerald-800",
+    tone: "bg-tint-green text-success",
     icon: <Check size={18} />,
   },
   REJECTED: {
     label: "Paiement refusé",
-    tone: "bg-red-50 border-red-200 text-red-700",
+    tone: "bg-tint-red text-danger",
     icon: <X size={18} />,
   },
   FAILED: {
     label: "Paiement échoué",
-    tone: "bg-red-50 border-red-200 text-red-700",
+    tone: "bg-tint-red text-danger",
     icon: <X size={18} />,
   },
   EXPIRED: {
     label: "Paiement expiré",
-    tone: "bg-gray-100 border-gray-200 text-gray-600",
+    tone: "bg-tint-grey border-line text-neutral-ink",
     icon: <X size={18} />,
   },
 };
@@ -86,7 +86,7 @@ const PaymentStatus: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
-      <div className={`rounded-2xl border-2 p-6 ${s.tone}`}>
+      <div className={`rounded-card border-2 p-6 ${s.tone}`}>
         <p className="inline-flex items-center gap-2 font-bold">
           {s.icon} {s.label}
         </p>
@@ -99,7 +99,7 @@ const PaymentStatus: React.FC = () => {
         {payment.rejectionReason && <p className="mt-2 text-sm">{payment.rejectionReason}</p>}
       </div>
 
-      <dl className="mt-6 rounded-2xl border-2 border-[#173E7D]/15 bg-white divide-y divide-[#173E7D]/10">
+      <dl className="mt-6 rounded-card border-2 border-line bg-white divide-y divide-line-soft">
         {[
           ["Référence", <span dir="ltr">{payment.reference}</span>],
           ["Pack", payment.creditPack ? `${payment.creditPack.name} · ${payment.creditPack.credits} crédits` : "—"],
@@ -107,19 +107,19 @@ const PaymentStatus: React.FC = () => {
           ["Facture", payment.invoice ? <span dir="ltr">{payment.invoice.number}</span> : "—"],
         ].map(([k, v], i) => (
           <div key={i} className="flex items-baseline gap-4 px-5 py-3">
-            <dt className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 w-32 shrink-0">
+            <dt className="text-sm font-bold text-primary w-32 shrink-0">
               {k as string}
             </dt>
-            <dd className="text-sm text-[#2B3442] min-w-0 break-words">{v as React.ReactNode}</dd>
+            <dd className="text-sm text-body min-w-0 break-words">{v as React.ReactNode}</dd>
           </div>
         ))}
       </dl>
 
       {isTransfer && payment.status === "AWAITING_REVIEW" && !payment.receipt && (
-        <p className="mt-5 rounded-xl bg-[#173E7D]/5 border border-[#173E7D]/15 text-sm text-[#2B3442]/80 p-4">
+        <p className="mt-5 rounded-xl bg-ground border border-line text-sm text-body p-4">
           Effectuez le virement en indiquant la référence <strong>{payment.reference}</strong>,
           puis envoyez le reçu à{" "}
-          <a href="mailto:info@darlemploi.dz" className="font-bold text-[#173E7D]">
+          <a href="mailto:info@darlemploi.dz" className="font-bold text-primary">
             info@darlemploi.dz
           </a>
           . Vos crédits seront ajoutés après vérification.
@@ -129,13 +129,13 @@ const PaymentStatus: React.FC = () => {
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
           to="/freelance-espace/credits"
-          className="rounded-full px-6 py-3 bg-[#173E7D] text-white font-bold"
+          className="rounded-full px-6 py-3 bg-primary text-white font-bold"
         >
           Mes crédits
         </Link>
         <Link
           to="/tarifs"
-          className="rounded-full px-6 py-3 border-2 border-[#173E7D]/20 text-[#173E7D] font-bold"
+          className="rounded-full px-6 py-3 border-2 border-line text-primary font-bold"
         >
           Les tarifs
         </Link>

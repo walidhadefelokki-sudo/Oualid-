@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import api from "../../services/api";
 import freelanceService, { MarketplaceCategory } from "../freelance.service";
-import { ErrorState, Loading } from "../ui";
+import { WILAYAS } from "../../constants";
+import { Card, ErrorState, FIELD, Loading, btn } from "../ui";
 
 /**
  * Turning a Dar L'Emploi account into a freelance profile.
@@ -37,8 +38,7 @@ const LANGUAGES = [
   { code: "EN", label: "English" },
 ];
 
-const field =
-  "w-full rounded-xl border-2 border-[#173E7D]/15 bg-white px-4 py-3 outline-none focus:border-[#173E7D]";
+const field = FIELD;
 
 const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -128,29 +128,28 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
   if (!draft) return <Loading />;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
-      <h1 className="text-3xl font-display font-bold text-[#173E7D]">
-        Créer votre profil freelance
-      </h1>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+      <h1 className="text-3xl font-bold text-primary sm:text-4xl">Créer votre profil freelance</h1>
 
       {draft.source === "cv" ? (
-        <p className="mt-2 inline-flex items-start gap-2 rounded-xl bg-[#173E7D]/5 border border-[#173E7D]/15 px-4 py-3 text-sm text-[#2B3442]/80">
-          <Sparkles size={16} className="mt-0.5 text-[#D4AF37] shrink-0" />
+        <p className="mt-4 inline-flex items-start gap-2.5 rounded-field bg-tint-blue px-4 py-3.5 text-sm leading-relaxed text-body">
+          <Sparkles size={16} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden="true" />
           <span>
             Nous avons prérempli ce formulaire à partir de votre CV Dar L'Emploi. Rien n'est
             publié avant votre validation — modifiez ce que vous voulez.
           </span>
         </p>
       ) : (
-        <p className="mt-2 text-[#2B3442]/60">
-          Votre compte Dar L'Emploi devient aussi un profil freelance. Vous gardez un seul
+        <p className="mt-3 text-[15px] leading-relaxed text-muted">
+          Votre compte Dar L&apos;emploi devient aussi un profil freelance. Vous gardez un seul
           identifiant.
         </p>
       )}
 
-      <form onSubmit={submit} className="mt-8 space-y-5">
+      <Card className="mt-7">
+      <form onSubmit={submit} className="flex flex-col gap-5">
         <label className="block">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Nom affiché *
           </span>
           <input
@@ -162,11 +161,11 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </label>
 
         <label className="block">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Adresse de votre page *
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-[#2B3442]/50 shrink-0" dir="ltr">
+            <span className="text-sm text-[#33465F]/50 shrink-0" dir="ltr">
               /@
             </span>
             <input
@@ -180,7 +179,7 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </label>
 
         <label className="block">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Titre professionnel
           </span>
           <input
@@ -192,7 +191,7 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </label>
 
         <label className="block">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Présentation
           </span>
           <textarea
@@ -205,7 +204,7 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <label className="block">
-            <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+            <span className="mb-2 block text-sm font-bold text-primary">
               Catégorie
             </span>
             <select
@@ -223,19 +222,36 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
           </label>
 
           <label className="block">
-            <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+            <span className="mb-2 block text-sm font-bold text-primary">
               Wilaya
             </span>
-            <input
+            {/* A list, not a text box. Buyers filter services, projects and
+                freelancers on this field, and the filter compares values
+                exactly: "Alger", "alger" and "16 - Alger" typed by three
+                freelancers are three different wilayas to the query, so two
+                of them never turn up in the results. */}
+            <select
               value={form.wilaya}
               onChange={(e) => setForm({ ...form, wilaya: e.target.value })}
               className={field}
-            />
+            >
+              <option value="">—</option>
+              {WILAYAS.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+              {/* What the CV suggested may not be one of the listed values.
+                  It stays selectable rather than being silently blanked. */}
+              {form.wilaya && !WILAYAS.includes(form.wilaya) && (
+                <option value={form.wilaya}>{form.wilaya}</option>
+              )}
+            </select>
           </label>
         </div>
 
         <label className="block">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Tarif horaire (DZD)
           </span>
           <input
@@ -249,7 +265,7 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </label>
 
         <div>
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Langues
           </span>
           <div className="flex flex-wrap gap-2">
@@ -264,11 +280,13 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
                       on ? languages.filter((x) => x !== l.code) : [...languages, l.code]
                     )
                   }
-                  className={`px-4 py-2 rounded-full text-sm font-bold border-2 transition-colors ${
-                    on
-                      ? "border-[#173E7D] bg-[#173E7D] text-white"
-                      : "border-[#173E7D]/20 text-[#173E7D]"
-                  }`}
+                  aria-pressed={on}
+                  className={
+                    "min-h-11 rounded-full border-2 px-4 text-sm font-bold transition-colors " +
+                    (on
+                      ? "border-primary bg-primary text-white"
+                      : "border-line text-primary hover:border-primary")
+                  }
                 >
                   {l.label}
                 </button>
@@ -278,7 +296,7 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </div>
 
         <div>
-          <span className="block text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50 mb-1.5">
+          <span className="mb-2 block text-sm font-bold text-primary">
             Compétences
           </span>
           <div className="flex gap-2">
@@ -296,19 +314,21 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
             <button
               type="button"
               onClick={addSkill}
-              className="shrink-0 px-5 rounded-xl border-2 border-[#173E7D]/20 font-bold text-[#173E7D]"
+              aria-label="Ajouter la compétence"
+              className={btn("ghost", "shrink-0 px-5")}
             >
               +
             </button>
           </div>
           {skills.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-2">
               {skills.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSkills(skills.filter((x) => x !== s))}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#173E7D]/8 text-[#173E7D] hover:bg-red-50 hover:text-red-600"
+                  aria-label={`Retirer ${s}`}
+                  className="inline-flex items-center rounded-full bg-ground px-3.5 py-2 text-[13px] font-bold text-primary transition-colors hover:bg-tint-red hover:text-danger"
                 >
                   {s} ×
                 </button>
@@ -318,20 +338,15 @@ const Activate: React.FC<{ onActivated: () => void }> = ({ onActivated }) => {
         </div>
 
         {error && (
-          <p className="rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
-            {error}
-          </p>
+          <p className="rounded-field bg-tint-red p-3.5 text-sm font-bold text-danger">{error}</p>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full rounded-xl bg-[#173E7D] text-white font-bold py-4 inline-flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {saving && <Loader2 size={16} className="animate-spin" />}
+        <button type="submit" disabled={saving} className={btn("accent", "w-full py-4 text-base")}>
+          {saving && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
           Activer mon profil freelance
         </button>
       </form>
+      </Card>
     </div>
   );
 };

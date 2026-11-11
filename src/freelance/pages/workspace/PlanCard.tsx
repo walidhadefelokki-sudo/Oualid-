@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { BarChart3, Check, Globe2, Lock, Rocket, Zap } from "lucide-react";
 import type { Entitlements } from "../../useWorkspace";
+import { Badge, BadgeTone, Card, btn } from "../../ui";
 
 /**
  * The account's plan, and what it currently allows.
@@ -15,30 +16,20 @@ import type { Entitlements } from "../../useWorkspace";
  * whether or not the page agrees with it.
  */
 
-const TIER_STYLE: Record<string, { ring: string; chip: string; label: string }> = {
-  FREE: {
-    ring: "border-[#173E7D]/15",
-    chip: "bg-[#173E7D]/8 text-[#173E7D]",
-    label: "Gratuit",
-  },
-  PRO: {
-    ring: "border-[#173E7D]/40",
-    chip: "bg-[#173E7D] text-white",
-    label: "Pro",
-  },
-  PREMIUM: {
-    ring: "border-[#D4AF37]",
-    chip: "bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D]",
-    label: "Premium",
-  },
-  AGENCY: {
-    ring: "border-[#D4AF37]",
-    chip: "bg-gradient-to-r from-[#D4AF37] to-[#F0D989] text-[#0B1E3D]",
-    label: "Agence",
-  },
+const TIERS: Record<string, { tone: BadgeTone; label: string }> = {
+  FREE: { tone: "neutral", label: "Gratuit" },
+  PRO: { tone: "info", label: "Pro" },
+  PREMIUM: { tone: "accent", label: "Premium" },
+  AGENCY: { tone: "accent", label: "Agence" },
 };
 
-/** Usage against a limit. `null` means unlimited, which has no bar to fill. */
+/**
+ * Usage against a limit. `null` means unlimited, which has no bar to fill.
+ *
+ * A full meter turns orange, and says so in the figure beside it as well —
+ * a bar that is merely a different colour is not a message to someone who
+ * cannot tell the two colours apart.
+ */
 const Meter: React.FC<{ label: string; used: number; limit: number | null }> = ({
   label,
   used,
@@ -51,11 +42,9 @@ const Meter: React.FC<{ label: string; used: number; limit: number | null }> = (
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
-          {label}
-        </span>
+        <span className="text-sm text-muted">{label}</span>
         <span
-          className={`text-sm font-bold ${full ? "text-amber-600" : "text-[#173E7D]"}`}
+          className={"text-sm font-bold " + (full ? "text-accent-ink" : "text-primary")}
           dir="ltr"
         >
           {unlimited ? `${used} · illimité` : `${used} / ${limit}`}
@@ -63,9 +52,16 @@ const Meter: React.FC<{ label: string; used: number; limit: number | null }> = (
       </div>
 
       {!unlimited && (
-        <div className="mt-1.5 h-1.5 rounded-full bg-[#173E7D]/10 overflow-hidden">
+        <div
+          className="mt-2 h-2 overflow-hidden rounded-full bg-ground"
+          role="progressbar"
+          aria-label={label}
+          aria-valuenow={used}
+          aria-valuemin={0}
+          aria-valuemax={limit}
+        >
           <div
-            className={`h-full transition-all ${full ? "bg-amber-500" : "bg-[#173E7D]"}`}
+            className={"h-full rounded-full transition-all " + (full ? "bg-secondary" : "bg-primary")}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -80,21 +76,21 @@ const Perk: React.FC<{ on: boolean; icon: React.ReactNode; children: React.React
   icon,
   children,
 }) => (
-  <li
-    className={`flex items-center gap-2 text-sm ${
-      on ? "text-[#2B3442]" : "text-[#2B3442]/35"
-    }`}
-  >
-    <span className={on ? "text-emerald-600" : "text-[#2B3442]/25"}>
-      {on ? <Check size={15} /> : <Lock size={13} />}
+  <li className={"flex items-center gap-2 text-sm " + (on ? "text-body" : "text-muted")}>
+    {on ? (
+      <Check size={15} className="shrink-0 text-success" aria-hidden="true" />
+    ) : (
+      <Lock size={13} className="shrink-0 text-muted" aria-hidden="true" />
+    )}
+    <span className="shrink-0 text-primary" aria-hidden="true">
+      {icon}
     </span>
-    <span className="text-[#173E7D]/50">{icon}</span>
     {children}
   </li>
 );
 
 const PlanCard: React.FC<{ e: Entitlements }> = ({ e }) => {
-  const style = TIER_STYLE[e.tier] ?? TIER_STYLE.FREE;
+  const tier = TIERS[e.tier] ?? TIERS.FREE;
   const paid = e.tier !== "FREE";
 
   const renews = e.renewsAt
@@ -106,30 +102,19 @@ const PlanCard: React.FC<{ e: Entitlements }> = ({ e }) => {
     : null;
 
   return (
-    <section className={`rounded-2xl border-2 bg-white p-5 ${style.ring}`}>
+    <Card as="section" className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <span
-          className={`text-[11px] font-black uppercase tracking-[0.15em] px-3 py-1 rounded-full ${style.chip}`}
-        >
-          {style.label}
-        </span>
-        <span className="text-sm text-[#2B3442]/60">
+        <Badge tone={tier.tone}>{tier.label}</Badge>
+        <span className="text-sm text-muted">
           {paid && renews ? `Renouvellement le ${renews}` : "Formule gratuite"}
         </span>
 
-        <Link
-          to="/tarifs"
-          className={`ms-auto rounded-full px-5 py-2 text-sm font-bold ${
-            paid
-              ? "border-2 border-[#173E7D]/20 text-[#173E7D]"
-              : "bg-[#173E7D] text-white"
-          }`}
-        >
+        <Link to="/tarifs" className={btn(paid ? "ghost" : "primary", "ms-auto")}>
           {paid ? "Changer de formule" : "Passer à Pro"}
         </Link>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Meter label="Services en ligne" used={e.activeServices} limit={e.maxActiveServices} />
 
         {/* A free account has no monthly quota at all — its proposals come
@@ -137,10 +122,8 @@ const PlanCard: React.FC<{ e: Entitlements }> = ({ e }) => {
             there. */}
         {e.monthlyProposals === null ? (
           <div>
-            <span className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
-              Propositions
-            </span>
-            <p className="mt-1 text-sm text-[#2B3442]/60">Payées en crédits</p>
+            <span className="text-sm text-muted">Propositions</span>
+            <p className="mt-1 text-sm font-bold text-primary">Payées en crédits</p>
           </div>
         ) : (
           <Meter
@@ -161,7 +144,7 @@ const PlanCard: React.FC<{ e: Entitlements }> = ({ e }) => {
         )}
       </div>
 
-      <ul className="mt-5 pt-5 border-t border-[#173E7D]/10 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <ul className="grid list-none grid-cols-1 gap-2.5 border-t border-line-soft p-0 pt-5 sm:grid-cols-2">
         <Perk on={e.prioritySearch} icon={<Rocket size={14} />}>
           Priorité dans la recherche
         </Perk>
@@ -177,12 +160,12 @@ const PlanCard: React.FC<{ e: Entitlements }> = ({ e }) => {
       </ul>
 
       {!e.canPublishService && (
-        <p className="mt-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+        <p className="rounded-field bg-tint-orange p-4 text-sm leading-relaxed text-warn">
           Vous avez atteint la limite de services en ligne de votre formule. Mettez un service en
           pause, ou passez à une formule supérieure.
         </p>
       )}
-    </section>
+    </Card>
   );
 };
 

@@ -33,7 +33,7 @@ interface Options {
   transfer: { ccp: unknown; baridimob: unknown };
 }
 
-const card = "rounded-2xl border-2 bg-white p-5";
+const card = "rounded-card border-2 bg-white p-5";
 
 const BuyCredits: React.FC = () => {
   const { signedIn, loading: authLoading } = useAuth();
@@ -93,8 +93,8 @@ const BuyCredits: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-      <h1 className="text-2xl font-display font-bold text-[#173E7D]">Acheter des crédits</h1>
-      <p className="mt-2 text-[#2B3442]/60">
+      <h1 className="text-2xl font-bold text-primary">Acheter des crédits</h1>
+      <p className="mt-2 text-muted">
         Les crédits servent à publier un service et à répondre aux projets.
       </p>
 
@@ -104,13 +104,13 @@ const BuyCredits: React.FC = () => {
             key={p.id}
             onClick={() => setChosen(p.id)}
             className={`${card} text-center transition-colors ${
-              chosen === p.id ? "border-[#173E7D]" : "border-[#173E7D]/15"
+              chosen === p.id ? "border-primary" : "border-line"
             }`}
           >
-            <p className="text-3xl font-display font-bold text-[#173E7D]" dir="ltr">
+            <p className="text-3xl font-bold text-primary" dir="ltr">
               {p.credits}
             </p>
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#173E7D]/40">
+            <p className="text-sm font-bold text-primary">
               crédits
             </p>
             <p className="mt-3 font-bold">
@@ -120,7 +120,7 @@ const BuyCredits: React.FC = () => {
         ))}
       </div>
 
-      <h2 className="mt-8 text-[11px] font-black uppercase tracking-widest text-[#173E7D]/50">
+      <h2 className="mt-8 text-sm font-bold text-primary">
         Moyen de paiement
       </h2>
 
@@ -129,13 +129,13 @@ const BuyCredits: React.FC = () => {
           <button
             onClick={() => setMethod("CHARGILY_CIB")}
             className={`${card} w-full text-start flex items-start gap-3 ${
-              method === "CHARGILY_CIB" ? "border-[#173E7D]" : "border-[#173E7D]/15"
+              method === "CHARGILY_CIB" ? "border-primary" : "border-line"
             }`}
           >
-            <CreditCard size={20} className="mt-0.5 text-[#173E7D] shrink-0" />
+            <CreditCard size={20} className="mt-0.5 text-primary shrink-0" />
             <span className="min-w-0">
-              <span className="block font-bold text-[#173E7D]">Carte CIB ou Edahabia</span>
-              <span className="block text-sm text-[#2B3442]/60">
+              <span className="block font-bold text-primary">Carte CIB ou Edahabia</span>
+              <span className="block text-sm text-muted">
                 Crédits ajoutés dès la confirmation du paiement.
               </span>
             </span>
@@ -145,13 +145,13 @@ const BuyCredits: React.FC = () => {
         <button
           onClick={() => setMethod("CCP_TRANSFER")}
           className={`${card} w-full text-start flex items-start gap-3 ${
-            method === "CCP_TRANSFER" ? "border-[#173E7D]" : "border-[#173E7D]/15"
+            method === "CCP_TRANSFER" ? "border-primary" : "border-line"
           }`}
         >
-          <Banknote size={20} className="mt-0.5 text-[#173E7D] shrink-0" />
+          <Banknote size={20} className="mt-0.5 text-primary shrink-0" />
           <span className="min-w-0">
-            <span className="block font-bold text-[#173E7D]">Virement CCP ou BaridiMob</span>
-            <span className="block text-sm text-[#2B3442]/60">
+            <span className="block font-bold text-primary">Virement CCP ou BaridiMob</span>
+            <span className="block text-sm text-muted">
               Vous déposez le reçu, nous le vérifions. Les crédits arrivent après validation,
               généralement sous 24 heures ouvrées.
             </span>
@@ -160,13 +160,13 @@ const BuyCredits: React.FC = () => {
       </div>
 
       {!options.cardAvailable && (
-        <p className="mt-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+        <p className="mt-4 rounded-xl bg-tint-orange text-warn text-sm p-3">
           Le paiement par carte n'est pas disponible pour le moment. Le virement reste ouvert.
         </p>
       )}
 
       {error && (
-        <p className="mt-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+        <p className="mt-4 rounded-xl bg-tint-red text-danger text-sm p-3">
           {error}
         </p>
       )}
@@ -174,7 +174,7 @@ const BuyCredits: React.FC = () => {
       <button
         onClick={buy}
         disabled={busy || !pack}
-        className="mt-6 w-full rounded-xl bg-[#173E7D] text-white font-bold py-3.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+        className="mt-6 w-full rounded-xl bg-primary text-white font-bold py-3.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
       >
         {busy && <Loader2 size={15} className="animate-spin" />}
         {pack ? (

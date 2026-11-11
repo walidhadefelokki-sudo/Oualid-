@@ -17,7 +17,7 @@ const Stars: React.FC<{
   label: string;
 }> = ({ value, onChange, label }) => (
   <div className="flex items-center gap-3">
-    <span className="text-sm text-[#2B3442]/70 w-40 shrink-0">{label}</span>
+    <span className="text-sm text-body w-40 shrink-0">{label}</span>
     <div className="flex gap-0.5" role="radiogroup" aria-label={label}>
       {[1, 2, 3, 4, 5].map((n) => (
         <button
@@ -31,7 +31,7 @@ const Stars: React.FC<{
         >
           <Star
             size={22}
-            className={n <= value ? "text-[#D4AF37]" : "text-[#173E7D]/15"}
+            className={n <= value ? "text-secondary" : "text-primary/20"}
             fill={n <= value ? "currentColor" : "none"}
           />
         </button>
@@ -67,20 +67,20 @@ const ReviewForm: React.FC<{ orderId: string; onDone: () => void }> = ({ orderId
 
   if (state.existing) {
     return (
-      <section className="rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5">
-        <h2 className="font-display font-bold text-[#173E7D] mb-2">Votre avis</h2>
+      <section className="rounded-panel bg-surface p-6">
+        <h2 className="font-bold text-primary mb-2">Votre avis</h2>
         <div className="flex gap-0.5 mb-2">
           {[1, 2, 3, 4, 5].map((n) => (
             <Star
               key={n}
               size={16}
-              className={n <= state.existing!.rating ? "text-[#D4AF37]" : "text-[#173E7D]/15"}
+              className={n <= state.existing!.rating ? "text-secondary" : "text-primary/20"}
               fill={n <= state.existing!.rating ? "currentColor" : "none"}
             />
           ))}
         </div>
         {state.existing.comment && (
-          <p className="text-sm text-[#2B3442]/70 break-words">{state.existing.comment}</p>
+          <p className="text-sm text-body break-words">{state.existing.comment}</p>
         )}
       </section>
     );
@@ -112,9 +112,9 @@ const ReviewForm: React.FC<{ orderId: string; onDone: () => void }> = ({ orderId
   };
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border-2 border-[#173E7D]/15 bg-white p-5">
-      <h2 className="font-display font-bold text-[#173E7D] mb-1">Laisser un avis</h2>
-      <p className="text-sm text-[#2B3442]/60 mb-4">
+    <form onSubmit={submit} className="rounded-panel bg-surface p-6">
+      <h2 className="font-bold text-primary mb-1">Laisser un avis</h2>
+      <p className="text-sm text-muted mb-4">
         Visible publiquement. Les trois critères sont facultatifs.
       </p>
 
@@ -130,11 +130,11 @@ const ReviewForm: React.FC<{ orderId: string; onDone: () => void }> = ({ orderId
         onChange={(e) => setComment(e.target.value)}
         rows={4}
         placeholder="Comment s'est passée la collaboration ?"
-        className="mt-4 w-full rounded-xl border-2 border-[#173E7D]/15 px-4 py-3 text-sm outline-none focus:border-[#173E7D] resize-y"
+        className="mt-4 w-full rounded-xl border-2 border-line px-4 py-3 text-sm outline-none focus:border-primary resize-y"
       />
 
       {error && (
-        <p className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm p-3">
+        <p className="mt-3 rounded-xl bg-tint-red text-danger text-sm p-3">
           {error}
         </p>
       )}
@@ -142,7 +142,7 @@ const ReviewForm: React.FC<{ orderId: string; onDone: () => void }> = ({ orderId
       <button
         type="submit"
         disabled={busy}
-        className="mt-4 rounded-xl bg-[#173E7D] text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
+        className="mt-4 rounded-xl bg-primary text-white font-bold px-6 py-2.5 inline-flex items-center gap-2 disabled:opacity-40"
       >
         {busy && <Loader2 size={15} className="animate-spin" />}
         Publier mon avis

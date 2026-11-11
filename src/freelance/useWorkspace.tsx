@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../services/api";
 
@@ -135,3 +135,54 @@ export interface WorkspaceContext {
 }
 
 export const useWorkspaceContext = () => useOutletContext<WorkspaceContext>();
+
+/* -------------------------------------------------------------------------- */
+/*                              the shared store                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The same data, one level above the router.
+ *
+ * The header shows the credit balance, and the header is rendered by the
+ * public shell — which sits *above* the workspace in the tree, so it cannot
+ * read what the workspace fetched. Rather than ask the server twice for the
+ * same wallet, the fetch moves up here and both read it.
+ *
+ * It runs only for a signed-in visitor. A signed-out one has no workspace to
+ * load, and a signed-in client who never activated gets `{active: false}`
+ * once, which is also what tells the header whether to offer "Mon espace".
+ */
+type Store = ReturnType<typeof useWorkspace>;
+
+const WorkspaceStore = createContext<Store | null>(null);
+
+export const WorkspaceProvider: React.FC<{
+  enabled: boolean;
+  children: React.ReactNode;
+}> = ({ enabled, children }) => {
+  const store = useWorkspace(enabled);
+  return <WorkspaceStore.Provider value={store}>{children}</WorkspaceStore.Provider>;
+};
+
+/**
+ * Throws when used outside the provider, because the alternative — quietly
+ * fetching a second copy — is the bug this store exists to prevent.
+ */
+export const useWorkspaceStore = (): Store => {
+  const ctx = useContext(WorkspaceStore);
+  if (!ctx) throw new Error("useWorkspaceStore must be used inside WorkspaceProvider");
+  return ctx;
+};
+
+/**
+ * The balance, or null when there is nothing to show.
+ *
+ * Null covers every "not yet": not signed in, still loading, not activated.
+ * The header renders no pill at all in that case, which is better than a
+ * pill reading zero credits to someone who simply has no account.
+ */
+export const useCredits = (): number | null => {
+  const { data } = useWorkspaceStore();
+  if (!data?.active || !data.wallet) return null;
+  return data.wallet.balance;
+};

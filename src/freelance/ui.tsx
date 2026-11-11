@@ -266,32 +266,50 @@ export function Tabs<T extends string>({
   onChange,
   options,
   label,
+  on = "ground",
   className = "",
 }: {
   value: T;
   onChange: (next: T) => void;
   options: Array<{ value: T; label: React.ReactNode }>;
   label: string;
+  /**
+   * What the trough sits on, so it can contrast with it.
+   *
+   * A prop rather than a background class passed in through `className`:
+   * two competing `bg-*` classes on one element are resolved by whichever
+   * Tailwind happens to emit later, not by the order they are written in.
+   */
+  on?: "ground" | "surface";
   className?: string;
 }) {
   return (
     <div
       role="tablist"
       aria-label={label}
-      className={"inline-flex flex-wrap gap-1 rounded-full bg-ground p-1.5 " + className}
+      className={
+        "inline-flex flex-wrap gap-1 rounded-full p-1.5 " +
+        (on === "surface" ? "bg-surface" : "bg-ground") +
+        " " +
+        className
+      }
     >
       {options.map((o) => {
-        const on = o.value === value;
+        const selected = o.value === value;
         return (
           <button
             key={o.value}
             type="button"
             role="tab"
-            aria-selected={on}
+            aria-selected={selected}
             onClick={() => onChange(o.value)}
             className={
-              "min-h-11 rounded-full px-4 sm:px-5 text-[15px] font-bold transition-colors " +
-              (on ? "bg-primary text-white" : "text-primary hover:bg-surface")
+              "min-h-11 rounded-full px-4 text-[15px] font-bold transition-colors sm:px-5 " +
+              (selected
+                ? "bg-primary text-white"
+                : on === "surface"
+                  ? "text-primary hover:bg-ground"
+                  : "text-primary hover:bg-surface")
             }
           >
             {o.label}

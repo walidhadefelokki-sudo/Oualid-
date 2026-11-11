@@ -98,7 +98,7 @@ const Pricing: React.FC = () => {
             { value: "packs", label: t("pricing.packs") },
             { value: "plans", label: t("pricing.subscription") },
           ]}
-          className="bg-surface"
+          on="surface"
         />
       </section>
 

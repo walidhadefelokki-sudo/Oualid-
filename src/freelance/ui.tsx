@@ -1,6 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { BadgeCheck, Inbox, Loader2, MapPin, Star } from "lucide-react";
+import logoNavy from "../assets/logo-v2.png";
+import logoPale from "../assets/logo2-v2.png";
 import { useI18n } from "./i18n";
 import type { FreelancerCard, ProjectCard, ServiceCard } from "./freelance.service";
 
@@ -325,14 +327,17 @@ export function Tabs<T extends string>({
 /* -------------------------------------------------------------------------- */
 
 /**
- * "Dar L'emploi" set in the serif, with "Freelance" beside it.
+ * The Dar L'emploi logo, with "Freelance" beside it.
  *
- * Type rather than the logo image, which is what every artboard in the
- * canvas does — and it means the mark picks up the text colour instead of
- * needing a separate pale file for dark grounds.
+ * The real mark, not type: it carries the orange handshake over the
+ * apostrophe, which no font can reproduce, and it is already drawn in the
+ * charte's navy and orange.
  *
- * `on` says what it is sitting on, because the qualifier changes shape: a
- * filled navy pill on a light header, plain orange type on a dark one.
+ * Two files rather than one recoloured by CSS, because a PNG cannot be
+ * recoloured — `logo-v2` is navy for light grounds, `logo2-v2` is pale for
+ * dark ones. `on` picks the file and also changes the qualifier's shape: a
+ * filled navy pill on a light header, plain orange type on a dark one,
+ * since a navy pill on near-black would disappear.
  */
 export const Wordmark: React.FC<{
   on?: "light" | "dark";
@@ -340,17 +345,17 @@ export const Wordmark: React.FC<{
   label?: string;
   className?: string;
 }> = ({ on = "light", size = "md", label = "Freelance", className = "" }) => {
-  const type = { sm: "text-2xl", md: "text-[26px]", lg: "text-3xl" }[size];
+  /* Heights, not widths: the mark is a long horizontal lockup and sizing it
+     by height is what keeps it on the same baseline as the nav beside it. */
+  const height = { sm: "h-7", md: "h-8", lg: "h-9" }[size];
 
   return (
     <span className={"flex items-center gap-2.5 " + className}>
-      <span
-        className={
-          "font-serif leading-none " + type + " " + (on === "dark" ? "text-white" : "text-primary")
-        }
-      >
-        Dar L&apos;emploi
-      </span>
+      <img
+        src={on === "dark" ? logoPale : logoNavy}
+        alt="Dar L'emploi"
+        className={height + " w-auto shrink-0 object-contain"}
+      />
       {on === "dark" ? (
         <span className="text-sm font-bold text-secondary">{label}</span>
       ) : (

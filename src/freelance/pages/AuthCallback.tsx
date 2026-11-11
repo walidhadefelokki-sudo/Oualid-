@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import api from "../../services/api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import logoNavy from "../../assets/logo-v2.png";
+import { Wordmark, btn } from "../ui";
 
 /**
  * Where Google returns to, for the marketplace.
@@ -77,18 +77,17 @@ const AuthCallback: React.FC = () => {
   }, []);
 
   return (
-    <div className="max-w-md mx-auto px-4 py-24 text-center">
-      <img src={logoNavy} alt="Dar L'Emploi" className="h-9 w-auto mx-auto" />
+    <div className="mx-auto max-w-md px-4 py-24 text-center">
+      <div className="flex justify-center">
+        <Wordmark size="lg" label={t("brand.freelance")} />
+      </div>
 
       {error ? (
         <>
-          <p className="mt-8 rounded-xl bg-tint-red text-danger text-sm p-4">
+          <p className="mt-8 rounded-field bg-tint-red p-4 text-sm font-bold text-danger">
             {error}
           </p>
-          <Link
-            to="/connexion"
-            className="inline-block mt-6 rounded-full px-6 py-3 bg-primary text-white font-bold"
-          >
+          <Link to="/connexion" className={btn("primary", "mt-6")}>
             {t("nav.signin")}
           </Link>
         </>

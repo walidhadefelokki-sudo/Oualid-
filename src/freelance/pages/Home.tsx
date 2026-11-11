@@ -12,6 +12,7 @@ import freelanceService, {
 import {
   Badge,
   Card,
+  CategoryIcon,
   EmptyState,
   ErrorState,
   FreelancerTile,
@@ -192,16 +193,15 @@ const Home: React.FC = () => {
                     className="flex min-h-24 items-center gap-4 rounded-tile bg-surface p-6 transition-shadow hover:shadow-[0_8px_30px_rgba(23,62,125,0.10)]"
                   >
                     <span
-                      className={`grid h-12 w-12 shrink-0 place-items-center rounded-chip text-base font-bold text-primary ${
+                      className={`grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-chip text-primary ${
                         TINTS[i % TINTS.length]
                       }`}
-                      aria-hidden="true"
                     >
-                      {c.icon || c.name.charAt(0).toUpperCase()}
+                      <CategoryIcon name={c.icon} />
                     </span>
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="break-words font-bold text-primary">{c.name}</span>
-                      <span className="truncate text-[13px] text-muted">
+                      <span className="break-words text-[13px] text-muted">
                         {c.subcategories.length > 0
                           ? c.subcategories
                               .slice(0, 3)

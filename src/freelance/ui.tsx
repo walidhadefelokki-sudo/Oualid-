@@ -1,6 +1,21 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { BadgeCheck, Inbox, Loader2, MapPin, Star } from "lucide-react";
+import {
+  BadgeCheck,
+  Cpu,
+  Factory,
+  GraduationCap,
+  HardHat,
+  HeartPulse,
+  Inbox,
+  Landmark,
+  Loader2,
+  MapPin,
+  Palmtree,
+  ShoppingBag,
+  Star,
+  Tag,
+} from "lucide-react";
 import logoNavy from "../assets/logo-v2.png";
 import logoPale from "../assets/logo2-v2.png";
 import { useI18n } from "./i18n";
@@ -321,6 +336,58 @@ export function Tabs<T extends string>({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*                               category icons                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A category's `icon` column holds a Lucide component name, not a character
+ * — "ShoppingBag", "HardHat", "GraduationCap". Rendering that column as
+ * text puts the word "ShoppingBag" in the chip, which is what it used to do.
+ *
+ * Named imports rather than `import * as Icons`: a namespace import pulls
+ * all 1,500-odd Lucide icons into the bundle because nothing can be
+ * tree-shaken out of it.
+ *
+ * The column is free text an administrator can set, so an unknown name has
+ * to render as something. It falls back to a neutral tag rather than to
+ * nothing, and a value that is plainly a character — an emoji, a letter —
+ * is shown as itself, since that is the other way the field gets used.
+ */
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number | string }>> = {
+  Cpu,
+  Factory,
+  GraduationCap,
+  HardHat,
+  HeartPulse,
+  Landmark,
+  Palmtree,
+  ShoppingBag,
+};
+
+export const CategoryIcon: React.FC<{ name?: string | null; size?: number }> = ({
+  name,
+  size = 22,
+}) => {
+  const key = name?.trim();
+  if (!key) return <Tag size={size} aria-hidden="true" />;
+
+  const Icon = CATEGORY_ICONS[key];
+  if (Icon) return <Icon size={size} />;
+
+  /* Short enough to be a glyph rather than a component name. Emoji count as
+     two or more code units, so this counts characters, not bytes. */
+  if ([...key].length <= 2) {
+    return (
+      <span aria-hidden="true" style={{ fontSize: size }}>
+        {key}
+      </span>
+    );
+  }
+
+  return <Tag size={size} aria-hidden="true" />;
+};
 
 /* -------------------------------------------------------------------------- */
 /*                                  wordmark                                  */

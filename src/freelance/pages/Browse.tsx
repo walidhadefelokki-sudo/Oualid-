@@ -12,6 +12,7 @@ import freelanceService, {
 } from "../freelance.service";
 import {
   Card,
+  CategoryIcon,
   EmptyState,
   ErrorState,
   FreelancerTile,
@@ -280,12 +281,17 @@ export const Categories: React.FC = () => {
         <Grid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((c) => (
             <Card key={c.id} className="flex flex-col gap-3">
-              <Link
-                to={`/recherche?category=${c.slug}`}
-                className="break-words text-lg font-bold text-primary hover:underline"
-              >
-                {c.name}
-              </Link>
+              <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-chip bg-tint-blue text-primary">
+                  <CategoryIcon name={c.icon} size={20} />
+                </span>
+                <Link
+                  to={`/recherche?category=${c.slug}`}
+                  className="min-w-0 break-words text-lg font-bold text-primary hover:underline"
+                >
+                  {c.name}
+                </Link>
+              </div>
 
               {c.description && (
                 <p className="break-words text-sm leading-relaxed text-body">{c.description}</p>

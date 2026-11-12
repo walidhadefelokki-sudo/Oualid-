@@ -67,7 +67,7 @@ const LanguageSwitch: React.FC<{ className?: string }> = ({ className = "" }) =>
 /* -------------------------------------------------------------------------- */
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
-  "text-[15px] font-semibold transition-colors " +
+  "whitespace-nowrap text-[15px] font-semibold transition-colors " +
   (isActive ? "text-accent-ink" : "text-primary hover:text-navy-deep");
 
 /** The unread count, as a navy pill. Hidden from the count itself at zero. */
@@ -108,8 +108,11 @@ const PublicLayout: React.FC = () => {
       <NavLink to="/freelances" className={navClass} onClick={close}>
         {t("nav.freelancers")}
       </NavLink>
+      {/* "Tarifs", not "Tarifs et crédits". The long form is the page's own
+          title and is kept for the footer; in a bar this tight it was the
+          single widest entry. */}
       <NavLink to="/tarifs" className={navClass} onClick={close}>
-        {t("nav.pricing")}
+        {t("nav.pricingShort")}
       </NavLink>
       {signedIn && (
         <NavLink
@@ -153,16 +156,23 @@ const PublicLayout: React.FC = () => {
   return (
     <div className="flex min-h-screen flex-col bg-ground text-primary">
       <header className="bg-surface border-b border-line">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-5 px-4 py-3 sm:px-8">
+        {/* One row that never wraps.
+            It used to be flex-wrap, which looks harmless until the bar runs
+            out of room: the right-hand group has `ms-auto`, so instead of
+            tightening it dropped onto a second line and sat far right under
+            the navigation. Signing in was enough to trigger it, because that
+            adds both "Messages" and "Mon espace". Now nothing wraps — the
+            navigation hides below xl and the burger takes over. */}
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-8">
           <Link to="/" className="shrink-0" aria-label="Dar L'emploi Freelance">
             <Wordmark label={t("brand.freelance")} />
           </Link>
 
           {atWork ? (
             <>
-              <div className="hidden sm:block">{modeSwitch}</div>
+              <div className="hidden shrink-0 sm:block">{modeSwitch}</div>
 
-              <div className="ms-auto flex items-center gap-3">
+              <div className="ms-auto flex shrink-0 items-center gap-3">
                 {/* Only when there is a balance to state. A pill reading
                     "0 crédits" to someone with no freelance account is a
                     number about nothing. */}
@@ -196,15 +206,19 @@ const PublicLayout: React.FC = () => {
             </>
           ) : (
             <>
+              {/* xl, not lg. Signed in there are five entries plus the
+                  language switch, "Mon espace" and the call to action, and
+                  at 1024px they do not fit; below xl the burger carries
+                  them instead. */}
               <nav
                 aria-label="Navigation principale"
-                className="hidden flex-wrap items-center gap-6 lg:flex"
+                className="hidden min-w-0 items-center gap-5 xl:flex"
               >
                 {links}
               </nav>
 
-              <div className="ms-auto flex items-center gap-3">
-                <LanguageSwitch className="hidden sm:inline-flex" />
+              <div className="ms-auto flex shrink-0 items-center gap-2.5">
+                <LanguageSwitch className="hidden md:inline-flex" />
 
                 {/* Shown only once we know: rendering "Connexion" during the
                     check and swapping it a moment later reads as a glitch. */}
@@ -235,7 +249,7 @@ const PublicLayout: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setOpen((v) => !v)}
-                  className="grid h-11 w-11 place-items-center rounded-full bg-ground text-primary lg:hidden"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ground text-primary xl:hidden"
                   aria-label="Menu"
                   aria-expanded={open}
                 >
@@ -249,10 +263,10 @@ const PublicLayout: React.FC = () => {
         {open && !atWork && (
           <nav
             aria-label="Navigation principale"
-            className="flex flex-col gap-4 border-t border-line px-4 py-5 sm:px-8 lg:hidden"
+            className="flex flex-col gap-4 border-t border-line px-4 py-5 sm:px-8 xl:hidden"
           >
             {links}
-            <LanguageSwitch className="self-start sm:hidden" />
+            <LanguageSwitch className="self-start md:hidden" />
             {!signedIn && (
               <Link to="/connexion" className={btn("ghost", "self-start")} onClick={close}>
                 {t("nav.signin")}
